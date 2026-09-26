@@ -4,50 +4,80 @@ import { Providers } from '@/components/Providers';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
-export const metadata: Metadata = {
-  title: 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories & Smartphone Essentials',
-  description:
-    'Discover premium mobile accessories, high-speed GaN chargers, military-grade drop cases, Kevlar braided cables, and wireless audio across Pakistan.',
-  keywords: [
-    'mobile accessories',
-    'phone cases',
-    'screen protectors',
-    'fast chargers',
-    'charging cables',
-    'power banks',
-    'wireless chargers',
-    'TWS earbuds',
-    'al-hamd mobile accessories',
-  ],
-  authors: [{ name: 'AL-HAMD MOBILE ACCESSORIES' }],
-  openGraph: {
-    title: 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories & Smartphone Essentials',
-    description:
-      'Shop genuine premium mobile accessories, ultra-durable phone cases, and high-speed chargers with fast nationwide delivery across Pakistan.',
-    url: 'https://alhamd.pk',
-    siteName: 'AL-HAMD MOBILE ACCESSORIES',
-    images: [
-      {
-        url: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop',
-        width: 1200,
-        height: 630,
-        alt: 'AL-HAMD-MOBILE Premium Mobile Accessories',
-      },
-    ],
-    locale: 'en_PK',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'AL-HAMD-MOBILE | Premium Mobile Accessories & Charging Essentials',
-    description:
-      'Shop genuine premium mobile accessories, ultra-durable phone cases, and high-speed chargers with fast nationwide delivery across Pakistan.',
-    images: ['https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop'],
-  },
-  icons: {
-    icon: '/favicon.ico',
-  },
-};
+import { getStoreSettings } from '@/lib/db/settings';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = getStoreSettings();
+
+  const customFavicon =
+    (settings.seo?.faviconUrl && typeof settings.seo.faviconUrl === 'string' && settings.seo.faviconUrl.trim()) ||
+    (settings.faviconUrl && typeof settings.faviconUrl === 'string' && settings.faviconUrl.trim()) ||
+    (settings.logoUrl && typeof settings.logoUrl === 'string' && settings.logoUrl.trim()) ||
+    '/favicon.ico';
+
+  const defaultOgImage =
+    'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop';
+
+  const ogImage = customFavicon !== '/favicon.ico' ? customFavicon : defaultOgImage;
+
+  const title =
+    (settings.seo?.metaTitle && settings.seo.metaTitle.trim()) ||
+    'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories & Smartphone Essentials';
+
+  const description =
+    (settings.seo?.metaDescription && settings.seo.metaDescription.trim()) ||
+    'Discover premium mobile accessories, high-speed GaN chargers, military-grade drop cases, Kevlar braided cables, and wireless audio across Pakistan.';
+
+  const keywords =
+    Array.isArray(settings.seo?.keywords) && settings.seo.keywords.length > 0
+      ? settings.seo.keywords
+      : [
+          'mobile accessories',
+          'phone cases',
+          'screen protectors',
+          'fast chargers',
+          'charging cables',
+          'power banks',
+          'wireless chargers',
+          'TWS earbuds',
+          'al-hamd mobile accessories',
+        ];
+
+  return {
+    metadataBase: new URL('https://alhamd.pk'),
+    title,
+    description,
+    keywords,
+    authors: [{ name: settings.storeName || 'AL-HAMD MOBILE ACCESSORIES' }],
+    openGraph: {
+      title,
+      description,
+      url: 'https://alhamd.pk',
+      siteName: settings.storeName || 'AL-HAMD MOBILE ACCESSORIES',
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: settings.storeName || 'AL-HAMD-MOBILE Premium Mobile Accessories',
+        },
+      ],
+      locale: 'en_PK',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImage],
+    },
+    icons: {
+      icon: customFavicon,
+      shortcut: customFavicon,
+      apple: customFavicon,
+    },
+  };
+}
 
 export default function RootLayout({
   children,

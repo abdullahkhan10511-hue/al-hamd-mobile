@@ -1,0 +1,51 @@
+{
+  "storeName": "AL-HAMD MOBILE ACCESSORIES",
+  "storeTagline": "Quality Mobile Accessories & Everyday Smartphone Essentials",
+  "logoUrl": "",
+  "faviconUrl": "",
+  "email": "support@alhamd-mobile.com",
+  "phone": "+92 343 2200995",
+  "address": "Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan",
+  "whatsapp": "+923432200995",
+  "currency": "PKR",
+  "currencySymbol": "Rs.",
+  "freeShippingThreshold": 5000,
+  "standardShippingFee": 200,
+  "expressShippingFee": 450,
+  "deliveryMessage": "Free Delivery Across Pakistan on Orders Above Rs. 5,000",
+  "estimatedDeliveryText": "2–4 Business Days Nationwide",
+  "pakistanOnly": true,
+  "taxPercentage": 0,
+  "socialLinks": {
+    "facebook": "",
+    "instagram": "",
+    "tiktok": "",
+    "youtube": "",
+    "whatsapp": "https://wa.me/923432200995",
+    "status": {
+      "facebook": false,
+      "instagram": false,
+      "tiktok": false,
+      "youtube": false,
+      "whatsapp": true
+    }
+  },
+  "seo": {
+    "metaTitle": "AL-HAMD MOBILE ACCESSORIES | Quality Mobile Accessories Pakistan",
+    "metaDescription": "Shop quality smartphone cases, screen protectors, fast chargers, power banks, earbuds, and mobile accessories in Pakistan.",
+    "keywords": [
+      "mobile accessories pakistan",
+      "phone cases",
+      "fast chargers",
+      "power banks",
+      "earbuds",
+      "screen protectors",
+      "magsafe",
+      "al-hamd"
+    ],
+    "faviconUrl": "",
+    "logoUrl": ""
+  },
+  "footerDescription": "Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.",
+  "businessHours": "Mon – Sat: 10:00 AM – 10:00 PM PKT"
+}

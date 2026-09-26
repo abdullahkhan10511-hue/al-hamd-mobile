@@ -106,12 +106,39 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
   };
 }
 
+function getServerSavedSettings(): Partial<StoreSettings> | null {
+  if (typeof window !== 'undefined') return null;
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(process.cwd(), 'data', 'store-settings.json');
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed[0] : parsed;
+    }
+  } catch {
+    // Graceful fallback
+  }
+  return null;
+}
+
 export function getStoreSettings(): StoreSettings {
-  const settings = getLocal<StoreSettings>(SETTINGS_KEY, seedStoreSettings);
+  const serverSaved = getServerSavedSettings();
+  const settings = getLocal<StoreSettings>(
+    SETTINGS_KEY,
+    serverSaved ? ({ ...seedStoreSettings, ...serverSaved } as StoreSettings) : seedStoreSettings
+  );
 
   const base: StoreSettings = {
     ...seedStoreSettings,
+    ...(serverSaved || {}),
     ...(settings || {}),
+    seo: {
+      ...seedStoreSettings.seo,
+      ...(serverSaved?.seo || {}),
+      ...(settings?.seo || {}),
+    },
   };
 
   // Ensure official business information
@@ -171,10 +198,32 @@ export async function updateStoreSettings(
   const updated: StoreSettings = {
     ...current,
     ...settings,
+    seo: {
+      ...current.seo,
+      ...(settings.seo || {}),
+    },
     socialLinks: settings.socialLinks ? normalizeSocialLinks({ ...current.socialLinks, ...settings.socialLinks }) : current.socialLinks,
   };
 
   setLocal(SETTINGS_KEY, updated);
+
+  // Sync to server storage file
+  if (typeof window !== 'undefined') {
+    fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(() => {});
+  } else {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'data', 'store-settings.json');
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf8');
+    } catch {}
+  }
 
   // Attempt Firestore sync with non-destructive merge
   const hasRealFirebase =

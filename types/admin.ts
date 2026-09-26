@@ -415,6 +415,8 @@ export interface StoreSettings {
     metaTitle: string;
     metaDescription: string;
     keywords: string[];
+    faviconUrl?: string;
+    logoUrl?: string;
   };
   footerDescription: string;
   businessHours: string;

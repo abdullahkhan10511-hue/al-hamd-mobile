@@ -34,6 +34,11 @@ import {
   AlertTriangle,
   Shield,
   Palette,
+  Upload,
+  Image as ImageIcon,
+  RefreshCw,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import Link from 'next/link';
@@ -64,6 +69,92 @@ export default function AdminSettingsPage() {
   const [showAddPlatform, setShowAddPlatform] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<string | null>(null);
   const [editUrlValue, setEditUrlValue] = useState<string>('');
+
+  // Logo & Favicon upload state
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState('');
+  const logoFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLogoUploadError('');
+
+    // Supported formats check: PNG, JPG, JPEG, WEBP, ICO, SVG
+    const allowedExts = ['.png', '.jpg', '.jpeg', '.webp', '.ico', '.svg'];
+    const originalName = file.name || '';
+    const ext = '.' + originalName.split('.').pop()?.toLowerCase();
+
+    if (!allowedExts.includes(ext)) {
+      setLogoUploadError('Unsupported image format. Please select a PNG, JPG, JPEG, WEBP, or ICO image.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoUploadError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed logo size is 5MB.`);
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    try {
+      setIsUploadingLogo(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/admin/settings/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to upload logo image.');
+      }
+
+      if (settings && data.url) {
+        const updatedSettings: StoreSettings = {
+          ...settings,
+          faviconUrl: data.url,
+          logoUrl: data.url,
+          seo: {
+            ...settings.seo,
+            faviconUrl: data.url,
+            logoUrl: data.url,
+          },
+        };
+        setSettings(updatedSettings);
+        await updateStoreSettings(updatedSettings);
+        setMessage('Site Logo / Favicon uploaded and saved successfully.');
+        setTimeout(() => setMessage(''), 3000);
+      }
+    } catch (err: any) {
+      setLogoUploadError(err?.message || 'Error uploading logo image.');
+    } finally {
+      setIsUploadingLogo(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!settings) return;
+    setLogoUploadError('');
+    const updatedSettings: StoreSettings = {
+      ...settings,
+      faviconUrl: '',
+      logoUrl: '',
+      seo: {
+        ...settings.seo,
+        faviconUrl: '',
+        logoUrl: '',
+      },
+    };
+    setSettings(updatedSettings);
+    await updateStoreSettings(updatedSettings);
+    setMessage('Site Logo removed. Default favicon restored.');
+    setTimeout(() => setMessage(''), 3000);
+  };
 
   const loadData = () => {
     setSettings(getStoreSettings());
@@ -917,9 +1008,184 @@ export default function AdminSettingsPage() {
 
         {/* TAB: SEO */}
         {activeTab === 'seo' && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold text-neutral-900">Search Engine Optimization (SEO)</h3>
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm font-bold text-neutral-900">Search Engine Optimization (SEO) &amp; Branding</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Manage your global site icon, search engine meta titles, descriptions, and discovery keywords.
+              </p>
+            </div>
 
+            {/* Site Logo / Favicon Upload Section */}
+            <div className="p-5 bg-white rounded-2xl border border-neutral-200/90 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-neutral-700" />
+                    Site Logo / Favicon
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Recommended: square PNG or WEBP image for best favicon results.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 bg-neutral-50 px-2.5 py-1 rounded-lg border border-neutral-200/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  Tab Icon &amp; Metadata
+                </div>
+              </div>
+
+              {/* Hidden file input */}
+              <input
+                ref={logoFileInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.ico,.svg"
+                onChange={handleLogoFileChange}
+                className="hidden"
+                disabled={isUploadingLogo}
+              />
+
+              {/* Logo / Favicon Display & Action Grid */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+                {/* Current Logo Preview Container */}
+                <div className="relative group shrink-0">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-neutral-50 border-2 border-neutral-200/90 flex items-center justify-center p-2.5 overflow-hidden shadow-2xs transition-all group-hover:border-neutral-400">
+                    {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl) ? (
+                      <img
+                        src={settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl}
+                        alt="Current Site Logo / Favicon"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400 text-center">
+                        <ImageIcon className="w-6 h-6 stroke-1 mb-1 text-neutral-400" />
+                        <span className="text-[9px] font-semibold uppercase tracking-tight text-neutral-400">Default</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Status and Action Buttons */}
+                <div className="flex-1 space-y-3 min-w-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-neutral-900">
+                        {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl)
+                          ? 'Current Uploaded Logo'
+                          : 'Default Site Favicon'}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          (settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl)
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                            : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                        }`}
+                      >
+                        {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl) ? 'Custom' : 'System Default (/favicon.ico)'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1 truncate">
+                      {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl)
+                        ? (settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl)
+                        : 'Using default /favicon.ico icon.'}
+                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl) ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => logoFileInputRef.current?.click()}
+                          disabled={isUploadingLogo}
+                          className="inline-flex items-center gap-2 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isUploadingLogo ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              Replace Logo
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          disabled={isUploadingLogo}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-neutral-200 hover:border-rose-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Remove Logo
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => logoFileInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingLogo ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" />
+                            Upload Logo
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Validation / Error Message */}
+                  {logoUploadError && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs mt-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{logoUploadError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setLogoUploadError('')}
+                        className="ml-auto text-rose-400 hover:text-rose-700 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Browser Tab Simulation Preview */}
+              <div className="pt-3 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-50/60 -mx-5 -mb-5 p-4 rounded-b-2xl">
+                <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
+                  Live Browser Tab Preview
+                </span>
+                <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 bg-white border border-neutral-200/90 rounded-lg shadow-2xs max-w-sm">
+                  {(settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl) ? (
+                    <img
+                      src={settings.seo?.faviconUrl || settings.faviconUrl || settings.logoUrl}
+                      alt="Tab Icon"
+                      className="w-4 h-4 object-contain shrink-0"
+                    />
+                  ) : (
+                    <span className="w-3.5 h-3.5 rounded-full bg-neutral-900 inline-block shrink-0"></span>
+                  )}
+                  <span className="text-xs text-neutral-800 font-medium truncate">
+                    {settings.seo?.metaTitle || settings.storeName || 'AL-HAMD MOBILE ACCESSORIES'}
+                  </span>
+                  <X className="w-3 h-3 text-neutral-400 ml-auto shrink-0" />
+                </div>
+              </div>
+            </div>
+
+            {/* Existing SEO fields */}
             <div>
               <label className="block font-semibold text-neutral-700 mb-1">Default Meta Title</label>
               <input
