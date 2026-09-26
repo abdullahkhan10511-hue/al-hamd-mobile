@@ -1,0 +1,518 @@
+import { PermissionItem, PermissionModule, StaffPredefinedRole } from '@/types/admin';
+
+export const ALL_PERMISSIONS: PermissionItem[] = [
+  // PRODUCTS
+  {
+    id: 'perm-prod-1',
+    key: 'products.view',
+    name: 'View Products',
+    module: 'Products',
+    description: 'Browse the product catalog, search items, and view product details.',
+  },
+  {
+    id: 'perm-prod-2',
+    key: 'products.add',
+    name: 'Add Products',
+    module: 'Products',
+    description: 'Create new catalog products with images, variants, and pricing.',
+  },
+  {
+    id: 'perm-prod-3',
+    key: 'products.edit',
+    name: 'Edit Products',
+    module: 'Products',
+    description: 'Modify product specifications, pricing, tags, and descriptions.',
+  },
+  {
+    id: 'perm-prod-4',
+    key: 'products.delete',
+    name: 'Delete Products',
+    module: 'Products',
+    description: 'Remove products permanently or unpublish them from the store.',
+  },
+
+  // INVENTORY
+  {
+    id: 'perm-inv-1',
+    key: 'inventory.view',
+    name: 'View Inventory',
+    module: 'Inventory',
+    description: 'Inspect stock levels, warehouse counts, and SKU lists.',
+  },
+  {
+    id: 'perm-inv-2',
+    key: 'inventory.adjust_stock',
+    name: 'Adjust Stock',
+    module: 'Inventory',
+    description: 'Perform manual restocks, stock deductions, and write-offs.',
+  },
+  {
+    id: 'perm-inv-3',
+    key: 'inventory.edit_warning',
+    name: 'Edit Stock Warning',
+    module: 'Inventory',
+    description: 'Configure low-stock alert thresholds for catalog items.',
+  },
+  {
+    id: 'perm-inv-4',
+    key: 'inventory.view_history',
+    name: 'View Inventory History',
+    module: 'Inventory',
+    description: 'Access the immutable audit trail of past stock adjustments.',
+  },
+
+  // ORDERS
+  {
+    id: 'perm-ord-1',
+    key: 'orders.view',
+    name: 'View Orders',
+    module: 'Orders',
+    description: 'Search, filter, and inspect customer orders and customer addresses.',
+  },
+  {
+    id: 'perm-ord-2',
+    key: 'orders.update_status',
+    name: 'Update Order Status',
+    module: 'Orders',
+    description: 'Transition order states (Confirmed, Processing, Shipped, Delivered).',
+  },
+  {
+    id: 'perm-ord-3',
+    key: 'orders.process',
+    name: 'Process Orders',
+    module: 'Orders',
+    description: 'Verify payment references, manage packaging, and dispatch shipments.',
+  },
+  {
+    id: 'perm-ord-4',
+    key: 'orders.print_bills',
+    name: 'Print Orders/Bills',
+    module: 'Orders',
+    description: 'Generate commercial invoices, thermal receipts, and packing slips.',
+  },
+
+  // SHOP COUNTER / POS
+  {
+    id: 'perm-pos-1',
+    key: 'pos.view',
+    name: 'Access Shop Counter',
+    module: 'Shop Counter',
+    description: 'Access the Shop Counter / POS interface and browse inventory catalog.',
+  },
+  {
+    id: 'perm-pos-2',
+    key: 'pos.create_sale',
+    name: 'Complete POS Sales',
+    module: 'Shop Counter',
+    description: 'Process customer counter orders, accept payment tenders, and generate bills.',
+  },
+  {
+    id: 'perm-pos-3',
+    key: 'pos.apply_discount',
+    name: 'Apply Manual Discounts',
+    module: 'Shop Counter',
+    description: 'Grant custom PKR or percentage price reductions at checkout.',
+  },
+  {
+    id: 'perm-pos-4',
+    key: 'pos.void_sale',
+    name: 'Void POS Sales',
+    module: 'Shop Counter',
+    description: 'Void completed shop transactions and automatically restore stock.',
+  },
+  {
+    id: 'perm-pos-5',
+    key: 'pos.view_history',
+    name: 'View POS History & Summary',
+    module: 'Shop Counter',
+    description: 'Inspect daily POS sales summaries, cashier reports, and sales archives.',
+  },
+
+  // CATEGORIES
+  {
+    id: 'perm-cat-1',
+    key: 'categories.view',
+    name: 'View Categories',
+    module: 'Categories',
+    description: 'View the category hierarchy and associated catalog metrics.',
+  },
+  {
+    id: 'perm-cat-2',
+    key: 'categories.add',
+    name: 'Add Categories',
+    module: 'Categories',
+    description: 'Create new catalog categories and subcategories.',
+  },
+  {
+    id: 'perm-cat-3',
+    key: 'categories.edit',
+    name: 'Edit Categories',
+    module: 'Categories',
+    description: 'Update category names, images, descriptions, and slugs.',
+  },
+  {
+    id: 'perm-cat-4',
+    key: 'categories.delete',
+    name: 'Delete Categories',
+    module: 'Categories',
+    description: 'Remove empty or deprecated categories from the store.',
+  },
+
+  // PROMOTIONS
+  {
+    id: 'perm-promo-1',
+    key: 'promotions.view',
+    name: 'View Promotions',
+    module: 'Promotions',
+    description: 'View active sales campaigns, flash deals, and coupon codes.',
+  },
+  {
+    id: 'perm-promo-2',
+    key: 'promotions.add',
+    name: 'Add Promotions',
+    module: 'Promotions',
+    description: 'Create promotional campaigns, discount banners, and sales.',
+  },
+  {
+    id: 'perm-promo-3',
+    key: 'promotions.edit',
+    name: 'Edit Promotions',
+    module: 'Promotions',
+    description: 'Modify promotional dates, discounts, and visual banners.',
+  },
+  {
+    id: 'perm-promo-4',
+    key: 'promotions.delete',
+    name: 'Delete Promotions',
+    module: 'Promotions',
+    description: 'Permanently remove expired or cancelled promotions.',
+  },
+  {
+    id: 'perm-promo-5',
+    key: 'promotions.activate',
+    name: 'Activate/Deactivate Promotions',
+    module: 'Promotions',
+    description: 'Toggle promotional banners and flash sales on/off in real-time.',
+  },
+
+  // CUSTOMERS
+  {
+    id: 'perm-cust-1',
+    key: 'customers.view',
+    name: 'View Customers',
+    module: 'Customers',
+    description: 'Access customer profiles, purchase history, and contact details.',
+  },
+  {
+    id: 'perm-cust-2',
+    key: 'customers.suspend',
+    name: 'Suspend Customers',
+    module: 'Customers',
+    description: 'Suspend fraudulent or non-paying customer accounts.',
+  },
+  {
+    id: 'perm-cust-3',
+    key: 'customers.activate',
+    name: 'Activate Customers',
+    module: 'Customers',
+    description: 'Reactivate previously suspended customer accounts.',
+  },
+
+  // WHOLESALE ACCOUNT MANAGEMENT
+  {
+    id: 'perm-wholesale-1',
+    key: 'wholesale.manage',
+    name: 'Wholesale Account Management',
+    module: 'Wholesale Account Management',
+    description: 'View, create, edit, activate/deactivate, and delete wholesale accounts.',
+  },
+
+  // WEBSITE CONTENT
+  {
+    id: 'perm-cont-1',
+    key: 'content.homepage',
+    name: 'Manage Homepage Products',
+    module: 'Website Content',
+    description: 'Configure hero banners, featured cards, and promotional layouts.',
+  },
+  {
+    id: 'perm-cont-2',
+    key: 'content.new_arrivals',
+    name: 'Manage New Arrivals',
+    module: 'Website Content',
+    description: 'Curate products showcased in the New Arrivals showcase.',
+  },
+  {
+    id: 'perm-cont-3',
+    key: 'content.best_sellers',
+    name: 'Manage Best Sellers',
+    module: 'Website Content',
+    description: 'Control items displayed in the Best Sellers section.',
+  },
+  {
+    id: 'perm-cont-4',
+    key: 'content.banners',
+    name: 'Manage Banners',
+    module: 'Website Content',
+    description: 'Update marketing hero sliders, notice announcements, and images.',
+  },
+  {
+    id: 'perm-cont-5',
+    key: 'content.navigation',
+    name: 'Manage Navigation/Menu',
+    module: 'Website Content',
+    description: 'Modify store header and footer navigation links.',
+  },
+
+  // PAGES & LEGAL
+  {
+    id: 'perm-page-1',
+    key: 'pages.view',
+    name: 'View Pages',
+    module: 'Pages & Legal',
+    description: 'View the list of institutional, policy, and custom pages.',
+  },
+  {
+    id: 'perm-page-2',
+    key: 'pages.create',
+    name: 'Create Pages',
+    module: 'Pages & Legal',
+    description: 'Create new static, custom, or policy pages with block builder.',
+  },
+  {
+    id: 'perm-page-3',
+    key: 'pages.edit',
+    name: 'Edit Pages',
+    module: 'Pages & Legal',
+    description: 'Edit page content blocks, headings, copy, and SEO settings.',
+  },
+  {
+    id: 'perm-page-4',
+    key: 'pages.delete',
+    name: 'Delete Pages',
+    module: 'Pages & Legal',
+    description: 'Permanently remove custom or institutional pages.',
+  },
+  {
+    id: 'perm-page-5',
+    key: 'pages.publish',
+    name: 'Publish Pages',
+    module: 'Pages & Legal',
+    description: 'Toggle page publishing status between Published, Draft, and Hidden.',
+  },
+  {
+    id: 'perm-page-6',
+    key: 'pages.manage_nav',
+    name: 'Manage Page Navigation',
+    module: 'Pages & Legal',
+    description: 'Configure page visibility in header, footer columns, and mobile navigation.',
+  },
+
+  // SETTINGS
+  {
+    id: 'perm-sett-1',
+    key: 'settings.view',
+    name: 'View Settings',
+    module: 'Settings',
+    description: 'Inspect store contact information, shipping rates, and taxes.',
+  },
+  {
+    id: 'perm-sett-2',
+    key: 'settings.edit',
+    name: 'Edit Settings',
+    module: 'Settings',
+    description: 'Update store configuration, bill templates, and payment methods.',
+  },
+
+  // STAFF MANAGEMENT
+  {
+    id: 'perm-staff-1',
+    key: 'staff.view',
+    name: 'View Staff',
+    module: 'Staff Management',
+    description: 'Browse the directory of staff members and their active roles.',
+  },
+  {
+    id: 'perm-staff-2',
+    key: 'staff.add',
+    name: 'Add Staff',
+    module: 'Staff Management',
+    description: 'Register new staff accounts with credentials and assigned roles.',
+  },
+  {
+    id: 'perm-staff-3',
+    key: 'staff.edit',
+    name: 'Edit Staff',
+    module: 'Staff Management',
+    description: 'Modify staff profile details, contact information, and account status.',
+  },
+  {
+    id: 'perm-staff-4',
+    key: 'staff.delete',
+    name: 'Delete Staff',
+    module: 'Staff Management',
+    description: 'Permanently remove staff accounts and revoke access tokens.',
+  },
+  {
+    id: 'perm-staff-5',
+    key: 'staff.change_roles',
+    name: 'Change Staff Roles',
+    module: 'Staff Management',
+    description: 'Reassign staff roles and grant or revoke custom permissions.',
+  },
+  {
+    id: 'perm-staff-6',
+    key: 'staff.reset_passwords',
+    name: 'Reset Staff Passwords',
+    module: 'Staff Management',
+    description: 'Reset credentials and configure new secure passwords for staff.',
+  },
+];
+
+export const PERMISSION_MODULES: PermissionModule[] = [
+  'Products',
+  'Inventory',
+  'Orders',
+  'Shop Counter',
+  'Categories',
+  'Promotions',
+  'Customers',
+  'Wholesale Account Management',
+  'Website Content',
+  'Pages & Legal',
+  'Settings',
+  'Staff Management',
+];
+
+export const ALL_PERMISSION_KEYS = ALL_PERMISSIONS.map((p) => p.key);
+
+// Default permissions for predefined roles
+export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  SUPER_ADMIN: [...ALL_PERMISSION_KEYS],
+  ADMIN: ALL_PERMISSION_KEYS.filter((k) => !k.startsWith('staff.delete')),
+  Manager: [
+    'products.view',
+    'products.add',
+    'products.edit',
+    'products.delete',
+    'inventory.view',
+    'inventory.adjust_stock',
+    'inventory.edit_warning',
+    'inventory.view_history',
+    'orders.view',
+    'orders.update_status',
+    'orders.process',
+    'orders.print_bills',
+    'pos.view',
+    'pos.create_sale',
+    'pos.apply_discount',
+    'pos.void_sale',
+    'pos.view_history',
+    'categories.view',
+    'categories.add',
+    'categories.edit',
+    'categories.delete',
+    'promotions.view',
+    'promotions.add',
+    'promotions.edit',
+    'promotions.delete',
+    'promotions.activate',
+    'customers.view',
+    'content.homepage',
+    'content.new_arrivals',
+    'content.best_sellers',
+    'content.banners',
+    'pages.view',
+    'pages.edit',
+    'settings.view',
+    // strictly NO staff management
+  ],
+  'Inventory Manager': [
+    'inventory.view',
+    'inventory.adjust_stock',
+    'inventory.edit_warning',
+    'inventory.view_history',
+    'products.view',
+    'orders.view',
+  ],
+  'Order Manager': [
+    'orders.view',
+    'orders.update_status',
+    'orders.process',
+    'orders.print_bills',
+    'pos.view',
+    'pos.create_sale',
+    'pos.apply_discount',
+    'pos.void_sale',
+    'pos.view_history',
+    'customers.view',
+    'inventory.view',
+  ],
+  'Product Manager': [
+    'products.view',
+    'products.add',
+    'products.edit',
+    'products.delete',
+    'categories.view',
+    'categories.add',
+    'categories.edit',
+    'categories.delete',
+    'inventory.view',
+  ],
+  'Category Manager': [
+    'categories.view',
+    'categories.add',
+    'categories.edit',
+    'categories.delete',
+    'products.view',
+  ],
+  'Promotion Manager': [
+    'promotions.view',
+    'promotions.add',
+    'promotions.edit',
+    'promotions.delete',
+    'promotions.activate',
+    'content.homepage',
+    'content.new_arrivals',
+    'content.best_sellers',
+    'content.banners',
+    'products.view',
+  ],
+  'Customer Manager': [
+    'customers.view',
+    'customers.suspend',
+    'customers.activate',
+    'orders.view',
+  ],
+};
+
+export const PREDEFINED_ROLES: { name: StaffPredefinedRole; description: string }[] = [
+  {
+    name: 'Manager',
+    description: 'Comprehensive operational control over products, stock, orders, and promotions.',
+  },
+  {
+    name: 'Inventory Manager',
+    description: 'Warehouse supervisor focused on stock adjustments, thresholds, and inventory audits.',
+  },
+  {
+    name: 'Order Manager',
+    description: 'Fulfillment coordinator responsible for order processing, billing, and order status.',
+  },
+  {
+    name: 'Product Manager',
+    description: 'Catalog curator in charge of product listings, variants, pricing, and category mapping.',
+  },
+  {
+    name: 'Category Manager',
+    description: 'Taxonomy specialist organizing catalog navigation, categories, and merchandising.',
+  },
+  {
+    name: 'Promotion Manager',
+    description: 'Marketing operator managing flash sales, homepage banners, and discount campaigns.',
+  },
+  {
+    name: 'Customer Manager',
+    description: 'Customer relations specialist reviewing accounts, order history, and status.',
+  },
+];

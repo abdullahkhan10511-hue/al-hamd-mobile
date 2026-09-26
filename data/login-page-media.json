@@ -1,0 +1,58 @@
+[
+  {
+    "id": "login-media-1",
+    "type": "image",
+    "url": "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=1200&auto=format&fit=crop",
+    "title": "Precision Mobile Accessories",
+    "caption": "Experience unmatched durability with our certified premium phone gear.",
+    "productName": "Signature Protection Collection",
+    "priceTag": "Rs. 2,499",
+    "transition": "default",
+    "isActive": true,
+    "displayOrder": 1,
+    "createdAt": "2026-03-01T00:00:00.000Z",
+    "updatedAt": "2026-03-01T00:00:00.000Z"
+  },
+  {
+    "id": "login-media-2",
+    "type": "image",
+    "url": "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop",
+    "title": "High-Speed GaN Charging",
+    "caption": "Next-gen gallium nitride power adapters delivering ultra-fast charging.",
+    "productName": "65W GaN Turbo Adapter",
+    "priceTag": "Rs. 3,850",
+    "transition": "slide",
+    "isActive": true,
+    "displayOrder": 2,
+    "createdAt": "2026-03-01T00:00:00.000Z",
+    "updatedAt": "2026-03-01T00:00:00.000Z"
+  },
+  {
+    "id": "login-media-3",
+    "type": "image",
+    "url": "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?q=80&w=1200&auto=format&fit=crop",
+    "title": "Audiophile TWS Audio",
+    "caption": "Hybrid active noise cancellation with crystal clear calling mics.",
+    "productName": "Acoustic Pro Wireless",
+    "priceTag": "Rs. 5,999",
+    "transition": "fade",
+    "isActive": true,
+    "displayOrder": 3,
+    "createdAt": "2026-03-01T00:00:00.000Z",
+    "updatedAt": "2026-03-01T00:00:00.000Z"
+  },
+  {
+    "id": "login-media-4",
+    "type": "image",
+    "url": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
+    "title": "Titanium Smart Wearables",
+    "caption": "Continuous health monitoring and HD AMOLED display in aerospace titanium.",
+    "productName": "Smart Titanium Watch S",
+    "priceTag": "Rs. 7,499",
+    "transition": "crossfade",
+    "isActive": true,
+    "displayOrder": 4,
+    "createdAt": "2026-03-01T00:00:00.000Z",
+    "updatedAt": "2026-03-01T00:00:00.000Z"
+  }
+]

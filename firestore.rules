@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getAdminData() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.role == 'ADMIN' || request.auth.token.role == 'SUPER_ADMIN') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         (getUserData().role == 'ADMIN' || getUserData().role == 'SUPER_ADMIN')) ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && 
+         (getAdminData().role == 'ADMIN' || getAdminData().role == 'SUPER_ADMIN')) ||
+        request.auth.token.email == 'admin@alhamd.com'
+      );
+    }
+
+    function isManager() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'MANAGER' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'MANAGER') ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && getAdminData().role == 'MANAGER') ||
+        request.auth.token.email == 'manager@alhamd.com'
+      );
+    }
+
+    function isStaff() {
+      return isAdmin() || isManager();
+    }
+
+    // 1. PRODUCTS: Read by public, write by Admin and Manager (deletion Admin-only)
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // 2. INVENTORY & STOCK LOGS: Read/write by Admin and Manager
+    match /inventory_logs/{logId} {
+      allow read, write: if isStaff();
+    }
+
+    // 3. ORDERS: Read/update by Admin and Manager; Create by public (checkout); Delete by Admin only
+    match /orders/{orderId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.customer.uid == request.auth.uid);
+      allow create: if true;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // 4. CATEGORIES: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 5. BRANDS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /brands/{brandId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 6. HOMEPAGE & HERO SECTIONS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /homepage/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /hero/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 7. PROMOTION BANNERS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 8. PAYMENT METHODS & SETTINGS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /payment_methods/{methodId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 9. STORE SETTINGS & SHIPPING: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 10. ADMIN & USER ACCOUNTS: Admin only; users cannot escalate own role
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (
+        (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])) ||
+        isAdmin()
+      );
+    }
+
+    // 11. AUDIT LOGS & ACTIVITY: Read by Admin only; staff can append audit entries
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    // 12. INVOICES: ADMIN ONLY
+    match /invoices/{invoiceId} {
+      allow read, write: if isAdmin();
+    }
+
+    // 13. SYSTEM DATA (collection snapshot sync)
+    match /system_data/{collectionName} {
+      allow read: if true;
+      allow write: if isAdmin() || (
+        isManager() && (collectionName == 'products' || collectionName == 'orders' || collectionName == 'inventory_logs')
+      );
+    }
+
+    // 14. SHOP LOCATIONS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /shopLocations/{locationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
