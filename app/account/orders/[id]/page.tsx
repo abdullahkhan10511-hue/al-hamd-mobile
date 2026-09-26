@@ -254,8 +254,9 @@ export default function CustomerOrderDetailPage() {
                   </h3>
                   <div className="flex items-center gap-3 text-[11px] text-neutral-500 mt-0.5">
                     <span>SKU: {item.sku || 'N/A'}</span>
-                    {item.selectedSize && <span>Size: {item.selectedSize}</span>}
+                    {item.selectedModel && <span>Model: {item.selectedModel}</span>}
                     {item.selectedColor && <span>Color: {item.selectedColor}</span>}
+                    {item.selectedSize && <span>Size: {item.selectedSize}</span>}
                   </div>
                   <div className="text-xs text-neutral-700 font-semibold mt-1">
                     {formatPrice(item.price)} × {item.quantity}

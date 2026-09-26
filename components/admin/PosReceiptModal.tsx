@@ -255,6 +255,11 @@ export default function PosReceiptModal({
                     {order.items.map((item, idx) => (
                       <div key={idx} className="space-y-0.5">
                         <div className="font-bold">{item.productName}</div>
+                        {(item.selectedModel || item.selectedColor) && (
+                          <div className="text-[9px] text-neutral-600 font-medium">
+                            {[item.selectedModel ? `Model: ${item.selectedModel}` : null, item.selectedColor ? `Color: ${item.selectedColor}` : null].filter(Boolean).join(' • ')}
+                          </div>
+                        )}
                         {item.sku && (
                           <div className="text-[9px] text-neutral-500">SKU: {item.sku}</div>
                         )}
@@ -433,8 +438,13 @@ export default function PosReceiptModal({
                       {order.items.map((item, idx) => (
                         <tr key={idx}>
                           <td className="py-2.5 px-2 text-neutral-400">{idx + 1}</td>
-                          <td className="py-2.5 px-2 font-semibold text-neutral-900">
-                            {item.productName}
+                          <td className="py-2.5 px-2">
+                            <span className="font-semibold text-neutral-900 block">{item.productName}</span>
+                            {(item.selectedModel || item.selectedColor) && (
+                              <span className="text-[10px] text-neutral-500 block">
+                                {[item.selectedModel ? `Model: ${item.selectedModel}` : null, item.selectedColor ? `Color: ${item.selectedColor}` : null].filter(Boolean).join(' • ')}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2.5 px-2 font-mono text-[11px] text-neutral-500">
                             {item.sku || '—'}

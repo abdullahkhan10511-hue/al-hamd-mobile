@@ -7,7 +7,7 @@ import { Minus, Plus, Trash2, Package } from 'lucide-react';
 import { CartItem as CartItemType } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, getValidImageSrc } from '@/lib/utils';
-import { getProductEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 interface CartItemRowProps {
   item: CartItemType;
@@ -16,12 +16,25 @@ interface CartItemRowProps {
 
 export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
   const { updateQuantity, removeFromCart, isWholesale } = useCart();
-  const { product, quantity, selectedSize, selectedColor } = item;
+  const { product, quantity, selectedSize, selectedColor, selectedModel, selectedImage, selectedPrice } = item;
 
-  const basePrice = getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
-  const lineTotal = basePrice * quantity;
+  let unitPrice: number;
+  if (selectedModel && product.models && Array.isArray(product.models)) {
+    const modelObj = product.models.find(
+      (m) => m.name.toLowerCase() === selectedModel.toLowerCase() || m.id === selectedModel
+    );
+    if (modelObj) {
+      unitPrice = getModelEffectivePrice(product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL');
+    } else {
+      unitPrice = selectedPrice ?? getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+    }
+  } else {
+    unitPrice = selectedPrice ?? getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+  }
+
+  const lineTotal = unitPrice * quantity;
   const isWholesaleActive = isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0;
-  const validImage = getValidImageSrc(product?.images);
+  const validImage = selectedImage || getValidImageSrc(product?.images);
 
   return (
     <div className="flex gap-4 py-4 border-b border-neutral-100 last:border-none group">
@@ -67,10 +80,12 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
           </div>
 
           {/* Variants */}
-          <div className="flex items-center gap-2 mt-1 text-xs text-neutral-500">
-            {selectedSize && <span>Size: {selectedSize}</span>}
-            {selectedSize && selectedColor && <span>•</span>}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-neutral-500">
+            {selectedModel && <span className="font-semibold text-neutral-800">Model: {selectedModel}</span>}
+            {selectedModel && (selectedColor || selectedSize) && <span>•</span>}
             {selectedColor && <span>Color: {selectedColor}</span>}
+            {selectedColor && selectedSize && <span>•</span>}
+            {selectedSize && <span>Size: {selectedSize}</span>}
           </div>
 
           {isWholesaleActive && (
@@ -83,8 +98,6 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
               </span>
             </div>
           )}
-
-
         </div>
 
         {/* Price & Quantity Controls */}
@@ -115,7 +128,7 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
               {formatPrice(lineTotal)}
             </span>
             <p className="text-[11px] text-neutral-500 font-mono">
-              {formatPrice(basePrice)} ea
+              {formatPrice(unitPrice)} ea
             </p>
           </div>
         </div>

@@ -34,6 +34,26 @@ export interface ProductMediaItem {
   size?: number;
 }
 
+export interface ProductModelVariant {
+  id: string;
+  name: string;
+  price: number;
+  compareAtPrice?: number;
+  wholesalePrice?: number;
+  stock?: number;
+  sku?: string;
+  isActive: boolean;
+  images?: string[];
+  videos?: string[];
+}
+
+export interface ProductColorVariant {
+  id?: string;
+  name: string;
+  hex?: string;
+  isActive: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -66,6 +86,10 @@ export interface Product {
   featured?: boolean;
   trending?: boolean;
   tags?: string[];
+  enableModelSelection?: boolean;
+  models?: ProductModelVariant[];
+  enableColorSelection?: boolean;
+  colors?: ProductColorVariant[];
   variants?: {
     sizes?: string[];
     colors?: { name: string; hex: string }[];
@@ -96,6 +120,10 @@ export interface CartItem {
   quantity: number;
   selectedSize?: string;
   selectedColor?: string;
+  selectedModel?: string;
+  selectedModelId?: string;
+  selectedPrice?: number;
+  selectedImage?: string;
 }
 
 export interface FilterState {

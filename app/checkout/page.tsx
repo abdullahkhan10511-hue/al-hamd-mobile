@@ -29,7 +29,7 @@ import {
 import { useCart } from '@/context/CartContext';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { formatPrice, getValidImageSrc } from '@/lib/utils';
-import { getProductEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import { createOrder } from '@/lib/db/orders';
 import { Order, PaymentMethodConfig, PaymentSecuritySettings, PaymentStatus } from '@/types/admin';
 import {
@@ -299,19 +299,36 @@ export default function CheckoutPage() {
 
       // Map cart items into OrderItem format using authorized effective pricing
       const orderItems = cart.map((ci) => {
-        const effectivePrice = getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+        const modelObj =
+          ci.selectedModel && ci.product?.models
+            ? ci.product.models.find(
+                (m) =>
+                  m.name.toLowerCase() === ci.selectedModel?.toLowerCase() ||
+                  m.id === ci.selectedModel
+              )
+            : null;
+
+        const effectivePrice = modelObj
+          ? getModelEffectivePrice(ci.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL')
+          : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL'));
+
         const lineTotal = effectivePrice * ci.quantity;
-        const validImage = getValidImageSrc(ci.product?.images);
+        const validImage =
+          ci.selectedImage ||
+          (modelObj?.images && modelObj.images.length > 0 ? getValidImageSrc(modelObj.images) : undefined) ||
+          getValidImageSrc(ci.product?.images);
+
         return {
           productId: ci.product.id,
           productName: ci.product.name,
           slug: ci.product.slug,
-          sku: (ci.product as any).sku || `SKU-${ci.product.id}`,
+          sku: modelObj?.sku || (ci.product as any).sku || `SKU-${ci.product.id}`,
           price: effectivePrice,
           originalPrice: effectivePrice,
           quantity: ci.quantity,
           selectedSize: ci.selectedSize,
           selectedColor: ci.selectedColor,
+          selectedModel: ci.selectedModel,
           image: validImage || 'https://via.placeholder.com/200',
           total: lineTotal,
         };
@@ -1152,9 +1169,22 @@ export default function CheckoutPage() {
               {/* Cart items preview */}
               <div className="max-h-72 overflow-y-auto space-y-3.5 pr-1 divide-y divide-neutral-100">
                 {cart.map((ci) => {
-                  const effectivePrice = getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                  const modelObj =
+                    ci.selectedModel && ci.product?.models
+                      ? ci.product.models.find(
+                          (m) =>
+                            m.name.toLowerCase() === ci.selectedModel?.toLowerCase() ||
+                            m.id === ci.selectedModel
+                        )
+                      : null;
+                  const effectivePrice = modelObj
+                    ? getModelEffectivePrice(ci.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL')
+                    : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL'));
                   const lineTotal = effectivePrice * ci.quantity;
-                  const validImage = getValidImageSrc(ci.product?.images);
+                  const validImage =
+                    ci.selectedImage ||
+                    (modelObj?.images && modelObj.images.length > 0 ? getValidImageSrc(modelObj.images) : undefined) ||
+                    getValidImageSrc(ci.product?.images);
                   return (
                     <div key={ci.id} className="pt-3.5 first:pt-0 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
@@ -1175,7 +1205,10 @@ export default function CheckoutPage() {
                             {ci.product.name}
                           </p>
                           <p className="text-[10px] text-neutral-400">
-                            Qty: {ci.quantity} {ci.selectedSize ? `• ${ci.selectedSize}` : ''}
+                            Qty: {ci.quantity}
+                            {ci.selectedModel ? ` • ${ci.selectedModel}` : ''}
+                            {ci.selectedColor ? ` • ${ci.selectedColor}` : ''}
+                            {ci.selectedSize ? ` • ${ci.selectedSize}` : ''}
                           </p>
                         </div>
                       </div>

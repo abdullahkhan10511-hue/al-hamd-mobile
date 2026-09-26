@@ -212,9 +212,13 @@ export default function AdminOrderDetailPage() {
                     <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
                       SKU: <span className="font-semibold text-neutral-700">{item.sku}</span>
                     </p>
-                    {(item.selectedSize || item.selectedColor) && (
-                      <p className="text-[11px] text-neutral-500 mt-0.5">
-                        {[item.selectedSize, item.selectedColor].filter(Boolean).join(' / ')}
+                    {(item.selectedModel || item.selectedColor || item.selectedSize) && (
+                      <p className="text-[11px] text-neutral-600 mt-0.5 font-medium">
+                        {[
+                          item.selectedModel ? `Model: ${item.selectedModel}` : null,
+                          item.selectedColor ? `Color: ${item.selectedColor}` : null,
+                          item.selectedSize ? `Size: ${item.selectedSize}` : null,
+                        ].filter(Boolean).join(' • ')}
                       </p>
                     )}
                   </div>

@@ -9,6 +9,7 @@ import {
   setProductStock,
   setProductLowStockThreshold,
   getWarningThreshold,
+  setModelStock,
 } from '@/lib/db/products';
 import { getInventoryLogs } from '@/lib/db/inventory';
 import { useAdminAuth } from '@/context/AdminAuthContext';
@@ -49,6 +50,9 @@ export default function AdminInventoryPage() {
   const [keypadMode, setKeypadMode] = useState<'stock' | 'warning'>('stock');
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Model Variant Expansion State
+  const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -138,6 +142,44 @@ export default function AdminInventoryPage() {
       setTimeout(() => {
         setErrorId((curr) => (curr === productId ? null : curr));
       }, 3000);
+    }
+  };
+
+  const handleModelQuickDelta = async (product: Product, model: any, delta: number) => {
+    const key = `${product.id}-${model.name}`;
+    if (savingId !== null) return;
+    const currentStock = model.stock ?? 0;
+    const nextStock = Math.max(0, currentStock + delta);
+    if (nextStock === currentStock && delta < 0) return;
+
+    setSavingId(key);
+    setErrorId(null);
+    setSuccessId(null);
+
+    try {
+      const ok = await setModelStock(
+        product.id,
+        model.id || model.name,
+        nextStock,
+        `Quick adjust ${delta > 0 ? '+' : ''}${delta} control for ${model.name}`,
+        admin?.email || 'admin@alhamd.com'
+      );
+      setSavingId(null);
+      if (ok) {
+        setSuccessId(key);
+        showToast(`"${model.name}" stock updated to ${nextStock} units.`, 'success');
+        loadData();
+        setTimeout(() => setSuccessId(null), 2000);
+      } else {
+        setErrorId(key);
+        showToast('Failed to update model stock.', 'error');
+        setTimeout(() => setErrorId(null), 3000);
+      }
+    } catch {
+      setSavingId(null);
+      setErrorId(key);
+      showToast('Error updating model stock.', 'error');
+      setTimeout(() => setErrorId(null), 3000);
     }
   };
 
@@ -320,7 +362,8 @@ export default function AdminInventoryPage() {
                       const isOut = p.stock <= 0;
 
                       return (
-                        <tr key={p.id} className="hover:bg-neutral-50/70 transition-colors">
+                        <React.Fragment key={p.id}>
+                          <tr className="hover:bg-neutral-50/70 transition-colors">
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden relative shrink-0">
@@ -340,6 +383,16 @@ export default function AdminInventoryPage() {
                                 <div className="text-[10px] font-mono text-neutral-500 mt-0.5">
                                   SKU: <span className="text-neutral-700 font-semibold">{p.sku || '—'}</span>
                                 </div>
+                                {p.enableModelSelection && Array.isArray(p.models) && p.models.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedModels((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                                    className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] font-semibold transition-colors cursor-pointer"
+                                  >
+                                    <span>{p.models.length} Model Variants</span>
+                                    <span>{expandedModels[p.id] ? '▲' : '▼'}</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -461,6 +514,98 @@ export default function AdminInventoryPage() {
                             </div>
                           </td>
                         </tr>
+                        {/* Expandable Model Rows */}
+                        {p.enableModelSelection &&
+                          Array.isArray(p.models) &&
+                          expandedModels[p.id] &&
+                          p.models.map((m) => {
+                            const modelKey = `${p.id}-${m.name}`;
+                            const isSavingModel = savingId === modelKey;
+                            const isSuccessModel = successId === modelKey;
+                            const isErrorModel = errorId === modelKey;
+                            const mStock = m.stock ?? 0;
+                            const mOut = mStock <= 0;
+                            const mLow = mStock > 0 && mStock <= warningThresh;
+
+                            return (
+                              <tr key={modelKey} className="bg-neutral-50/60 border-t border-neutral-100/60">
+                                <td className="py-2.5 px-4 pl-12">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-neutral-400 font-mono text-[10px]">↳</span>
+                                    <div>
+                                      <span className="font-bold text-neutral-800">{m.name}</span>
+                                      <span className="text-[10px] font-mono text-neutral-400 ml-2">
+                                        SKU: {m.sku || '—'} • Rs. {Number(m.price).toLocaleString('en-PK')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 text-neutral-400 text-[11px]">Variant</td>
+                                <td className="py-2.5 px-4 text-center font-bold font-mono text-xs">
+                                  <span className={mOut ? 'text-rose-600' : mLow ? 'text-amber-600' : 'text-neutral-800'}>
+                                    {mStock} units
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-4 text-center text-[10px] text-neutral-400">
+                                  —
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  {mOut ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                      Out of Stock
+                                    </span>
+                                  ) : mLow ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                      Low Stock
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      Available
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-4 text-right">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <div className="inline-flex items-center gap-1 bg-white border border-neutral-200 rounded-lg p-0.5 shadow-2xs">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleModelQuickDelta(p, m, -1)}
+                                        disabled={mStock <= 0 || isSavingModel}
+                                        title={`Decrease ${m.name} stock by 1`}
+                                        className="w-6 h-6 rounded bg-neutral-50 hover:bg-neutral-100 text-neutral-700 flex items-center justify-center font-bold text-xs cursor-pointer disabled:opacity-30"
+                                      >
+                                        <Minus className="w-2.5 h-2.5" />
+                                      </button>
+                                      <span className="min-w-6 px-1 text-center font-mono font-bold text-[11px] text-neutral-800">
+                                        {mStock}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleModelQuickDelta(p, m, 1)}
+                                        disabled={isSavingModel}
+                                        title={`Increase ${m.name} stock by 1`}
+                                        className="w-6 h-6 rounded bg-neutral-50 hover:bg-neutral-100 text-neutral-700 flex items-center justify-center font-bold text-xs cursor-pointer disabled:opacity-30"
+                                      >
+                                        <Plus className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                    {isSavingModel && (
+                                      <span className="text-[9px] text-neutral-400 flex items-center gap-1">
+                                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Saving...
+                                      </span>
+                                    )}
+                                    {isSuccessModel && (
+                                      <span className="text-[9px] text-emerald-600 font-semibold">Saved</span>
+                                    )}
+                                    {isErrorModel && (
+                                      <span className="text-[9px] text-rose-600 font-semibold">Failed</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })
                   )}

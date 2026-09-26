@@ -1,4 +1,4 @@
-import { Product } from '@/types';
+import { Product, ProductModelVariant } from '@/types';
 import { Customer, CustomerType } from '@/types/admin';
 
 /**
@@ -38,6 +38,42 @@ export function getProductEffectivePrice(
     return Number(product.wholesalePrice);
   }
   return Number(product.price) || 0;
+}
+
+/**
+ * Calculates the exact price applicable for a model variant according to the authenticated customer type.
+ */
+export function getModelEffectivePrice(
+  product: Product,
+  model: ProductModelVariant,
+  customerType?: CustomerType | string | null
+): number {
+  if (!model) return getProductEffectivePrice(product, customerType);
+  const isWholesale = customerType === 'WHOLESALE';
+  if (isWholesale) {
+    // 1. Explicit model-specific wholesale price
+    if (
+      model.wholesalePrice !== undefined &&
+      model.wholesalePrice !== null &&
+      !isNaN(Number(model.wholesalePrice)) &&
+      Number(model.wholesalePrice) > 0
+    ) {
+      return Number(model.wholesalePrice);
+    }
+    // 2. Proportionate wholesale discount based on parent product if set
+    if (
+      product.wholesalePrice !== undefined &&
+      product.wholesalePrice !== null &&
+      product.price &&
+      product.price > 0 &&
+      Number(product.wholesalePrice) > 0 &&
+      Number(product.wholesalePrice) < product.price
+    ) {
+      const discountRatio = Number(product.wholesalePrice) / product.price;
+      return Math.round(Number(model.price) * discountRatio);
+    }
+  }
+  return Number(model.price) || 0;
 }
 
 /**

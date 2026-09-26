@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, useMemo, use } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -33,18 +33,49 @@ import { StarRating } from '@/components/ui/StarRating';
 import { Badge } from '@/components/ui/Badge';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice, DEFAULT_PRODUCT_IMAGE } from '@/lib/utils';
-import { Product } from '@/types';
+import { Product, ProductModelVariant, ProductColorVariant } from '@/types';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
-import { getProductEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
-function getProductMediaList(prod: Product | null): { url: string; type: 'image' | 'video' }[] {
+function getProductMediaList(
+  prod: Product | null,
+  model?: ProductModelVariant | null
+): { url: string; type: 'image' | 'video' }[] {
   if (!prod) return [];
-  if (Array.isArray(prod.media) && prod.media.length > 0) {
-    return prod.media.map((m) => ({
-      url: typeof m === 'string' ? m : m.url,
-      type: typeof m === 'object' && m.type === 'video' ? 'video' : 'image',
-    }));
+
+  // 1. If selected model has specific images/videos, show model media
+  if (model) {
+    const modelMedia: { url: string; type: 'image' | 'video' }[] = [];
+    if (Array.isArray(model.images)) {
+      model.images.forEach((img) => {
+        if (typeof img === 'string' && img.trim()) {
+          modelMedia.push({ url: img.trim(), type: 'image' });
+        }
+      });
+    }
+    if (Array.isArray(model.videos)) {
+      model.videos.forEach((vid) => {
+        if (typeof vid === 'string' && vid.trim()) {
+          modelMedia.push({ url: vid.trim(), type: 'video' });
+        }
+      });
+    }
+    if (modelMedia.length > 0) {
+      return modelMedia;
+    }
   }
+
+  // 2. Fallback to main product media
+  if (Array.isArray(prod.media) && prod.media.length > 0) {
+    const list = (prod.media as any[])
+      .filter((m) => m && ((typeof m === 'string' && m.trim()) || (typeof m === 'object' && m.url && m.url.trim())))
+      .map((m) => ({
+        url: (typeof m === 'string' ? m : m.url).trim(),
+        type: (typeof m === 'object' && m.type === 'video' ? 'video' : 'image') as 'image' | 'video',
+      }));
+    if (list.length > 0) return list;
+  }
+
   const list: { url: string; type: 'image' | 'video' }[] = [];
   if (Array.isArray(prod.images)) {
     prod.images.forEach((img) => {
@@ -76,9 +107,47 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
 
+  // Variant selections
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(undefined);
+
+  // Active models
+  const isModelRequired = Boolean(
+    product?.enableModelSelection &&
+    Array.isArray(product.models) &&
+    product.models.filter((m) => m.isActive !== false).length > 0
+  );
+  const activeModels = useMemo<any[]>(() => {
+    if (!product?.enableModelSelection || !Array.isArray(product.models)) return [];
+    return product.models.filter((m) => m.isActive !== false);
+  }, [product]);
+
+  const selectedModelObj = useMemo<any | null>(() => {
+    if (!isModelRequired || !selectedModel) return null;
+    return (
+      activeModels.find(
+        (m: any) => m.name.toLowerCase() === selectedModel.toLowerCase() || m.id === selectedModel
+      ) || null
+    );
+  }, [isModelRequired, selectedModel, activeModels]);
+
+  // Active colors
+  const activeColors = useMemo<any[]>(() => {
+    if (product?.enableColorSelection && Array.isArray(product.colors) && product.colors.length > 0) {
+      return product.colors.filter((c) => c.isActive !== false);
+    }
+    if (Array.isArray(product?.variants?.colors) && product.variants.colors.length > 0) {
+      return product.variants.colors.map((c) => ({ name: c.name, hex: c.hex, isActive: true }));
+    }
+    return [];
+  }, [product]);
+
   // Media Gallery & Zoom Lightbox state
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const mediaList = getProductMediaList(product);
+  const mediaList = useMemo(() => {
+    return getProductMediaList(product, selectedModelObj);
+  }, [product, selectedModelObj]);
   const activeMedia = mediaList[activeMediaIndex] || mediaList[0];
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -115,15 +184,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const handlePrevMedia = () => {
     if (!product) return;
-    const list = getProductMediaList(product);
-    setActiveMediaIndex((prev) => (prev > 0 ? prev - 1 : list.length - 1));
+    setActiveMediaIndex((prev) => (prev > 0 ? prev - 1 : mediaList.length - 1));
     handleResetZoom();
   };
 
   const handleNextMedia = () => {
     if (!product) return;
-    const list = getProductMediaList(product);
-    setActiveMediaIndex((prev) => (prev < list.length - 1 ? prev + 1 : 0));
+    setActiveMediaIndex((prev) => (prev < mediaList.length - 1 ? prev + 1 : 0));
     handleResetZoom();
   };
 
@@ -228,16 +295,20 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     };
   }, [isLightboxOpen, product, activeMediaIndex]);
 
-  // Variant selections
-  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
-  const [selectedColor, setSelectedColor] = useState<string | undefined>(undefined);
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
 
+  const maxStock = Math.max(
+    0,
+    selectedModelObj
+      ? (selectedModelObj.stock !== undefined ? selectedModelObj.stock : (product?.stock ?? 0))
+      : (product?.stock ?? 0)
+  );
+
   const updateQuantity = (val: number) => {
     if (!product) return;
-    const maxStock = Math.max(1, product.stock);
-    const clamped = Math.min(maxStock, Math.max(1, Math.round(val)));
+    const maxAvailable = Math.max(1, maxStock);
+    const clamped = Math.min(maxAvailable, Math.max(1, Math.round(val)));
     setQuantity(clamped);
     setQuantityInput(String(clamped));
   };
@@ -258,7 +329,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     if (isNaN(parsed)) return;
 
     if (!product) return;
-    const maxStock = Math.max(1, product.stock);
+    const maxAvailable = Math.max(1, maxStock);
 
     if (parsed === 0) {
       setQuantity(1);
@@ -266,9 +337,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
       return;
     }
 
-    if (parsed > maxStock) {
-      setQuantity(maxStock);
-      setQuantityInput(String(maxStock));
+    if (parsed > maxAvailable) {
+      setQuantity(maxAvailable);
+      setQuantityInput(String(maxAvailable));
       return;
     }
 
@@ -278,13 +349,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const handleQuantityInputBlur = () => {
     if (!product) return;
-    const maxStock = Math.max(1, product.stock);
+    const maxAvailable = Math.max(1, maxStock);
     if (!quantityInput || isNaN(parseInt(quantityInput, 10))) {
       setQuantity(1);
       setQuantityInput('1');
     } else {
       const parsed = parseInt(quantityInput, 10);
-      const clamped = Math.min(maxStock, Math.max(1, parsed));
+      const clamped = Math.min(maxAvailable, Math.max(1, parsed));
       setQuantity(clamped);
       setQuantityInput(String(clamped));
     }
@@ -292,8 +363,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const handleIncrement = () => {
     if (!product) return;
-    const maxStock = Math.max(1, product.stock);
-    updateQuantity(Math.min(maxStock, quantity + 1));
+    const maxAvailable = Math.max(1, maxStock);
+    updateQuantity(Math.min(maxAvailable, quantity + 1));
   };
 
   const handleDecrement = () => {
@@ -318,8 +389,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
       if (!selectedSize && found.variants?.sizes?.[0]) {
         setSelectedSize(found.variants.sizes[0]);
       }
-      if (!selectedColor && found.variants?.colors?.[0]?.name) {
-        setSelectedColor(found.variants.colors[0].name);
+      if (found.enableColorSelection && Array.isArray(found.colors) && found.colors.length > 0) {
+        const activeCols = found.colors.filter((c) => c.isActive !== false);
+        if (activeCols.length > 0) {
+          setSelectedColor((prev) => prev || activeCols[0].name);
+        }
+      } else if (found.variants?.colors?.[0]?.name) {
+        setSelectedColor((prev) => prev || found.variants?.colors?.[0]?.name);
       }
       setReviewsList(found.reviews || []);
 
@@ -375,16 +451,65 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   }
 
   const isFavorited = isInWishlist(product.id);
-  const isOutOfStock = product.stock <= 0;
+  const isOutOfStock = maxStock <= 0;
+  const canAddToCart = !isOutOfStock && (!isModelRequired || Boolean(selectedModel));
+
+  // Pricing calculations
+  let effectivePrice: number;
+  let isWholesaleActive = false;
+  let comparePrice: number | undefined;
+
+  if (selectedModelObj) {
+    if (isWholesale) {
+      effectivePrice = getModelEffectivePrice(product, selectedModelObj, 'WHOLESALE');
+      isWholesaleActive =
+        Boolean(selectedModelObj.wholesalePrice && Number(selectedModelObj.wholesalePrice) > 0) ||
+        Boolean(product.wholesalePrice && Number(product.wholesalePrice) > 0);
+    } else {
+      effectivePrice = Number(selectedModelObj.price) || 0;
+    }
+    comparePrice = selectedModelObj.compareAtPrice;
+  } else {
+    effectivePrice = getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+    isWholesaleActive = Boolean(isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0);
+    comparePrice = product.compareAtPrice;
+  }
+
+  const hasDiscount =
+    !isWholesaleActive && comparePrice !== undefined && comparePrice > effectivePrice;
+  const discountPercentage =
+    hasDiscount && comparePrice
+      ? Math.round(((comparePrice - effectivePrice) / comparePrice) * 100)
+      : undefined;
 
   const handleAddToCart = () => {
-    if (isOutOfStock) return;
-    addToCart(product, quantity, selectedSize, selectedColor);
+    if (!canAddToCart) return;
+    const mediaForModel = getProductMediaList(product, selectedModelObj);
+    const selectedImg = mediaForModel[0]?.url;
+    addToCart(
+      product,
+      quantity,
+      selectedSize,
+      selectedColor,
+      selectedModelObj?.name,
+      effectivePrice,
+      selectedImg
+    );
   };
 
   const handleBuyNow = () => {
-    if (isOutOfStock) return;
-    addToCart(product, quantity, selectedSize, selectedColor);
+    if (!canAddToCart) return;
+    const mediaForModel = getProductMediaList(product, selectedModelObj);
+    const selectedImg = mediaForModel[0]?.url;
+    addToCart(
+      product,
+      quantity,
+      selectedSize,
+      selectedColor,
+      selectedModelObj?.name,
+      effectivePrice,
+      selectedImg
+    );
     router.push('/checkout');
   };
 
@@ -407,11 +532,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     setReviewName('');
     setReviewComment('');
   };
-
-  // Pricing calculations
-  const effectivePrice = getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
-  const isWholesaleActive = isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0;
-  const hasDiscount = !isWholesaleActive && product.compareAtPrice && product.compareAtPrice > product.price;
 
   return (
     <div className="bg-white py-8 sm:py-12">
@@ -445,7 +565,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             {/* Thumbnails */}
             {mediaList.length > 1 && (
               <div className="flex md:flex-col gap-3 overflow-x-auto md:overflow-y-auto shrink-0 py-1 max-h-[540px]">
-                {mediaList.map((item, idx) => (
+                {mediaList.map((item: any, idx: number) => (
                   <button
                     key={idx}
                     type="button"
@@ -595,14 +715,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                   </span>
                 ) : hasDiscount ? (
                   <>
-                    {product.compareAtPrice ? (
+                    {comparePrice ? (
                       <span className="text-lg text-neutral-400 line-through font-mono">
-                        {formatPrice(product.compareAtPrice)}
+                        {formatPrice(comparePrice)}
                       </span>
                     ) : null}
-                    {product.discountPercentage ? (
+                    {discountPercentage ? (
                       <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 font-bold text-xs uppercase tracking-wider border border-rose-100">
-                        Save {product.discountPercentage}%
+                        Save {discountPercentage}%
                       </span>
                     ) : null}
                   </>
@@ -617,38 +737,93 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               </p>
             )}
 
+            {/* Mobile Model Selector */}
+            {isModelRequired && activeModels.length > 0 && (
+              <div>
+                <div className="flex justify-between items-center text-xs font-semibold text-neutral-800 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span>Select Model:</span>
+                    <span className="text-rose-500 font-bold">*</span>
+                  </div>
+                  <span className="text-neutral-500 font-normal">
+                    {selectedModel || 'Please choose a model'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeModels.map((m: any) => {
+                    const isSelected = selectedModel === m.name;
+                    const isModelOut = m.stock !== undefined && m.stock <= 0;
+                    return (
+                      <button
+                        key={m.id || m.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModel(m.name);
+                          setActiveMediaIndex(0);
+                          handleResetZoom();
+                        }}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
+                          isSelected
+                            ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs ring-2 ring-neutral-950/10'
+                            : 'bg-neutral-50 text-neutral-800 hover:bg-neutral-100 hover:border-neutral-300 border-neutral-200'
+                        } ${isModelOut ? 'opacity-60' : ''}`}
+                      >
+                        <span>{m.name}</span>
+                        <span
+                          className={`text-[10px] font-mono font-normal ${
+                            isSelected ? 'text-neutral-300' : 'text-neutral-500'
+                          }`}
+                        >
+                          Rs. {Number(m.price).toLocaleString('en-PK')}
+                        </span>
+                        {isModelOut && (
+                          <span className="text-[10px] text-rose-500 font-normal ml-0.5">
+                            (Out of stock)
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Color Variant Selector */}
-            {product.variants?.colors && product.variants.colors.length > 0 && (
+            {activeColors.length > 0 && (
               <div>
                 <div className="flex justify-between text-xs font-semibold text-neutral-800 mb-2">
                   <span>Color:</span>
-                  <span className="text-neutral-500 font-normal">{selectedColor}</span>
+                  <span className="text-neutral-500 font-normal">{selectedColor || 'Select a color'}</span>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  {product.variants.colors.map((c) => (
-                    <button
-                      key={c.name}
-                      type="button"
-                      onClick={() => setSelectedColor(c.name)}
-                      className={`relative w-8 h-8 rounded-full border-2 transition-transform cursor-pointer ${
-                        selectedColor === c.name
-                          ? 'border-neutral-950 scale-110 shadow-xs ring-2 ring-neutral-950/20'
-                          : 'border-transparent hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: c.hex }}
-                      title={c.name}
-                    >
-                      {selectedColor === c.name && (
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <Check
-                            className={`w-3.5 h-3.5 ${
-                              c.hex.toLowerCase() === '#ffffff' ? 'text-black' : 'text-white'
-                            }`}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {activeColors.map((c: any) => {
+                    const isSelected = selectedColor === c.name;
+                    const hasValidHex = Boolean(c.hex && c.hex.startsWith('#'));
+                    return (
+                      <button
+                        key={c.name}
+                        type="button"
+                        onClick={() => setSelectedColor(c.name)}
+                        className={`relative group px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer flex items-center gap-2 ${
+                          isSelected
+                            ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs ring-2 ring-neutral-950/10'
+                            : 'bg-neutral-50 text-neutral-800 hover:bg-neutral-100 border-neutral-200'
+                        }`}
+                        title={c.name}
+                      >
+                        {hasValidHex && (
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-neutral-300 shadow-2xs inline-block shrink-0"
+                            style={{ backgroundColor: c.hex }}
                           />
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                        )}
+                        <span>{c.name}</span>
+                        {isSelected && (
+                          <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -679,6 +854,23 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               </div>
             )}
 
+            {/* Stock Warning Notice */}
+            {isOutOfStock ? (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span>
+                  {selectedModelObj ? `${selectedModelObj.name} is currently out of stock.` : 'Currently out of stock.'}
+                </span>
+              </div>
+            ) : maxStock > 0 && maxStock <= 5 ? (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>
+                  Only {maxStock} left in stock - order soon!
+                </span>
+              </div>
+            ) : null}
+
             {/* Quantity Stepper & Add to Bag / Buy Now Buttons */}
             <div className="space-y-3 pt-2">
               <div className="flex items-center gap-3">
@@ -703,11 +895,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     disabled={isOutOfStock}
                     aria-label="Product quantity"
                     className="w-12 text-center font-mono text-sm font-bold text-neutral-950 bg-transparent border-none outline-none focus:ring-0 select-all p-0"
-                  />
+                  >
+                  </input>
                   <button
                     type="button"
                     onClick={handleIncrement}
-                    disabled={isOutOfStock || quantity >= product.stock}
+                    disabled={isOutOfStock || quantity >= maxStock}
                     aria-label="Increase quantity"
                     className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-700 hover:bg-white hover:text-neutral-950 transition-colors cursor-pointer disabled:opacity-30 select-none"
                   >
@@ -719,15 +912,21 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={isOutOfStock}
+                  disabled={!canAddToCart}
                   className={`flex-1 py-4 px-6 rounded-full font-semibold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-sm ${
-                    isOutOfStock
+                    !canAddToCart
                       ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed select-none'
                       : 'bg-neutral-950 text-white hover:bg-neutral-800 cursor-pointer active:scale-[0.99]'
                   }`}
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>{isOutOfStock ? 'Unavailable' : 'Add to Bag'}</span>
+                  <span>
+                    {isOutOfStock
+                      ? 'Unavailable'
+                      : isModelRequired && !selectedModel
+                      ? 'Select a Model'
+                      : 'Add to Bag'}
+                  </span>
                 </button>
               </div>
 
@@ -735,15 +934,21 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={isOutOfStock}
+                disabled={!canAddToCart}
                 className={`w-full py-4 px-6 rounded-full font-semibold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-sm ${
-                  isOutOfStock
+                  !canAddToCart
                     ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed select-none'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-[0.99]'
                 }`}
               >
-                <Zap className={`w-4 h-4 ${isOutOfStock ? 'fill-neutral-400' : 'fill-white'}`} />
-                <span>{isOutOfStock ? 'Unavailable' : 'Buy It Now'}</span>
+                <Zap className={`w-4 h-4 ${!canAddToCart ? 'fill-neutral-400' : 'fill-white'}`} />
+                <span>
+                  {isOutOfStock
+                    ? 'Unavailable'
+                    : isModelRequired && !selectedModel
+                    ? 'Select a Model'
+                    : 'Buy It Now'}
+                </span>
               </button>
             </div>
 
@@ -1179,7 +1384,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             {mediaList.length > 1 && (
               <div className="p-3 sm:p-4 border-t border-neutral-900 bg-neutral-950/80 backdrop-blur-sm flex justify-center z-20">
                 <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 px-2">
-                  {mediaList.map((item, idx) => (
+                  {mediaList.map((item: any, idx: number) => (
                     <button
                       key={idx}
                       type="button"

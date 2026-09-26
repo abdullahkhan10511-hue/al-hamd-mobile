@@ -13,6 +13,8 @@ export interface PosCartItem {
   productId: string;
   quantity: number;
   selectedVariant?: string;
+  selectedModel?: string;
+  selectedColor?: string;
   itemDiscount?: number;
 }
 
@@ -97,30 +99,51 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
         };
       }
 
-      // Check Available Stock
-      if (product.stock < cartItem.quantity) {
+      // Check Available Stock (including model-level stock if model selected)
+      const modelObj =
+        cartItem.selectedModel && Array.isArray(product.models)
+          ? product.models.find(
+              (m: any) =>
+                m.name.toLowerCase() === cartItem.selectedModel?.toLowerCase() ||
+                m.id === cartItem.selectedModel
+            )
+          : null;
+
+      const availableStock = modelObj
+        ? (modelObj.stock !== undefined ? modelObj.stock : product.stock)
+        : product.stock;
+
+      if (availableStock < cartItem.quantity) {
         return {
           success: false,
-          error: `Only ${product.stock} unit(s) available for "${product.name}". (Requested: ${cartItem.quantity})`,
+          error: `Only ${availableStock} unit(s) available for "${product.name}${cartItem.selectedModel ? ` (${cartItem.selectedModel})` : ''}". (Requested: ${cartItem.quantity})`,
         };
       }
 
-      // Standard retail price
-      const basePrice = Number(product.price) || 0;
+      // Model price or standard retail price
+      const basePrice = modelObj
+        ? (Number(modelObj.price) || Number(product.price) || 0)
+        : (Number(product.price) || 0);
       const unitPrice = basePrice;
       const lineTotal = unitPrice * cartItem.quantity;
 
       calculatedSubtotal += lineTotal;
 
+      const itemImg =
+        (modelObj?.images && modelObj.images.length > 0 ? modelObj.images[0] : null) ||
+        (product.images && product.images.length > 0 ? product.images[0] : '/placeholder.png');
+
       validatedItems.push({
         productId: product.id,
         productName: product.name,
         slug: product.slug,
-        sku: product.sku || '',
+        sku: modelObj?.sku || product.sku || '',
         price: unitPrice,
         originalPrice: unitPrice,
         quantity: cartItem.quantity,
-        image: product.images && product.images.length > 0 ? product.images[0] : '/placeholder.png',
+        selectedModel: cartItem.selectedModel,
+        selectedColor: cartItem.selectedColor,
+        image: itemImg,
         total: lineTotal,
       });
     }
@@ -217,14 +240,27 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
         const newStock = Math.max(0, prevStock - item.quantity);
         prod.stock = newStock;
 
+        // Deduct model-specific stock if model was chosen
+        if (item.selectedModel && Array.isArray(prod.models)) {
+          const mIdx = prod.models.findIndex(
+            (m: any) =>
+              m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+              m.id === item.selectedModel
+          );
+          if (mIdx !== -1) {
+            const mPrev = prod.models[mIdx].stock !== undefined ? prod.models[mIdx].stock : prod.stock;
+            prod.models[mIdx].stock = Math.max(0, mPrev - item.quantity);
+          }
+        }
+
         await recordInventoryLog({
           productId: prod.id,
           productName: prod.name,
-          sku: prod.sku || '',
+          sku: item.sku || prod.sku || '',
           previousStock: prevStock,
           changeAmount: -item.quantity,
           newStock: newStock,
-          reason: `POS Sale #${orderId} (Invoice: ${invoiceNumber})`,
+          reason: `POS Sale #${orderId} (Invoice: ${invoiceNumber})${item.selectedModel ? ` - Model: ${item.selectedModel}` : ''}${item.selectedColor ? ` - Color: ${item.selectedColor}` : ''}`,
           adminEmail: params.cashierEmail || 'pos-counter',
         });
       }
@@ -240,7 +276,7 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
           const prod = products.find((p) => p.id === item.productId);
           if (prod) {
             const docRef = doc(db, 'products', prod.id);
-            setDoc(docRef, { stock: prod.stock }, { merge: true }).catch(() => {});
+            setDoc(docRef, { stock: prod.stock, models: prod.models }, { merge: true }).catch(() => {});
           }
         }
       } catch {}

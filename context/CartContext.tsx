@@ -5,7 +5,7 @@ import { Product, CartItem } from '@/types';
 import { getProducts } from '@/lib/db/products';
 import { getStoreSettings } from '@/lib/db/settings';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
-import { getProductEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 export interface AppliedPromoInfo {
   code: string;
@@ -17,7 +17,15 @@ export interface AppliedPromoInfo {
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: Product, quantity?: number, selectedSize?: string, selectedColor?: string) => void;
+  addToCart: (
+    product: Product,
+    quantity?: number,
+    selectedSize?: string,
+    selectedColor?: string,
+    selectedModel?: string,
+    selectedPrice?: number,
+    selectedImage?: string
+  ) => void;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, newQuantity: number) => void;
   clearCart: () => void;
@@ -151,17 +159,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     product: Product,
     quantity = 1,
     selectedSize?: string,
-    selectedColor?: string
+    selectedColor?: string,
+    selectedModel?: string,
+    selectedPrice?: number,
+    selectedImage?: string
   ) => {
     // Prevent adding out-of-stock items to cart
-    if (!product || (product.stock !== undefined && product.stock <= 0)) {
+    if (!product) return;
+
+    const size = selectedSize || (product.variants?.sizes ? product.variants.sizes[0] : undefined);
+    const color =
+      selectedColor ||
+      (product.enableColorSelection && product.colors?.length
+        ? product.colors.find((c) => c.isActive !== false)?.name
+        : product.variants?.colors
+        ? product.variants.colors[0].name
+        : undefined);
+    const model = selectedModel;
+
+    // Determine max available stock for selected variant
+    let maxStock = product.stock !== undefined ? Math.max(0, product.stock) : 999;
+    if (model && product.models && Array.isArray(product.models)) {
+      const foundModel = product.models.find(
+        (m) => m.name.toLowerCase() === model.toLowerCase() || m.id === model
+      );
+      if (foundModel && foundModel.stock !== undefined) {
+        maxStock = Math.max(0, foundModel.stock);
+      }
+    }
+
+    if (maxStock <= 0) {
       return;
     }
 
-    const size = selectedSize || (product.variants?.sizes ? product.variants.sizes[0] : undefined);
-    const color = selectedColor || (product.variants?.colors ? product.variants.colors[0].name : undefined);
-    const itemKey = `${product.id}-${size || 'default'}-${color || 'default'}`;
-    const maxStock = product.stock !== undefined ? Math.max(0, product.stock) : 999;
+    const itemKey = `${product.id}-${size || 'default'}-${color || 'default'}-${model || 'default'}`;
 
     setCart((prev) => {
       const existingIndex = prev.findIndex((item) => item.id === itemKey);
@@ -172,6 +203,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQty,
+          selectedPrice: selectedPrice !== undefined ? selectedPrice : updated[existingIndex].selectedPrice,
+          selectedImage: selectedImage || updated[existingIndex].selectedImage,
         };
         return updated;
       } else {
@@ -184,6 +217,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             quantity: Math.min(maxStock, quantity),
             selectedSize: size,
             selectedColor: color,
+            selectedModel: model,
+            selectedPrice,
+            selectedImage,
           },
         ];
       }
@@ -206,7 +242,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart((prev) =>
       prev.map((item) => {
         if (item.id === itemId) {
-          const maxStock = item.product.stock !== undefined ? Math.max(0, item.product.stock) : 999;
+          let maxStock = item.product.stock !== undefined ? Math.max(0, item.product.stock) : 999;
+          if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
+            const foundModel = item.product.models.find(
+              (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
+            );
+            if (foundModel && foundModel.stock !== undefined) {
+              maxStock = Math.max(0, foundModel.stock);
+            }
+          }
           return { ...item, quantity: Math.min(maxStock, newQuantity) };
         }
         return item;
@@ -229,8 +273,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const subtotal = useMemo(
     () =>
       cart.reduce((acc, item) => {
-        const effectivePrice = getProductEffectivePrice(item.product, customer?.customerType);
-        return acc + effectivePrice * item.quantity;
+        let itemPrice: number;
+        if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
+          const modelObj = item.product.models.find(
+            (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
+          );
+          if (modelObj) {
+            itemPrice = getModelEffectivePrice(item.product, modelObj, customer?.customerType);
+          } else {
+            itemPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customer?.customerType);
+          }
+        } else {
+          itemPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customer?.customerType);
+        }
+        return acc + itemPrice * item.quantity;
       }, 0),
     [cart, customer?.customerType]
   );

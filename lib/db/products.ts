@@ -155,14 +155,41 @@ export async function createProduct(
 ): Promise<{ success: boolean; product?: Product; error?: string }> {
   const products = getProducts();
 
-  // Validate unique SKU only if provided
+  // Validate unique SKU only if provided (including against all existing model SKUs)
   const cleanSku = (data.sku || '').trim().toUpperCase();
   if (cleanSku) {
     const existingSku = products.find(
-      (p) => p.sku && p.sku.toLowerCase() === cleanSku.toLowerCase()
+      (p) =>
+        (p.sku && p.sku.toLowerCase() === cleanSku.toLowerCase()) ||
+        (Array.isArray(p.models) && p.models.some((m) => m.sku && m.sku.toLowerCase() === cleanSku.toLowerCase()))
     );
     if (existingSku) {
-      return { success: false, error: `SKU "${cleanSku}" already exists. Each product SKU must be unique.` };
+      return { success: false, error: `SKU "${cleanSku}" already exists. Each product and model SKU must be unique.` };
+    }
+  }
+
+  // Validate model SKUs uniqueness within this product and globally
+  if (data.models && Array.isArray(data.models)) {
+    const seenModelSkus = new Set<string>();
+    if (cleanSku) seenModelSkus.add(cleanSku.toLowerCase());
+
+    for (const m of data.models) {
+      const mSku = (m.sku || '').trim().toUpperCase();
+      if (mSku) {
+        const lower = mSku.toLowerCase();
+        if (seenModelSkus.has(lower)) {
+          return { success: false, error: `Model SKU "${mSku}" is duplicated within this product.` };
+        }
+        seenModelSkus.add(lower);
+        const existing = products.find(
+          (p) =>
+            (p.sku && p.sku.toLowerCase() === lower) ||
+            (Array.isArray(p.models) && p.models.some((pm) => pm.sku && pm.sku.toLowerCase() === lower))
+        );
+        if (existing) {
+          return { success: false, error: `Model SKU "${mSku}" already exists in the catalog.` };
+        }
+      }
     }
   }
 
@@ -184,6 +211,20 @@ export async function createProduct(
     }
   }
 
+  // Calculate default price and stock if model selection is ON
+  let finalPrice = data.price !== undefined && data.price !== null ? Number(data.price) : 0;
+  let finalStock = data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0;
+  if (data.enableModelSelection && Array.isArray(data.models) && data.models.length > 0) {
+    const activeModels = data.models.filter((m) => m.isActive !== false);
+    if (activeModels.length > 0 && (!finalPrice || finalPrice <= 0)) {
+      finalPrice = activeModels[0].price;
+    }
+    const totalModelStock = activeModels.reduce((acc, m) => acc + (m.stock ?? 0), 0);
+    if (totalModelStock > 0 && (!finalStock || finalStock <= 0)) {
+      finalStock = totalModelStock;
+    }
+  }
+
   const newProduct = {
     ...data,
     id: `prod-${Date.now()}`,
@@ -192,7 +233,7 @@ export async function createProduct(
     sku: cleanSku,
     brand: data.brand || '',
     category: data.category || '',
-    price: data.price !== undefined && data.price !== null ? Number(data.price) : 0,
+    price: finalPrice,
     compareAtPrice: data.compareAtPrice !== undefined && data.compareAtPrice !== null ? Number(data.compareAtPrice) : undefined,
     wholesalePrice:
       data.wholesalePrice !== undefined &&
@@ -201,13 +242,22 @@ export async function createProduct(
       Number(data.wholesalePrice) > 0
         ? Number(data.wholesalePrice)
         : undefined,
-    stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
+    stock: finalStock,
     lowStockThreshold: data.lowStockThreshold !== undefined && data.lowStockThreshold !== null ? Number(data.lowStockThreshold) : 0,
     description: data.description || '',
     longDescription: data.longDescription || '',
     images: data.images || [],
     videos: data.videos || [],
     media: data.media || [],
+    enableModelSelection: Boolean(data.enableModelSelection),
+    models: Array.isArray(data.models) ? data.models : [],
+    enableColorSelection: Boolean(data.enableColorSelection),
+    colors: Array.isArray(data.colors) ? data.colors : [],
+    variants: data.variants || {
+      colors: Array.isArray(data.colors)
+        ? data.colors.filter((c) => c.isActive !== false).map((c) => ({ name: c.name, hex: c.hex || '#000000' }))
+        : undefined,
+    },
     trending: !!data.trending,
     reviews: data.reviews || [],
     rating: (data as any).rating || 5.0,
@@ -259,11 +309,44 @@ export async function updateProduct(
 
   const current = products[index];
 
-  // If SKU is changing and provided, validate uniqueness
+  // If SKU is changing and provided, validate uniqueness (against all products and model SKUs)
   if (updates.sku && updates.sku.trim() && updates.sku.toLowerCase() !== (current.sku || '').toLowerCase()) {
-    const existingSku = products.find((p) => p.id !== id && p.sku && p.sku.toLowerCase() === updates.sku!.toLowerCase());
+    const cleanUpdateSku = updates.sku.trim().toLowerCase();
+    const existingSku = products.find(
+      (p) =>
+        p.id !== id &&
+        ((p.sku && p.sku.toLowerCase() === cleanUpdateSku) ||
+          (Array.isArray(p.models) && p.models.some((m) => m.sku && m.sku.toLowerCase() === cleanUpdateSku)))
+    );
     if (existingSku) {
-      return { success: false, error: `SKU "${updates.sku}" already exists on another product.` };
+      return { success: false, error: `SKU "${updates.sku}" already exists on another product or model.` };
+    }
+  }
+
+  // Validate model SKUs uniqueness on update
+  if (updates.models && Array.isArray(updates.models)) {
+    const seenModelSkus = new Set<string>();
+    const parentSku = (updates.sku || current.sku || '').trim().toLowerCase();
+    if (parentSku) seenModelSkus.add(parentSku);
+
+    for (const m of updates.models) {
+      const mSku = (m.sku || '').trim().toUpperCase();
+      if (mSku) {
+        const lower = mSku.toLowerCase();
+        if (seenModelSkus.has(lower)) {
+          return { success: false, error: `Model SKU "${mSku}" is duplicated within this product.` };
+        }
+        seenModelSkus.add(lower);
+        const existing = products.find(
+          (p) =>
+            p.id !== id &&
+            ((p.sku && p.sku.toLowerCase() === lower) ||
+              (Array.isArray(p.models) && p.models.some((pm) => pm.sku && pm.sku.toLowerCase() === lower)))
+        );
+        if (existing) {
+          return { success: false, error: `Model SKU "${mSku}" already exists on another product or model.` };
+        }
+      }
     }
   }
 
@@ -285,7 +368,27 @@ export async function updateProduct(
   const updatedProduct = {
     ...current,
     ...updates,
+    enableModelSelection:
+      updates.enableModelSelection !== undefined
+        ? Boolean(updates.enableModelSelection)
+        : current.enableModelSelection,
+    models: updates.models !== undefined ? updates.models : current.models,
+    enableColorSelection:
+      updates.enableColorSelection !== undefined
+        ? Boolean(updates.enableColorSelection)
+        : current.enableColorSelection,
+    colors: updates.colors !== undefined ? updates.colors : current.colors,
   };
+
+  // Keep legacy variants in sync if colors updated
+  if (updates.colors && Array.isArray(updates.colors)) {
+    updatedProduct.variants = {
+      ...updatedProduct.variants,
+      colors: updates.colors
+        .filter((c) => c.isActive !== false)
+        .map((c) => ({ name: c.name, hex: c.hex || '#000000' })),
+    };
+  }
 
   products[index] = updatedProduct;
   await persistCollection(COLLECTION_KEY, products);
@@ -470,15 +573,42 @@ export async function adjustStock(
   productId: string,
   quantityChange: number,
   reason: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'admin@alhamd.com',
+  modelName?: string
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
   if (!product) return false;
 
-  const previousStock = product.stock;
-  const newStock = Math.max(0, previousStock + quantityChange);
-  product.stock = newStock;
+  let modelAdjusted = false;
+  let modelSku = product.sku;
+  let loggedName = product.name;
+  let previousStock = product.stock;
+  let newModelStock = 0;
+
+  if (modelName && product.models && Array.isArray(product.models)) {
+    const model = product.models.find(
+      (m) => m.name.toLowerCase() === modelName.toLowerCase() || m.id === modelName
+    );
+    if (model) {
+      const prevModelStock = model.stock !== undefined ? model.stock : product.stock;
+      model.stock = Math.max(0, prevModelStock + quantityChange);
+      newModelStock = model.stock;
+      modelAdjusted = true;
+      modelSku = model.sku || product.sku;
+      loggedName = `${product.name} (${model.name})`;
+      previousStock = prevModelStock;
+
+      // Also sync total parent product stock
+      const totalModelStock = product.models.reduce((sum, m) => sum + (m.stock ?? 0), 0);
+      product.stock = totalModelStock;
+    }
+  }
+
+  if (!modelAdjusted) {
+    const prevStock = product.stock;
+    product.stock = Math.max(0, prevStock + quantityChange);
+  }
 
   await persistCollection(COLLECTION_KEY, products);
 
@@ -486,7 +616,7 @@ export async function adjustStock(
   if (db && typeof (db as any).type === 'string') {
     try {
       const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: newStock }, { merge: true });
+      await setDoc(docRef, { stock: product.stock, models: product.models }, { merge: true });
     } catch (err) {
       console.warn('Firestore stock sync notice:', err);
     }
@@ -502,11 +632,11 @@ export async function adjustStock(
 
   await recordInventoryLog({
     productId: product.id,
-    productName: product.name,
-    sku: product.sku,
+    productName: loggedName,
+    sku: modelSku,
     previousStock,
     changeAmount: quantityChange,
-    newStock,
+    newStock: modelAdjusted ? newModelStock : product.stock,
     reason,
     adminEmail,
   });
@@ -514,8 +644,73 @@ export async function adjustStock(
   await logActivity({
     adminEmail,
     action: 'Adjusted Stock',
-    target: product.name,
-    details: `${quantityChange >= 0 ? '+' : ''}${quantityChange} units (${reason}). New stock: ${newStock}`,
+    target: loggedName,
+    details: `${quantityChange >= 0 ? '+' : ''}${quantityChange} units (${reason}). New stock: ${modelAdjusted ? newModelStock : product.stock}`,
+  });
+
+  return true;
+}
+
+export async function setModelStock(
+  productId: string,
+  modelIdOrName: string,
+  newStock: number,
+  reason = 'Manual adjustment in Stock Management',
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  const products = getProducts();
+  const product = products.find((p) => p.id === productId);
+  if (!product || !product.models || !Array.isArray(product.models)) return false;
+
+  const model = product.models.find(
+    (m) => m.id === modelIdOrName || m.name.toLowerCase() === modelIdOrName.toLowerCase()
+  );
+  if (!model) return false;
+
+  const previousStock = model.stock ?? 0;
+  const safeStock = Math.max(0, Math.round(newStock));
+  const quantityChange = safeStock - previousStock;
+  model.stock = safeStock;
+
+  // Recalculate parent product stock
+  const totalModelStock = product.models.reduce((sum, m) => sum + (m.stock ?? 0), 0);
+  product.stock = totalModelStock;
+
+  await persistCollection(COLLECTION_KEY, products);
+
+  if (db && typeof (db as any).type === 'string') {
+    try {
+      const docRef = doc(db, 'products', productId);
+      await setDoc(docRef, { stock: product.stock, models: product.models }, { merge: true });
+    } catch (err) {
+      console.warn('Firestore model stock sync notice:', err);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: products },
+      })
+    );
+  }
+
+  await recordInventoryLog({
+    productId: product.id,
+    productName: `${product.name} (${model.name})`,
+    sku: model.sku || product.sku,
+    previousStock,
+    changeAmount: quantityChange,
+    newStock: safeStock,
+    reason,
+    adminEmail,
+  });
+
+  await logActivity({
+    adminEmail,
+    action: 'Adjusted Model Stock',
+    target: `${product.name} - ${model.name}`,
+    details: `Stock updated to ${safeStock} (previous: ${previousStock}). Reason: ${reason}`,
   });
 
   return true;

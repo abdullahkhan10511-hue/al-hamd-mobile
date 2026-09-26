@@ -7,7 +7,7 @@ import { ArrowRight, Trash2, Minus, Plus, ShoppingBag, ShieldCheck, Tag, Package
 import { useCart } from '@/context/CartContext';
 import { FreeShippingBar } from '@/components/cart/FreeShippingBar';
 import { formatPrice, getValidImageSrc } from '@/lib/utils';
-import { getProductEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 export default function CartPage() {
   const {
@@ -90,10 +90,23 @@ export default function CartPage() {
 
             <div className="border border-neutral-200/80 rounded-3xl overflow-hidden divide-y divide-neutral-100">
               {cart.map((item) => {
-                const basePrice = getProductEffectivePrice(item.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
-                const lineTotal = basePrice * item.quantity;
+                let unitPrice: number;
+                if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
+                  const modelObj = item.product.models.find(
+                    (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
+                  );
+                  if (modelObj) {
+                    unitPrice = getModelEffectivePrice(item.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                  } else {
+                    unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                  }
+                } else {
+                  unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                }
+
+                const lineTotal = unitPrice * item.quantity;
                 const isWholesaleActive = isWholesale && item.product.wholesalePrice && Number(item.product.wholesalePrice) > 0;
-                const validImage = getValidImageSrc(item.product?.images);
+                const validImage = item.selectedImage || getValidImageSrc(item.product?.images);
                 return (
                   <div
                     key={item.id}
@@ -127,10 +140,12 @@ export default function CartPage() {
                             {item.product.name}
                           </h3>
                         </Link>
-                        <div className="flex items-center gap-2 text-xs text-neutral-500 mt-1">
-                          {item.selectedSize && <span>Size: {item.selectedSize}</span>}
-                          {item.selectedSize && item.selectedColor && <span>•</span>}
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 mt-1">
+                          {item.selectedModel && <span className="font-semibold text-neutral-800">Model: {item.selectedModel}</span>}
+                          {item.selectedModel && (item.selectedColor || item.selectedSize) && <span>•</span>}
                           {item.selectedColor && <span>Color: {item.selectedColor}</span>}
+                          {item.selectedColor && item.selectedSize && <span>•</span>}
+                          {item.selectedSize && <span>Size: {item.selectedSize}</span>}
                         </div>
                         {isWholesaleActive && (
                           <div className="mt-1 flex items-center gap-1.5">
@@ -143,7 +158,7 @@ export default function CartPage() {
                           </div>
                         )}
                         <p className="text-xs font-mono text-neutral-600 mt-1 sm:hidden">
-                          {formatPrice(basePrice)} each
+                          {formatPrice(unitPrice)} each
                         </p>
                       </div>
                     </div>
@@ -173,7 +188,7 @@ export default function CartPage() {
                           {formatPrice(lineTotal)}
                         </span>
                         <p className="text-[11px] text-neutral-500 font-mono hidden sm:block">
-                          {formatPrice(basePrice)} ea
+                          {formatPrice(unitPrice)} ea
                         </p>
                       </div>
 

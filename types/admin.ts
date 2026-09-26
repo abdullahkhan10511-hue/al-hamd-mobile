@@ -136,6 +136,7 @@ export interface OrderItem {
   quantity: number;
   selectedSize?: string;
   selectedColor?: string;
+  selectedModel?: string;
   image: string;
   total: number;
 }

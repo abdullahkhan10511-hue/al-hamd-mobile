@@ -7,6 +7,7 @@ import { addNotification } from './notifications';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
+import { getModelEffectivePrice } from '@/lib/wholesale';
 
 const COLLECTION_KEY = 'orders';
 
@@ -115,13 +116,34 @@ export async function createOrder(
   let calculatedSubtotal = 0;
   const validatedItems = orderData.items.map((item) => {
     const product = getProductById(item.productId) || (item.slug ? getProductBySlug(item.slug) : undefined);
-    if (product && product.stock <= 0) {
-      throw new Error(`Product "${item.productName || 'Item'}" is currently out of stock.`);
+    const modelObj =
+      item.selectedModel && product?.models
+        ? product.models.find(
+            (m) =>
+              m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+              m.id === item.selectedModel
+          )
+        : null;
+
+    const availableStock = modelObj
+      ? (modelObj.stock !== undefined ? modelObj.stock : (product?.stock ?? 0))
+      : (product?.stock ?? 0);
+
+    if (product && availableStock <= 0) {
+      throw new Error(
+        `Product "${item.productName || 'Item'}${item.selectedModel ? ` (${item.selectedModel})` : ''}" is currently out of stock.`
+      );
     }
 
     // Determine authorized base price
     let basePrice: number;
-    if (isWholesaleOrder) {
+    if (modelObj) {
+      if (isWholesaleOrder) {
+        basePrice = getModelEffectivePrice(product!, modelObj, 'WHOLESALE');
+      } else {
+        basePrice = Number(modelObj.price) || (product ? product.price : item.price);
+      }
+    } else if (isWholesaleOrder) {
       // Use wholesalePrice if configured (>0), otherwise fallback safely to regular retail price
       if (
         product &&
@@ -143,6 +165,7 @@ export async function createOrder(
 
     return {
       ...item,
+      sku: modelObj?.sku || item.sku || (product as any)?.sku || `SKU-${item.productId}`,
       price: basePrice,
       originalPrice: basePrice,
       discountPercentage: undefined,
@@ -242,7 +265,7 @@ export async function createOrder(
   // Automatically deduct stock for ordered products
   for (const item of newOrder.items) {
     try {
-      await adjustStock(item.productId, -item.quantity, `Order placed #${newOrder.id}`, 'system');
+      await adjustStock(item.productId, -item.quantity, `Order placed #${newOrder.id}`, 'system', item.selectedModel);
     } catch (e) {
       console.warn('Stock adjustment warning:', e);
     }

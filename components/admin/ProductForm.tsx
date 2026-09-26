@@ -23,11 +23,13 @@ import {
   X,
   ArrowUpDown,
   GripVertical,
+  Smartphone,
+  Palette,
 } from 'lucide-react';
 import { getCategories } from '@/lib/db/categories';
 import { createProduct, updateProduct } from '@/lib/db/products';
 import { uploadMediaFile } from '@/lib/db/media';
-import { Product, ProductMediaItem } from '@/types';
+import { Product, ProductMediaItem, ProductModelVariant, ProductColorVariant } from '@/types';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
 interface ProductFormProps {
@@ -125,6 +127,30 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // Model Variants - Optional
+  const [enableModelSelection, setEnableModelSelection] = useState<boolean>(
+    initialProduct?.enableModelSelection ?? false
+  );
+  const [models, setModels] = useState<ProductModelVariant[]>(
+    Array.isArray(initialProduct?.models) ? initialProduct.models : []
+  );
+
+  // Color Variants - Optional
+  const [enableColorSelection, setEnableColorSelection] = useState<boolean>(
+    initialProduct?.enableColorSelection ??
+      Boolean(
+        (initialProduct?.colors && initialProduct.colors.length > 0) ||
+        (initialProduct?.variants?.colors && initialProduct.variants.colors.length > 0)
+      )
+  );
+  const [colors, setColors] = useState<ProductColorVariant[]>(
+    Array.isArray(initialProduct?.colors) && initialProduct.colors.length > 0
+      ? initialProduct.colors
+      : Array.isArray(initialProduct?.variants?.colors) && initialProduct.variants.colors.length > 0
+      ? initialProduct.variants.colors.map((c: any) => ({ name: c.name, hex: c.hex, isActive: true }))
+      : []
+  );
+
   // Specifications - Optional array
   const [specs, setSpecs] = useState<{ key: string; val: string }[]>(
     initialProduct?.specifications
@@ -132,11 +158,89 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       : []
   );
 
-
-
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const handleAddModel = () => {
+    const newModel: ProductModelVariant = {
+      id: `mod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: '',
+      price: price === '' ? 0 : Number(price),
+      compareAtPrice: compareAtPrice === '' ? undefined : Number(compareAtPrice),
+      wholesalePrice: wholesalePrice === '' ? undefined : Number(wholesalePrice),
+      stock: stock === '' ? 0 : Number(stock),
+      sku: '',
+      isActive: true,
+      images: [],
+      videos: [],
+    };
+    setModels((prev) => [...prev, newModel]);
+  };
+
+  const handleUpdateModel = (index: number, updates: Partial<ProductModelVariant>) => {
+    setModels((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  };
+
+  const handleRemoveModel = (index: number) => {
+    setModels((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUploadModelImage = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const res = await uploadMediaFile(file, 'product');
+      if (res.success && res.item?.url) {
+        setModels((prev) => {
+          const next = [...prev];
+          const currentImgs = next[index].images || [];
+          next[index] = { ...next[index], images: [...currentImgs, res.item!.url] };
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to upload model image', err);
+    }
+  };
+
+  const handleRemoveModelImage = (modelIndex: number, imgIndex: number) => {
+    setModels((prev) => {
+      const next = [...prev];
+      const currentImgs = next[modelIndex].images || [];
+      next[modelIndex] = {
+        ...next[modelIndex],
+        images: currentImgs.filter((_, i) => i !== imgIndex),
+      };
+      return next;
+    });
+  };
+
+  const handleAddColor = () => {
+    const newColor: ProductColorVariant = {
+      id: `col-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: '',
+      hex: '#000000',
+      isActive: true,
+    };
+    setColors((prev) => [...prev, newColor]);
+  };
+
+  const handleUpdateColor = (index: number, updates: Partial<ProductColorVariant>) => {
+    setColors((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  };
+
+  const handleRemoveColor = (index: number) => {
+    setColors((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleNameChange = (val: string) => {
     setName(val);
@@ -349,6 +453,36 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         ? 0
         : Number(lowStockThreshold);
 
+    // Validation for Models when enabled
+    if (enableModelSelection && models.length > 0) {
+      const emptyModel = models.find((m) => !m.name || !m.name.trim());
+      if (emptyModel) {
+        setError('Please enter a name for all mobile models or remove empty model rows.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const seenNames = new Set<string>();
+      for (const m of models) {
+        const norm = m.name.trim().toLowerCase();
+        if (seenNames.has(norm)) {
+          setError(`Duplicate model name "${m.name}". Each model must have a unique name.`);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        seenNames.add(norm);
+      }
+    }
+
+    // Validation for Colors when enabled
+    if (enableColorSelection && colors.length > 0) {
+      const emptyColor = colors.find((c) => !c.name || !c.name.trim());
+      if (emptyColor) {
+        setError('Please enter a name for all colors or remove empty color rows.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
+
     const payload = {
       name: name.trim(),
       slug: slug.trim().toLowerCase(),
@@ -377,6 +511,41 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         name: m.name,
         size: m.size,
       })),
+      enableModelSelection,
+      models: enableModelSelection
+        ? models
+            .filter((m) => m.name && m.name.trim() !== '')
+            .map((m) => ({
+              ...m,
+              name: m.name.trim(),
+              sku: m.sku ? m.sku.trim().toUpperCase() : undefined,
+              price: Number(m.price) || 0,
+              compareAtPrice: m.compareAtPrice ? Number(m.compareAtPrice) : undefined,
+              wholesalePrice: m.wholesalePrice ? Number(m.wholesalePrice) : undefined,
+              stock: m.stock !== undefined ? Number(m.stock) : 0,
+              isActive: m.isActive !== false,
+              images: Array.isArray(m.images) ? m.images.filter(Boolean) : [],
+              videos: Array.isArray(m.videos) ? m.videos.filter(Boolean) : [],
+            }))
+        : [],
+      enableColorSelection,
+      colors: enableColorSelection
+        ? colors
+            .filter((c) => c.name && c.name.trim() !== '')
+            .map((c) => ({
+              id: c.id,
+              name: c.name.trim(),
+              hex: c.hex || '#000000',
+              isActive: c.isActive !== false,
+            }))
+        : [],
+      variants: {
+        colors: enableColorSelection
+          ? colors
+              .filter((c) => c.name && c.name.trim() !== '' && c.isActive !== false)
+              .map((c) => ({ name: c.name.trim(), hex: c.hex || '#000000' }))
+          : undefined,
+      },
       rating: initialProduct?.rating || 5.0,
       reviewCount: initialProduct?.reviewCount || 0,
       isNew: badgeNew,
@@ -769,11 +938,432 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             </div>
           </div>
 
+          {/* Mobile Models / Models Manager */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-neutral-800" />
+                  <span>3. Mobile Models</span>
+                </h2>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Add multiple phone models under the same product (e.g. iPhone 13, 14, 15, Samsung S23).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-neutral-700">
+                  Enable Model Selection:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEnableModelSelection(!enableModelSelection)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                    enableModelSelection ? 'bg-neutral-950' : 'bg-neutral-300'
+                  }`}
+                  title="Toggle Mobile Models on/off"
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      enableModelSelection ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span
+                  className={`text-xs font-extrabold uppercase ${
+                    enableModelSelection ? 'text-neutral-950' : 'text-neutral-400'
+                  }`}
+                >
+                  {enableModelSelection ? 'ON' : 'OFF'}
+                </span>
+              </div>
+            </div>
+
+            {enableModelSelection ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-600">
+                    Models ({models.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddModel}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Model</span>
+                  </button>
+                </div>
+
+                {models.length === 0 ? (
+                  <div className="p-6 text-center rounded-2xl bg-neutral-50 border border-dashed border-neutral-200 text-neutral-500 text-xs">
+                    <Smartphone className="w-6 h-6 mx-auto mb-2 text-neutral-400 opacity-60" />
+                    <p className="font-semibold text-neutral-800">No Mobile Models added yet</p>
+                    <p className="text-[11px] text-neutral-400 mt-1 mb-3">
+                      Click &ldquo;Add Model&rdquo; to add compatible devices (e.g. iPhone 13, iPhone 14, iPhone 15).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddModel}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-900 text-white font-semibold text-xs hover:bg-neutral-800 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add First Model
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {models.map((mod, idx) => (
+                      <div
+                        key={mod.id || idx}
+                        className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                          mod.isActive !== false
+                            ? 'bg-neutral-50/70 border-neutral-200'
+                            : 'bg-neutral-100/50 border-neutral-200/60 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b border-neutral-200/60 pb-3 mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-neutral-200 text-neutral-700 font-bold text-[10px] flex items-center justify-center font-mono">
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-xs text-neutral-900">
+                              {mod.name.trim() || 'Untitled Model'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 text-xs text-neutral-700 font-medium cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={mod.isActive !== false}
+                                onChange={(e) => handleUpdateModel(idx, { isActive: e.target.checked })}
+                                className="rounded border-neutral-300 text-neutral-950 focus:ring-neutral-950"
+                              />
+                              <span>Active</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveModel(idx)}
+                              className="text-neutral-400 hover:text-rose-600 transition-colors cursor-pointer p-1"
+                              title="Remove Model"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                          <div className="sm:col-span-2">
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Model Name <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={mod.name}
+                              onChange={(e) => handleUpdateModel(idx, { name: e.target.value })}
+                              placeholder="e.g. iPhone 14 Pro Max"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-medium"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Price (PKR) <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={mod.price ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  price: e.target.value === '' ? 0 : Number(e.target.value),
+                                })
+                              }
+                              placeholder="e.g. 1100"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Compare Price (PKR)
+                            </label>
+                            <input
+                              type="number"
+                              value={mod.compareAtPrice ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  compareAtPrice: e.target.value === '' ? undefined : Number(e.target.value),
+                                })
+                              }
+                              placeholder="Optional strike"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Stock Quantity
+                            </label>
+                            <input
+                              type="number"
+                              value={mod.stock ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  stock: e.target.value === '' ? 0 : Number(e.target.value),
+                                })
+                              }
+                              placeholder="e.g. 15"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Model SKU
+                            </label>
+                            <input
+                              type="text"
+                              value={mod.sku || ''}
+                              onChange={(e) => handleUpdateModel(idx, { sku: e.target.value.toUpperCase() })}
+                              placeholder="e.g. ALH-IP14-01"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={mod.wholesalePrice ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  wholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
+                                })
+                              }
+                              placeholder="Special wholesale rate"
+                              className="w-full p-2 rounded-xl border border-indigo-200 bg-indigo-50/20 font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Model-Specific Images (Optional) */}
+                        <div className="mt-3 pt-3 border-t border-neutral-200/50">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <span className="text-xs font-semibold text-neutral-700">
+                                Model Images (Optional)
+                              </span>
+                              <span className="text-[11px] text-neutral-400 block">
+                                If omitted, main product gallery will be shown automatically.
+                              </span>
+                            </div>
+                            <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 text-xs font-semibold hover:bg-neutral-50 cursor-pointer shadow-2xs">
+                              <Upload className="w-3 h-3 text-neutral-500" />
+                              <span>Upload Image</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleUploadModelImage(idx, e)}
+                              />
+                            </label>
+                          </div>
+
+                          {mod.images && mod.images.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {mod.images.map((imgUrl, imgIdx) => (
+                                <div
+                                  key={imgIdx}
+                                  className="relative w-14 h-14 rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 group"
+                                >
+                                  <img
+                                    src={imgUrl}
+                                    alt={`Model ${mod.name} ${imgIdx + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveModelImage(idx, imgIdx)}
+                                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    title="Remove image"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-neutral-400 italic">
+                              No model-specific image uploaded. Fallback to main product gallery active.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 italic">
+                Model selection is turned OFF. This product behaves as a normal standard product.
+              </p>
+            )}
+          </div>
+
+          {/* Color Variants Manager */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-neutral-800" />
+                  <span>4. Color Variants</span>
+                </h2>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Configure color options with interactive swatches on the customer product page.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-neutral-700">
+                  Enable Colors:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEnableColorSelection(!enableColorSelection)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                    enableColorSelection ? 'bg-neutral-950' : 'bg-neutral-300'
+                  }`}
+                  title="Toggle Colors on/off"
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      enableColorSelection ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span
+                  className={`text-xs font-extrabold uppercase ${
+                    enableColorSelection ? 'text-neutral-950' : 'text-neutral-400'
+                  }`}
+                >
+                  {enableColorSelection ? 'ON' : 'OFF'}
+                </span>
+              </div>
+            </div>
+
+            {enableColorSelection ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-600">
+                    Colors ({colors.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddColor}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Color</span>
+                  </button>
+                </div>
+
+                {colors.length === 0 ? (
+                  <div className="p-6 text-center rounded-2xl bg-neutral-50 border border-dashed border-neutral-200 text-neutral-500 text-xs">
+                    <Palette className="w-6 h-6 mx-auto mb-2 text-neutral-400 opacity-60" />
+                    <p className="font-semibold text-neutral-800">No Colors added yet</p>
+                    <p className="text-[11px] text-neutral-400 mt-1 mb-3">
+                      Add colors like Black, Silver, Titanium Gray, Deep Blue, or Alpine White.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddColor}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-900 text-white font-semibold text-xs hover:bg-neutral-800 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add First Color
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {colors.map((col, idx) => (
+                      <div
+                        key={col.id || idx}
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          col.isActive !== false
+                            ? 'bg-neutral-50/70 border-neutral-200'
+                            : 'bg-neutral-100/50 border-neutral-200/60 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          {/* Color Swatch Picker */}
+                          <div className="relative w-8 h-8 rounded-full border border-neutral-300 overflow-hidden shrink-0 shadow-2xs">
+                            <input
+                              type="color"
+                              value={col.hex || '#000000'}
+                              onChange={(e) => handleUpdateColor(idx, { hex: e.target.value })}
+                              className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer border-none bg-transparent"
+                              title="Pick Color Swatch"
+                            />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <input
+                              type="text"
+                              value={col.name}
+                              onChange={(e) => handleUpdateColor(idx, { name: e.target.value })}
+                              placeholder="Color Name (e.g. Space Black)"
+                              className="w-full p-1.5 rounded-lg border border-neutral-200 bg-white text-xs font-semibold text-neutral-900"
+                            />
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[10px] text-neutral-400 font-mono">Hex:</span>
+                              <input
+                                type="text"
+                                value={col.hex || ''}
+                                onChange={(e) => handleUpdateColor(idx, { hex: e.target.value })}
+                                placeholder="#000000"
+                                className="w-20 p-0.5 px-1.5 rounded border border-neutral-200 bg-white font-mono text-[10px] text-neutral-600 uppercase"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <label className="flex items-center gap-1 text-[11px] text-neutral-600 font-medium cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={col.isActive !== false}
+                              onChange={(e) => handleUpdateColor(idx, { isActive: e.target.checked })}
+                              className="rounded border-neutral-300 text-neutral-950 focus:ring-neutral-950"
+                            />
+                            <span>Active</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveColor(idx)}
+                            className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
+                            title="Remove Color"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 italic">
+                Colors are turned OFF. No color selector will be shown to customers.
+              </p>
+            )}
+          </div>
+
           {/* Specifications Key-Values */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
               <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight">
-                3. Technical Specifications
+                5. Technical Specifications
               </h2>
               <button
                 type="button"

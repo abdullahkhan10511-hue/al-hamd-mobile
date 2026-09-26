@@ -45,7 +45,13 @@ import {
 interface CartItemState {
   product: Product;
   quantity: number;
+  selectedModel?: string;
+  selectedColor?: string;
+  selectedPrice?: number;
 }
+
+const getPosCartItemKey = (item: { product: { id: string }; selectedModel?: string; selectedColor?: string }) =>
+  `${item.product.id}__${item.selectedModel || 'default'}__${item.selectedColor || 'default'}`;
 
 export default function ShopCounterPosPage() {
   const { admin, isSuperAdmin, isManager } = useAdminAuth();
@@ -60,6 +66,11 @@ export default function ShopCounterPosPage() {
 
   // Cart State
   const [cart, setCart] = useState<CartItemState[]>([]);
+
+  // Variant Picker Modal State for POS
+  const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null);
+  const [selectedVariantModel, setSelectedVariantModel] = useState<string>('');
+  const [selectedVariantColor, setSelectedVariantColor] = useState<string>('');
 
   // Catalog Filter & Search State
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -143,21 +154,39 @@ export default function ShopCounterPosPage() {
           continue; // Safely removed from cart!
         }
 
+        const modelObj =
+          item.selectedModel && Array.isArray(liveProduct.models)
+            ? liveProduct.models.find(
+                (m: any) =>
+                  m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+                  m.id === item.selectedModel
+              )
+            : null;
+
+        const availableStock = modelObj
+          ? (modelObj.stock !== undefined ? modelObj.stock : liveProduct.stock)
+          : liveProduct.stock;
+
         // Check Available Stock
-        if (liveProduct.stock <= 0) {
+        if (availableStock <= 0) {
           removedAny = true;
           continue;
         }
 
         let qty = item.quantity;
-        if (qty > liveProduct.stock) {
-          qty = liveProduct.stock;
+        if (qty > availableStock) {
+          qty = availableStock;
           modifiedAny = true;
         }
 
         newCart.push({
           product: liveProduct,
           quantity: Math.max(1, qty),
+          selectedModel: item.selectedModel,
+          selectedColor: item.selectedColor,
+          selectedPrice: modelObj
+            ? Number(modelObj.price)
+            : (item.selectedPrice ?? Number(liveProduct.price)),
         });
       }
 
@@ -201,15 +230,35 @@ export default function ShopCounterPosPage() {
           for (const item of parsed) {
             if (!item || !item.product || !item.product.id) continue;
             const live = freshProducts.find((p) => p.id === item.product.id);
-            if (!live || live.status === 'inactive' || live.status === 'archived' || live.stock <= 0) {
+            if (!live || live.status === 'inactive' || live.status === 'archived') {
               removedAny = true;
               continue;
             }
-            const qty = Math.min(item.quantity || 1, live.stock);
+            const modelObj =
+              item.selectedModel && Array.isArray(live.models)
+                ? live.models.find(
+                    (m: any) =>
+                      m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+                      m.id === item.selectedModel
+                  )
+                : null;
+            const availableStock = modelObj
+              ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
+              : live.stock;
+            if (availableStock <= 0) {
+              removedAny = true;
+              continue;
+            }
+            const qty = Math.min(item.quantity || 1, availableStock);
             if (qty !== item.quantity) modifiedAny = true;
             validCart.push({
               product: live,
               quantity: Math.max(1, qty),
+              selectedModel: item.selectedModel,
+              selectedColor: item.selectedColor,
+              selectedPrice: modelObj
+                ? Number(modelObj.price)
+                : (item.selectedPrice ?? Number(live.price)),
             });
           }
 
@@ -302,13 +351,24 @@ export default function ShopCounterPosPage() {
   const cartCalculations = useMemo(() => {
     let subtotal = 0;
     const items = cart.map((item) => {
-      const basePrice = Number(item.product.price) || 0;
+      const modelObj =
+        item.selectedModel && Array.isArray(item.product.models)
+          ? item.product.models.find(
+              (m) =>
+                m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+                m.id === item.selectedModel
+            )
+          : null;
+      const basePrice = modelObj
+        ? (Number(modelObj.price) || Number(item.product.price) || 0)
+        : (item.selectedPrice ?? Number(item.product.price) ?? 0);
       const unitPrice = basePrice;
       const lineTotal = unitPrice * item.quantity;
       subtotal += lineTotal;
 
       return {
         ...item,
+        key: getPosCartItemKey(item),
         unitPrice,
         originalUnitPrice: basePrice,
         discountPercentage: 0,
@@ -341,13 +401,72 @@ export default function ShopCounterPosPage() {
     };
   }, [cart, discountType, discountValue, appliedPromo]);
 
+  const addSpecificVariantToCart = (live: Product, modelName?: string, colorName?: string) => {
+    const modelObj =
+      modelName && Array.isArray(live.models)
+        ? live.models.find(
+            (m) =>
+              m.name.toLowerCase() === modelName.toLowerCase() ||
+              m.id === modelName
+          )
+        : null;
+
+    const availableStock = modelObj
+      ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
+      : live.stock;
+
+    if (availableStock <= 0) {
+      showToast(
+        `"${live.name}${modelName ? ` (${modelName})` : ''}" is currently out of stock.`,
+        'warning'
+      );
+      return;
+    }
+
+    const itemPrice = modelObj
+      ? (Number(modelObj.price) || Number(live.price))
+      : Number(live.price);
+
+    setCart((prev) => {
+      const matchIdx = prev.findIndex(
+        (item) =>
+          item.product.id === live.id &&
+          (item.selectedModel || '') === (modelName || '') &&
+          (item.selectedColor || '') === (colorName || '')
+      );
+
+      if (matchIdx !== -1) {
+        if (prev[matchIdx].quantity >= availableStock) {
+          showToast(`Only ${availableStock} units available for this selection.`, 'warning');
+          return prev;
+        }
+        return prev.map((item, idx) =>
+          idx === matchIdx ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        return [
+          ...prev,
+          {
+            product: live,
+            quantity: 1,
+            selectedModel: modelName,
+            selectedColor: colorName,
+            selectedPrice: itemPrice,
+          },
+        ];
+      }
+    });
+
+    setVariantModalProduct(null);
+  };
+
   // Handle Add to Cart
   const handleAddToCart = (product: Product) => {
     // Re-verify against latest catalog
     const freshProducts = getProducts();
     const live = freshProducts.find((p) => p.id === product.id);
     if (!live || live.status === 'inactive' || live.status === 'archived') {
-      showToast('This product is no longer available and was removed from your cart.', 'error');
+      showToast('This product is no longer available.', 'error');
       validateAndCleanCart(freshProducts);
       return;
     }
@@ -357,48 +476,68 @@ export default function ShopCounterPosPage() {
       return;
     }
 
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === live.id);
-      if (existing) {
-        if (existing.quantity >= live.stock) {
-          showToast(`Only ${live.stock} units available for "${live.name}".`, 'warning');
-          return prev;
-        }
-        return prev.map((item) =>
-          item.product.id === live.id
-            ? { ...item, product: live, quantity: item.quantity + 1 }
-            : item
-        );
-      } else {
-        return [...prev, { product: live, quantity: 1 }];
-      }
-    });
+    const hasModels = Boolean(
+      live.enableModelSelection &&
+      Array.isArray(live.models) &&
+      live.models.filter((m) => m.isActive !== false).length > 0
+    );
+    const hasColors = Boolean(
+      (live.enableColorSelection && Array.isArray(live.colors) && live.colors.filter((c) => c.isActive !== false).length > 0) ||
+      (Array.isArray(live.variants?.colors) && live.variants.colors.length > 0)
+    );
+
+    if (hasModels || hasColors) {
+      setVariantModalProduct(live);
+      const activeM = live.models?.filter((m) => m.isActive !== false) || [];
+      setSelectedVariantModel(activeM[0]?.name || '');
+      const activeC =
+        (live.colors && live.colors.filter((c) => c.isActive !== false)) ||
+        live.variants?.colors ||
+        [];
+      setSelectedVariantColor(activeC[0]?.name || '');
+      return;
+    }
+
+    addSpecificVariantToCart(live, undefined, undefined);
   };
 
   // Change Quantity
-  const handleUpdateQuantity = (productId: string, newQty: number) => {
-    const product = products.find((p) => p.id === productId);
-    if (!product) return;
-
+  const handleUpdateQuantity = (itemKey: string, newQty: number) => {
     if (newQty <= 0) {
-      handleRemoveItem(productId);
+      handleRemoveItem(itemKey);
       return;
     }
 
-    if (newQty > product.stock) {
-      showToast(`Only ${product.stock} units available for "${product.name}".`, 'warning');
-      return;
-    }
+    setCart((prev) => {
+      const target = prev.find((item) => getPosCartItemKey(item) === itemKey);
+      if (!target) return prev;
 
-    setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, quantity: newQty } : item
-      )
-    );
+      const modelObj =
+        target.selectedModel && Array.isArray(target.product.models)
+          ? target.product.models.find(
+              (m) =>
+                m.name.toLowerCase() === target.selectedModel?.toLowerCase() ||
+                m.id === target.selectedModel
+            )
+          : null;
+
+      const availableStock = modelObj
+        ? (modelObj.stock !== undefined ? modelObj.stock : target.product.stock)
+        : target.product.stock;
+
+      if (newQty > availableStock) {
+        showToast(`Only ${availableStock} units available for this selection.`, 'warning');
+        return prev;
+      }
+
+      return prev.map((item) =>
+        getPosCartItemKey(item) === itemKey ? { ...item, quantity: newQty } : item
+      );
+    });
   };
 
-  const handleRemoveItem = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  const handleRemoveItem = (itemKey: string) => {
+    setCart((prev) => prev.filter((item) => getPosCartItemKey(item) !== itemKey));
   };
 
   const handleClearCart = () => {
@@ -517,7 +656,18 @@ export default function ShopCounterPosPage() {
         hasInvalid = true;
         break;
       }
-      if (live.stock < item.quantity) {
+      const modelObj =
+        item.selectedModel && Array.isArray(live.models)
+          ? live.models.find(
+              (m: any) =>
+                m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+                m.id === item.selectedModel
+            )
+          : null;
+      const availableStock = modelObj
+        ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
+        : live.stock;
+      if (availableStock < item.quantity) {
         hasInvalid = true;
         break;
       }
@@ -574,6 +724,8 @@ export default function ShopCounterPosPage() {
         items: cart.map((item) => ({
           productId: item.product.id,
           quantity: item.quantity,
+          selectedModel: item.selectedModel,
+          selectedColor: item.selectedColor,
         })),
         catalogSnapshot: freshProducts,
         customer,
@@ -1156,62 +1308,87 @@ export default function ShopCounterPosPage() {
                   <p className="text-[10px]">Click any product on the left catalog to add.</p>
                 </div>
               ) : (
-                cartCalculations.items.map((item) => (
-                  <div key={item.product.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
-                    {/* Item details */}
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <img
-                        src={item.product.images?.[0] || '/placeholder.png'}
-                        alt={item.product.name}
-                        className="w-10 h-10 rounded-lg object-cover bg-neutral-100 shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <h5 className="font-bold text-neutral-900 truncate leading-tight">
-                          {item.product.name}
-                        </h5>
-                        <div className="text-[10px] text-neutral-500">
-                          Rs. {item.unitPrice.toLocaleString('en-PK')} each
+                cartCalculations.items.map((item) => {
+                  const modelObj =
+                    item.selectedModel && Array.isArray(item.product.models)
+                      ? item.product.models.find(
+                          (m) =>
+                            m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+                            m.id === item.selectedModel
+                        )
+                      : null;
+                  const itemImg =
+                    (modelObj?.images && modelObj.images.length > 0 ? modelObj.images[0] : null) ||
+                    item.product.images?.[0] ||
+                    '/placeholder.png';
+
+                  return (
+                    <div key={item.key} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                      {/* Item details */}
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <img
+                          src={itemImg}
+                          alt={item.product.name}
+                          className="w-10 h-10 rounded-lg object-cover bg-neutral-100 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h5 className="font-bold text-neutral-900 truncate leading-tight">
+                            {item.product.name}
+                          </h5>
+                          {(item.selectedModel || item.selectedColor) && (
+                            <div className="text-[10px] text-neutral-600 font-medium">
+                              {[
+                                item.selectedModel ? `Model: ${item.selectedModel}` : null,
+                                item.selectedColor ? `Color: ${item.selectedColor}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' • ')}
+                            </div>
+                          )}
+                          <div className="text-[10px] text-neutral-500 font-mono">
+                            Rs. {item.unitPrice.toLocaleString('en-PK')} each
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Quantity Controls */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <div className="flex items-center bg-neutral-100 rounded-xl p-0.5 border border-neutral-200">
+                      {/* Quantity Controls */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center bg-neutral-100 rounded-xl p-0.5 border border-neutral-200">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQuantity(item.key, item.quantity - 1)}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 flex items-center justify-center font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="w-7 text-center font-bold font-mono text-xs text-neutral-900">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQuantity(item.key, item.quantity + 1)}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 flex items-center justify-center font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <div className="w-16 text-right font-black font-mono text-neutral-900">
+                          Rs. {item.lineTotal.toLocaleString('en-PK')}
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
-                          className="w-6 h-6 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 flex items-center justify-center font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                          onClick={() => handleRemoveItem(item.key)}
+                          className="w-6 h-6 rounded-lg text-neutral-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Remove item"
                         >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="w-7 text-center font-bold font-mono text-xs text-neutral-900">
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
-                          className="w-6 h-6 rounded-lg bg-white hover:bg-neutral-50 text-neutral-800 flex items-center justify-center font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <Plus className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-
-                      <div className="w-16 text-right font-black font-mono text-neutral-900">
-                        Rs. {item.lineTotal.toLocaleString('en-PK')}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.product.id)}
-                        className="w-6 h-6 rounded-lg text-neutral-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -1802,6 +1979,165 @@ export default function ShopCounterPosPage() {
             setActiveTab('terminal');
           }}
         />
+      )}
+
+      {/* =================================================================== */}
+      {/* VARIANT PICKER MODAL FOR PRODUCTS WITH MODELS / COLORS              */}
+      {/* =================================================================== */}
+      {variantModalProduct && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-neutral-200 space-y-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-neutral-100 border border-neutral-200 overflow-hidden relative shrink-0">
+                  <img
+                    src={variantModalProduct.images?.[0] || '/placeholder.png'}
+                    alt={variantModalProduct.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-neutral-900 text-sm line-clamp-1">
+                    {variantModalProduct.name}
+                  </h3>
+                  <p className="text-xs text-neutral-500 font-mono mt-0.5">
+                    {(() => {
+                      const selM = variantModalProduct.models?.find(
+                        (m) => m.name === selectedVariantModel || m.id === selectedVariantModel
+                      );
+                      const price = selM ? Number(selM.price) : Number(variantModalProduct.price);
+                      const stock = selM ? (selM.stock ?? variantModalProduct.stock) : variantModalProduct.stock;
+                      return (
+                        <>
+                          <span className="font-bold text-neutral-900">Rs. {price.toLocaleString('en-PK')}</span>
+                          {' • '}
+                          <span className={stock > 0 ? 'text-emerald-600 font-medium' : 'text-rose-600 font-medium'}>
+                            {stock > 0 ? `${stock} in stock` : 'Out of stock'}
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVariantModalProduct(null)}
+                className="w-8 h-8 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Model Selector */}
+            {variantModalProduct.enableModelSelection &&
+              Array.isArray(variantModalProduct.models) &&
+              variantModalProduct.models.filter((m) => m.isActive !== false).length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-800 flex items-center justify-between">
+                    <span>Select Model Variant *</span>
+                    <span className="text-[11px] text-neutral-400 font-normal">{selectedVariantModel}</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {variantModalProduct.models
+                      .filter((m) => m.isActive !== false)
+                      .map((m) => {
+                        const isSel = selectedVariantModel === m.name;
+                        const isOut = m.stock !== undefined && m.stock <= 0;
+                        return (
+                          <button
+                            key={m.id || m.name}
+                            type="button"
+                            onClick={() => setSelectedVariantModel(m.name)}
+                            className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                              isSel
+                                ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs'
+                                : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800'
+                            } ${isOut ? 'opacity-50' : ''}`}
+                          >
+                            <div className="font-bold truncate">{m.name}</div>
+                            <div className={`text-[10px] font-mono mt-0.5 ${isSel ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                              Rs. {Number(m.price).toLocaleString('en-PK')}
+                              {isOut ? ' (Out)' : ''}
+                            </div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+            {/* Color Selector */}
+            {(() => {
+              const activeCols =
+                (variantModalProduct.enableColorSelection &&
+                  Array.isArray(variantModalProduct.colors) &&
+                  variantModalProduct.colors.filter((c) => c.isActive !== false)) ||
+                (Array.isArray(variantModalProduct.variants?.colors) && variantModalProduct.variants.colors) ||
+                [];
+              if (activeCols.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-neutral-800 flex items-center justify-between">
+                    <span>Select Color</span>
+                    <span className="text-[11px] text-neutral-400 font-normal">{selectedVariantColor}</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {activeCols.map((c) => {
+                      const isSel = selectedVariantColor === c.name;
+                      const hasHex = c.hex && c.hex.startsWith('#');
+                      return (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => setSelectedVariantColor(c.name)}
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isSel
+                              ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs'
+                              : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800'
+                          }`}
+                        >
+                          {hasHex && (
+                            <span
+                              className="w-3 h-3 rounded-full border border-neutral-300 shrink-0"
+                              style={{ backgroundColor: c.hex }}
+                            />
+                          )}
+                          <span>{c.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setVariantModalProduct(null)}
+                className="px-4 py-2 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (variantModalProduct) {
+                    addSpecificVariantToCart(
+                      variantModalProduct,
+                      selectedVariantModel || undefined,
+                      selectedVariantColor || undefined
+                    );
+                  }
+                }}
+                className="px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                Add to POS Cart
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* =================================================================== */}

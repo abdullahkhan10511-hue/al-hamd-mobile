@@ -185,6 +185,11 @@ export default function InvoiceModal({
                       <tr key={idx} className="border-b border-neutral-100">
                         <td className="py-1 pr-1">
                           <div className="font-bold truncate max-w-[35mm]">{item.productName}</div>
+                          {(item.selectedModel || item.selectedColor || item.selectedSize) && (
+                            <div className="text-[8px] text-neutral-600 font-sans font-medium">
+                              {[item.selectedModel, item.selectedColor, item.selectedSize].filter(Boolean).join(' / ')}
+                            </div>
+                          )}
                           <div className="text-[8px] text-neutral-500 font-sans">SKU: {item.sku}</div>
                           {item.discountPercentage && item.discountPercentage > 0 ? (
                             <div className="text-[7px] text-neutral-600 font-sans">Bulk: {item.discountPercentage}% OFF</div>
@@ -362,9 +367,13 @@ export default function InvoiceModal({
                         <tr key={idx} className="hover:bg-neutral-50/50">
                           <td className="py-3.5 pr-4">
                             <p className="font-semibold text-neutral-900">{item.productName}</p>
-                            {(item.selectedSize || item.selectedColor) && (
-                              <p className="text-[10px] text-neutral-500 mt-0.5">
-                                {[item.selectedSize, item.selectedColor].filter(Boolean).join(' • ')}
+                            {(item.selectedModel || item.selectedColor || item.selectedSize) && (
+                              <p className="text-[10px] text-neutral-500 mt-0.5 font-medium">
+                                {[
+                                  item.selectedModel ? `Model: ${item.selectedModel}` : null,
+                                  item.selectedColor ? `Color: ${item.selectedColor}` : null,
+                                  item.selectedSize ? `Size: ${item.selectedSize}` : null,
+                                ].filter(Boolean).join(' • ')}
                               </p>
                             )}
                             {item.discountPercentage && item.discountPercentage > 0 ? (
