@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validatePromoCode } from '@/lib/db/promotions';
+import { getPromoCodeByCodeFromDb } from '@/lib/db/repositories/promotions';
+import { isDbConfigured } from '@/lib/db/mysql';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,13 +15,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await validatePromoCode({
-      code,
-      subtotal: Number(subtotal) || 0,
-      items: Array.isArray(items) ? items : [],
-      channel: channel === 'POS' ? 'POS' : 'ONLINE',
-      customer,
-    });
+    let promoOverride;
+    if (isDbConfigured()) {
+      promoOverride = await getPromoCodeByCodeFromDb(code);
+    }
+
+    const result = await validatePromoCode(
+      {
+        code,
+        subtotal: Number(subtotal) || 0,
+        items: Array.isArray(items) ? items : [],
+        channel: channel === 'POS' ? 'POS' : 'ONLINE',
+        customer,
+      },
+      promoOverride || undefined
+    );
 
     if (!result.valid) {
       return NextResponse.json(result, { status: 400 });

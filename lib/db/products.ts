@@ -800,6 +800,11 @@ export async function setProductStock(
   }
 
   if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock: safeStock }),
+    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: products },
@@ -861,6 +866,11 @@ export async function setProductLowStockThreshold(
   }
 
   if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lowStockThreshold: safeThreshold }),
+    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: products },

@@ -60,10 +60,33 @@ export function sanitizeAndMigrateActivityLogs(rawLogs: any[]): { logs: Activity
   return { logs, hasChanges };
 }
 
+let hasSyncedActivityLogsFromApi = false;
+export async function syncActivityLogsFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/admin/activity', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
+        setLocal(COLLECTION_KEY, data.logs);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: data.logs },
+          })
+        );
+      }
+    }
+  } catch {}
+}
+
 /**
  * Retrieves activity logs, automatically repairing any duplicate or malformed legacy IDs.
  */
 export function getActivityLogs(): ActivityLog[] {
+  if (typeof window !== 'undefined' && !hasSyncedActivityLogsFromApi) {
+    hasSyncedActivityLogsFromApi = true;
+    syncActivityLogsFromApi().catch(() => {});
+  }
   const rawLogs = getStoredCollection<ActivityLog>(COLLECTION_KEY, DEFAULT_ACTIVITY_LOGS);
   const { logs, hasChanges } = sanitizeAndMigrateActivityLogs(rawLogs);
 
@@ -93,5 +116,19 @@ export async function logActivity(
 
   const updated = [newEntry, ...logs].slice(0, 150); // Keep latest 150 entries
   await persistCollection(COLLECTION_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    fetch('/api/admin/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEntry),
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: updated },
+      })
+    );
+  }
+
   return newEntry;
 }

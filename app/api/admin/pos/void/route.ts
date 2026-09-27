@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { voidPosSale } from '@/lib/db/pos';
+import { voidOrderInDb } from '@/lib/db/repositories/orders';
+import { isDbConfigured } from '@/lib/db/mysql';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -66,6 +68,19 @@ export async function POST(request: NextRequest) {
 
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'Order ID is required.' }, { status: 400 });
+    }
+
+    if (isDbConfigured()) {
+      try {
+        const order = await voidOrderInDb(
+          orderId,
+          session.email,
+          reason || 'Cashier void / counter cancellation'
+        );
+        return NextResponse.json({ success: true, order });
+      } catch (voidErr: any) {
+        return NextResponse.json({ success: false, error: voidErr.message || 'Failed to void order.' }, { status: 400 });
+      }
     }
 
     const result = await voidPosSale(

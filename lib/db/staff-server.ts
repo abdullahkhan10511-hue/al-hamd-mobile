@@ -80,7 +80,9 @@ export function getServerStaffUsersSync(): StaffUser[] {
 
 export async function saveServerStaffUsers(users: StaffUser[]): Promise<void> {
   memoryStaffUsers = users;
-  saveLocalFileStaff(users);
+  if (!isDbConfigured()) {
+    saveLocalFileStaff(users);
+  }
 }
 
 export async function getServerStaffByEmail(email: string): Promise<StaffUser | undefined> {

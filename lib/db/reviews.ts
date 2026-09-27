@@ -7,12 +7,37 @@ const STORAGE_KEY = 'product_reviews';
 const seedReviews: ProductReview[] = [];
 
 export async function getAllReviews(): Promise<ProductReview[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/reviews', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.reviews)) {
+          await persistCollection(STORAGE_KEY, data.reviews);
+          return data.reviews;
+        }
+      }
+    } catch {
+      // Fall back to stored collection
+    }
+  }
   return getStoredCollection<ProductReview>(STORAGE_KEY, seedReviews);
 }
 
 export async function getCustomerReviews(customerIdOrEmail: string): Promise<ProductReview[]> {
-  const reviews = await getAllReviews();
   const normalized = customerIdOrEmail.trim().toLowerCase();
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/reviews?email=${encodeURIComponent(normalized)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.reviews)) {
+          return data.reviews;
+        }
+      }
+    } catch {}
+  }
+  const reviews = await getAllReviews();
   return reviews.filter(
     (r) =>
       (r.customerId && r.customerId.toLowerCase() === normalized) ||
@@ -111,6 +136,32 @@ export async function submitCustomerReview(params: {
     verified: true,
   };
 
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          author: newReview.author,
+          authorEmail: newReview.authorEmail,
+          rating: newReview.rating,
+          title: newReview.title,
+          comment: newReview.comment,
+          verified: true,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.review) {
+          newReview.id = data.review.id;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to sync review with server:', err);
+    }
+  }
+
   const updated = [newReview, ...reviews];
   await persistCollection(STORAGE_KEY, updated);
   return newReview;
@@ -167,6 +218,14 @@ export async function deleteCustomerReview(customerIdOrEmail: string, reviewId: 
 
   if (!isOwner) {
     throw new Error('Permission denied: You can only delete your own reviews.');
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      await fetch(`/api/reviews/${reviewId}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Failed to delete review on server:', err);
+    }
   }
 
   const updated = reviews.filter((r) => r.id !== reviewId);

@@ -609,7 +609,36 @@ function normalizePage(raw: any, index: number): CustomPage {
   };
 }
 
+let hasSyncedPagesFromApi = false;
+export async function syncPagesFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/admin/pages', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.pages) && data.pages.length > 0) {
+        await setStoredData(STORAGE_KEY, data.pages);
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
+        return;
+      }
+    }
+    // Fall back to public pages if admin endpoint is unauthorized
+    const pubRes = await fetch('/api/pages', { cache: 'no-store' });
+    if (pubRes.ok) {
+      const pubData = await pubRes.json();
+      if (pubData.success && Array.isArray(pubData.pages) && pubData.pages.length > 0) {
+        await setStoredData(STORAGE_KEY, pubData.pages);
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
+      }
+    }
+  } catch {}
+}
+
 export async function getPages(): Promise<CustomPage[]> {
+  if (typeof window !== 'undefined' && !hasSyncedPagesFromApi) {
+    hasSyncedPagesFromApi = true;
+    syncPagesFromApi().catch(() => {});
+  }
   const rawList = await getStoredData<any[]>(STORAGE_KEY, seedPages);
   const normalized = rawList.map((item, idx) => normalizePage(item, idx));
   return normalized.sort((a, b) => a.order - b.order);
@@ -701,6 +730,11 @@ export async function savePage(
   await setStoredData(STORAGE_KEY, updatedList);
 
   if (typeof window !== 'undefined') {
+    fetch('/api/admin/pages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedPage),
+    }).catch(() => {});
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
   }
 
@@ -757,16 +791,19 @@ export async function deletePage(
 
   await setStoredData(STORAGE_KEY, reordered);
 
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/pages/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+    window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
+  }
+
   await logActivity({
     adminEmail,
     action: 'DELETE_PAGE',
     target: target.title,
     details: `Permanently removed page "${target.title}" (slug: /${target.slug})`,
   });
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
-  }
 
   return true;
 }

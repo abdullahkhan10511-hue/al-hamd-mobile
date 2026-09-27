@@ -5,9 +5,21 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
 import { getStoreSettings } from '@/lib/db/settings';
+import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
+import { isDbConfigured } from '@/lib/db/mysql';
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = getStoreSettings();
+  let settings = getStoreSettings();
+  if (isDbConfigured()) {
+    try {
+      const dbSettings = await getStoreSettingsFromDb();
+      if (dbSettings) {
+        settings = dbSettings;
+      }
+    } catch (e) {
+      // Fallback to local settings
+    }
+  }
 
   const customFavicon =
     (settings.seo?.faviconUrl && typeof settings.seo.faviconUrl === 'string' && settings.seo.faviconUrl.trim()) ||

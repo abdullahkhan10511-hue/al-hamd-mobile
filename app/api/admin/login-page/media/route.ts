@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { isDbConfigured } from '@/lib/db/mysql';
+import {
+  getAllLoginPageMediaFromDb,
+  saveLoginPageMediaInDb,
+  deleteLoginPageMediaInDb,
+  reorderLoginPageMediaInDb,
+} from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_MEDIA, LoginPageMediaItem } from '@/lib/db/loginPage';
 
 const COOKIE_NAME = 'alhamd_admin_session';
@@ -32,38 +37,28 @@ function getSessionUser(request: NextRequest): { email: string; role: string } |
   return null;
 }
 
-const MEDIA_FILE_PATH = path.join(process.cwd(), 'data', 'login-page-media.json');
-
-function readMediaFile(): LoginPageMediaItem[] {
-  try {
-    if (fs.existsSync(MEDIA_FILE_PATH)) {
-      const content = fs.readFileSync(MEDIA_FILE_PATH, 'utf8');
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to read login-page-media.json:', err);
-  }
-  return DEFAULT_LOGIN_PAGE_MEDIA;
-}
-
-function writeMediaFile(items: LoginPageMediaItem[]): void {
-  try {
-    const dir = path.dirname(MEDIA_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(MEDIA_FILE_PATH, JSON.stringify(items, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Failed to write login-page-media.json:', err);
-  }
-}
-
 export async function GET() {
-  const items = readMediaFile();
-  return NextResponse.json({ success: true, items });
+  try {
+    let items: LoginPageMediaItem[] = [];
+
+    if (isDbConfigured()) {
+      try {
+        items = await getAllLoginPageMediaFromDb();
+      } catch (err) {
+        console.warn('MySQL error in /api/admin/login-page/media:', err);
+        items = DEFAULT_LOGIN_PAGE_MEDIA;
+      }
+    } else {
+      items = DEFAULT_LOGIN_PAGE_MEDIA;
+    }
+
+    return NextResponse.json({ success: true, items });
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Failed to load login page media' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -80,75 +75,51 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, items, item, id, updates, orderedIds } = body;
 
-    let currentList = readMediaFile();
+    if (!isDbConfigured()) {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured.' },
+        { status: 503 }
+      );
+    }
 
     if (action === 'sync' && Array.isArray(items)) {
-      currentList = items;
-      writeMediaFile(currentList);
-      return NextResponse.json({ success: true, items: currentList });
+      for (const itm of items) {
+        await saveLoginPageMediaInDb(itm);
+      }
+      const updated = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, items: updated });
     }
 
     if (action === 'add' && item) {
-      const nextOrder =
-        item.displayOrder !== undefined
-          ? item.displayOrder
-          : currentList.length > 0
-          ? Math.max(...currentList.map((m) => m.displayOrder || 0)) + 1
-          : 1;
-
-      const newItem: LoginPageMediaItem = {
-        ...item,
-        id: item.id || `login-media-${Date.now()}`,
-        displayOrder: nextOrder,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      currentList.push(newItem);
-      currentList.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      writeMediaFile(currentList);
-      return NextResponse.json({ success: true, item: newItem, items: currentList });
+      const saved = await saveLoginPageMediaInDb(item);
+      const all = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, item: saved, items: all });
     }
 
     if (action === 'update' && id && updates) {
-      const idx = currentList.findIndex((m) => m.id === id);
-      if (idx === -1) {
-        return NextResponse.json({ success: false, error: 'Media not found' }, { status: 404 });
-      }
-      currentList[idx] = {
-        ...currentList[idx],
-        ...updates,
-        updatedAt: new Date().toISOString(),
-      };
-      currentList.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      writeMediaFile(currentList);
-      return NextResponse.json({ success: true, item: currentList[idx], items: currentList });
+      const saved = await saveLoginPageMediaInDb({ ...updates, id });
+      const all = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, item: saved, items: all });
     }
 
     if (action === 'delete' && id) {
-      currentList = currentList.filter((m) => m.id !== id);
-      writeMediaFile(currentList);
-      return NextResponse.json({ success: true, items: currentList });
+      await deleteLoginPageMediaInDb(id);
+      const all = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, items: all });
     }
 
     if (action === 'reorder' && Array.isArray(orderedIds)) {
-      const map = new Map(currentList.map((m) => [m.id, m]));
-      const reordered: LoginPageMediaItem[] = [];
-      orderedIds.forEach((mId, idx) => {
-        const found = map.get(mId);
-        if (found) {
-          reordered.push({ ...found, displayOrder: idx + 1, updatedAt: new Date().toISOString() });
-          map.delete(mId);
-        }
-      });
-      map.forEach((rem) => reordered.push(rem));
-      writeMediaFile(reordered);
-      return NextResponse.json({ success: true, items: reordered });
+      await reorderLoginPageMediaInDb(orderedIds);
+      const all = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, items: all });
     }
 
-    // Default fallback: direct list overwrite if array passed
     if (Array.isArray(body)) {
-      writeMediaFile(body);
-      return NextResponse.json({ success: true, items: body });
+      for (const itm of body) {
+        await saveLoginPageMediaInDb(itm);
+      }
+      const all = await getAllLoginPageMediaFromDb();
+      return NextResponse.json({ success: true, items: all });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });

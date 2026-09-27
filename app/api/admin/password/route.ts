@@ -8,7 +8,9 @@ import {
   verifyServerPassword,
   generateServerSalt,
   hashServerPassword,
+  updateStaffInDb,
 } from '@/lib/db/staff-server';
+import { isDbConfigured } from '@/lib/db/mysql';
 import { StaffUser } from '@/types/admin';
 
 const COOKIE_NAME = 'alhamd_admin_session';
@@ -173,14 +175,23 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
+    if (isDbConfigured()) {
+      try {
+        await updateStaffInDb(targetUser.id, { newPassword });
+      } catch (err: any) {
+        console.warn('MySQL update password notice:', err.message);
+      }
+    }
+
     allStaff[index] = updatedUser;
     await saveServerStaffUsers(allStaff);
 
-    // If primary owner, sync in-code seed fallback files
+    // If primary owner, sync in-code seed fallback files only in offline/local mode
     if (
-      updatedUser.isOwner ||
-      updatedUser.id === 'staff-owner-1' ||
-      updatedUser.email.toLowerCase() === 'admin@alhamdmobile.com'
+      !isDbConfigured() &&
+      (updatedUser.isOwner ||
+        updatedUser.id === 'staff-owner-1' ||
+        updatedUser.email.toLowerCase() === 'admin@alhamdmobile.com')
     ) {
       syncSeedFiles(updatedUser.email, newSalt, newPasswordHash);
     }

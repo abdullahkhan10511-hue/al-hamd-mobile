@@ -58,18 +58,6 @@ export function readLocalFileSettings(): StoreSettings {
   return seedStoreSettings;
 }
 
-export function writeLocalFileSettings(settings: StoreSettings): void {
-  try {
-    const dir = path.dirname(SETTINGS_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Failed to write store-settings.json:', err);
-  }
-}
-
 export async function readServerSettings(): Promise<StoreSettings> {
   if (isDbConfigured()) {
     try {
@@ -82,21 +70,33 @@ export async function readServerSettings(): Promise<StoreSettings> {
 }
 
 export async function writeServerSettings(settings: StoreSettings): Promise<void> {
-  // Always update local file for rollback safety
-  writeLocalFileSettings(settings);
-
   if (isDbConfigured()) {
-    try {
-      await updateStoreSettingsInDb(settings);
-    } catch (err) {
-      console.warn('MySQL writeServerSettings notice:', err);
+    await updateStoreSettingsInDb(settings);
+    return;
+  }
+
+  // Fallback for local development without MySQL configured
+  try {
+    const dir = path.dirname(SETTINGS_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
+    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to write store-settings.json:', err);
   }
 }
 
 export async function GET() {
   const settings = await readServerSettings();
-  return NextResponse.json({ success: true, settings });
+  return NextResponse.json(
+    { success: true, settings },
+    {
+      headers: {
+        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=59',
+      },
+    }
+  );
 }
 
 export async function POST(request: NextRequest) {

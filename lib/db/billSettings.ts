@@ -18,7 +18,30 @@ export const defaultBillSettings: BillSettings = {
   thermalFooterNote: 'THANK YOU FOR YOUR PATRONAGE!',
 };
 
+let hasSyncedBillSettingsFromApi = false;
+export async function syncBillSettingsFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/admin/bill-settings', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        setLocal(BILL_SETTINGS_KEY, data.settings);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: BILL_SETTINGS_KEY, value: data.settings },
+          })
+        );
+      }
+    }
+  } catch {}
+}
+
 export function getBillSettings(): BillSettings {
+  if (typeof window !== 'undefined' && !hasSyncedBillSettingsFromApi) {
+    hasSyncedBillSettingsFromApi = true;
+    syncBillSettingsFromApi().catch(() => {});
+  }
   const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, defaultBillSettings);
   const base = {
     ...defaultBillSettings,
@@ -59,6 +82,19 @@ export async function updateBillSettings(
   };
 
   setLocal(BILL_SETTINGS_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    fetch('/api/admin/bill-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: BILL_SETTINGS_KEY, value: updated },
+      })
+    );
+  }
 
   await logActivity({
     adminEmail,

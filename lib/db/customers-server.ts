@@ -133,8 +133,9 @@ export function getServerCustomersSync(): Customer[] {
 
 export async function saveServerCustomers(customers: Customer[]): Promise<void> {
   memoryCustomers = customers;
-  // Always update local file for safe rollback
-  saveLocalFileCustomers(customers);
+  if (!isDbConfigured()) {
+    saveLocalFileCustomers(customers);
+  }
 }
 
 export function hashCustomerPasswordServer(password: string, salt: string): string {
@@ -248,11 +249,7 @@ export async function createWholesaleAccountServer(
   operatorEmail = 'admin@alhamd.com'
 ): Promise<Customer> {
   if (isDbConfigured()) {
-    const created = await createWholesaleAccountInDb(data);
-    // Sync to local file for safe rollback
-    const all = getServerCustomersSync();
-    saveLocalFileCustomers([created, ...all]);
-    return created;
+    return await createWholesaleAccountInDb(data);
   }
 
   // Fallback when DB not configured
@@ -305,11 +302,7 @@ export async function updateWholesaleAccountServer(
   operatorEmail = 'admin@alhamd.com'
 ): Promise<Customer> {
   if (isDbConfigured()) {
-    const updated = await updateWholesaleAccountInDb(id, updates);
-    // Keep local file updated for rollback
-    const all = getServerCustomersSync().map((c) => (c.id === id ? updated : c));
-    saveLocalFileCustomers(all);
-    return updated;
+    return await updateWholesaleAccountInDb(id, updates);
   }
 
   const customers = getServerCustomersSync();
@@ -425,10 +418,7 @@ export async function createSuperWholesaleAccountServer(
   operatorEmail = 'admin@alhamd.com'
 ): Promise<Customer> {
   if (isDbConfigured()) {
-    const created = await createSuperWholesaleAccountInDb(data);
-    const all = getServerCustomersSync();
-    saveLocalFileCustomers([created, ...all]);
-    return created;
+    return await createSuperWholesaleAccountInDb(data);
   }
 
   const shopName = (data.shopName || '').trim();
@@ -480,10 +470,7 @@ export async function updateSuperWholesaleAccountServer(
   operatorEmail = 'admin@alhamd.com'
 ): Promise<Customer> {
   if (isDbConfigured()) {
-    const updated = await updateWholesaleAccountInDb(id, updates);
-    const all = getServerCustomersSync().map((c) => (c.id === id ? updated : c));
-    saveLocalFileCustomers(all);
-    return updated;
+    return await updateWholesaleAccountInDb(id, updates);
   }
 
   const customers = getServerCustomersSync();
@@ -657,11 +644,7 @@ export async function registerCustomerServer(params: {
   dateOfBirth?: string;
 }): Promise<Customer> {
   if (isDbConfigured()) {
-    const created = await registerCustomerInDb(params);
-    // Keep local file updated for safe rollback
-    const all = getServerCustomersSync();
-    saveLocalFileCustomers([created, ...all]);
-    return created;
+    return await registerCustomerInDb(params);
   }
 
   const fullName = (params.fullName || `${params.firstName || ''} ${params.lastName || ''}`).trim();

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
-import {
-  getLoginPageSettingsFromDb,
-  updateLoginPageSettingsInDb,
-} from '@/lib/db/repositories/loginPage';
-import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
+import { getBillSettingsFromDb, updateBillSettingsInDb } from '@/lib/db/repositories/settings';
+import { defaultBillSettings } from '@/lib/db/billSettings';
+import { BillSettings } from '@/types/admin';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -37,55 +35,57 @@ function getSessionUser(request: NextRequest): { email: string; role: string } |
 
 export async function GET() {
   try {
-    let settings: LoginPageSettings;
+    let settings: BillSettings;
 
     if (isDbConfigured()) {
       try {
-        settings = await getLoginPageSettingsFromDb();
+        settings = await getBillSettingsFromDb();
       } catch (err) {
-        console.warn('MySQL error in /api/admin/login-page/settings:', err);
-        settings = DEFAULT_LOGIN_PAGE_SETTINGS;
+        console.warn('MySQL error in /api/admin/bill-settings GET:', err);
+        settings = defaultBillSettings;
       }
     } else {
-      settings = DEFAULT_LOGIN_PAGE_SETTINGS;
+      settings = defaultBillSettings;
     }
 
     return NextResponse.json({ success: true, settings });
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err?.message || 'Failed to load login page settings' },
+      { success: false, error: err?.message || 'Failed to load bill settings' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const session = getSessionUser(request);
+    const authHeader = request.headers.get('authorization');
+
+    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Admin credentials required to modify bill settings.' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    if (isDbConfigured()) {
+      const updated = await updateBillSettingsInDb(body, session?.email || 'admin@alhamd.com');
+      return NextResponse.json({ success: true, settings: updated });
+    }
+
+    return NextResponse.json({ success: true, settings: { ...defaultBillSettings, ...body } });
+  } catch (err: any) {
+    console.error('Error updating bill settings in MySQL:', err);
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Failed to update bill settings' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin credentials required to modify settings.' },
-        { status: 401 }
-      );
-    }
-
-    if (!isDbConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'Database is not configured.' },
-        { status: 503 }
-      );
-    }
-
-    const body = await request.json();
-    const updated = await updateLoginPageSettingsInDb(body);
-
-    return NextResponse.json({ success: true, settings: updated });
-  } catch (err: any) {
-    console.error('Error saving login page settings:', err);
-    return NextResponse.json(
-      { success: false, error: err?.message || 'Failed to save settings' },
-      { status: 500 }
-    );
-  }
+  return PUT(request);
 }

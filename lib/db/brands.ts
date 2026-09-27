@@ -5,7 +5,30 @@ import { logActivity } from './activity';
 
 const COLLECTION_KEY = 'brands';
 
+let hasSyncedBrandsFromApi = false;
+export async function syncBrandsFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/brands', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.brands) && data.brands.length > 0) {
+        await persistCollection(COLLECTION_KEY, data.brands);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: data.brands },
+          })
+        );
+      }
+    }
+  } catch {}
+}
+
 export function getBrands(): Brand[] {
+  if (typeof window !== 'undefined' && !hasSyncedBrandsFromApi) {
+    hasSyncedBrandsFromApi = true;
+    syncBrandsFromApi().catch(() => {});
+  }
   return getStoredCollection(COLLECTION_KEY, seedBrands);
 }
 
@@ -29,6 +52,19 @@ export async function createBrand(
 
   const updated = [...brands, newBrand];
   await persistCollection(COLLECTION_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    fetch('/api/brands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newBrand),
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: updated },
+      })
+    );
+  }
 
   await logActivity({
     adminEmail,
@@ -59,6 +95,19 @@ export async function updateBrand(
   brands[index] = updated;
   await persistCollection(COLLECTION_KEY, brands);
 
+  if (typeof window !== 'undefined') {
+    fetch(`/api/brands/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: brands },
+      })
+    );
+  }
+
   await logActivity({
     adminEmail,
     action: 'Updated Brand',
@@ -75,6 +124,17 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
 
   const filtered = brands.filter((b) => b.id !== id);
   await persistCollection(COLLECTION_KEY, filtered);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/brands/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: filtered },
+      })
+    );
+  }
 
   await logActivity({
     adminEmail,

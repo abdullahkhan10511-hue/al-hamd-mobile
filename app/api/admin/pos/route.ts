@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPosSale, getPosDailySummary, getPosOrders } from '@/lib/db/pos';
-import { getServerStaffByEmail } from '@/lib/db/staff-server';
+import { createPosSaleInDb, getPosDailySummaryFromDb } from '@/lib/db/repositories/pos';
+import { getAllOrdersFromDb } from '@/lib/db/repositories/orders';
+import { isDbConfigured } from '@/lib/db/mysql';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await createPosSale({
+    const saleParams = {
       items,
       catalogSnapshot: Array.isArray(catalogSnapshot) ? catalogSnapshot : Array.isArray(body.products) ? body.products : undefined,
       customer,
@@ -95,7 +97,14 @@ export async function POST(request: NextRequest) {
       cashierName: session.name || session.email.split('@')[0],
       cashierEmail: session.email,
       notes,
-    });
+    };
+
+    let result;
+    if (isDbConfigured()) {
+      result = await createPosSaleInDb(saleParams);
+    } else {
+      result = await createPosSale(saleParams);
+    }
 
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });
@@ -119,13 +128,30 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get('view');
 
     if (view === 'summary') {
-      const summary = getPosDailySummary(session.email);
+      const summary = isDbConfigured()
+        ? await getPosDailySummaryFromDb(session.email)
+        : getPosDailySummary(session.email);
       return NextResponse.json({ success: true, summary });
     }
 
     const query = searchParams.get('query') || '';
-    const orders = getPosOrders(query);
-    return NextResponse.json({ success: true, orders });
+    if (isDbConfigured()) {
+      let orders = await getAllOrdersFromDb({ orderSource: 'POS' });
+      if (query.trim()) {
+        const q = query.trim().toLowerCase();
+        orders = orders.filter(
+          (o) =>
+            o.id.toLowerCase().includes(q) ||
+            o.customer?.firstName?.toLowerCase().includes(q) ||
+            o.customer?.phone?.includes(q) ||
+            o.customer?.email?.toLowerCase().includes(q)
+        );
+      }
+      return NextResponse.json({ success: true, orders });
+    } else {
+      const orders = getPosOrders(query);
+      return NextResponse.json({ success: true, orders });
+    }
   } catch (err: any) {
     console.error('API /api/admin/pos GET Error:', err);
     return NextResponse.json({ success: false, error: err?.message || 'Server error loading POS data.' }, { status: 500 });

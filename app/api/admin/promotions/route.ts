@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPromoCodes, createPromoCode } from '@/lib/db/promotions';
+import { getAllPromoCodesFromDb, insertPromoCodeToDb } from '@/lib/db/repositories/promotions';
+import { isDbConfigured } from '@/lib/db/mysql';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -63,7 +65,9 @@ export async function GET(request: NextRequest) {
     const search = (searchParams.get('search') || '').toLowerCase().trim();
     const status = searchParams.get('status'); // 'all' | 'active' | 'inactive' | 'expired'
 
-    let promos = getPromoCodes();
+    let promos = isDbConfigured()
+      ? await getAllPromoCodesFromDb()
+      : getPromoCodes();
     const now = new Date();
 
     if (search) {
@@ -106,8 +110,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const result = await createPromoCode(body, session.email);
 
+    if (isDbConfigured()) {
+      try {
+        const promo = await insertPromoCodeToDb(body);
+        return NextResponse.json({ success: true, promo }, { status: 201 });
+      } catch (insertErr: any) {
+        return NextResponse.json({ success: false, error: insertErr.message || 'Failed to create promo code.' }, { status: 400 });
+      }
+    }
+
+    const result = await createPromoCode(body, session.email);
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });
     }

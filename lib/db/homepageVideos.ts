@@ -33,10 +33,33 @@ export const seedHomepageVideos: HomepageVideo[] = [
   },
 ];
 
+let hasSyncedHomepageVideosFromApi = false;
+export async function syncHomepageVideosFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/admin/homepage-videos', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.videos) && data.videos.length > 0) {
+        await persistCollection(COLLECTION_KEY, data.videos);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: data.videos },
+          })
+        );
+      }
+    }
+  } catch {}
+}
+
 /**
  * Get all homepage videos ordered by displayOrder
  */
 export function getHomepageVideos(): HomepageVideo[] {
+  if (typeof window !== 'undefined' && !hasSyncedHomepageVideosFromApi) {
+    hasSyncedHomepageVideosFromApi = true;
+    syncHomepageVideosFromApi().catch(() => {});
+  }
   const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, seedHomepageVideos);
   return items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }

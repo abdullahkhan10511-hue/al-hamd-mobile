@@ -527,16 +527,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     router.push('/checkout');
   };
 
-  const handleSubmitReview = (e: React.FormEvent) => {
+  const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reviewName.trim() || !reviewComment.trim()) return;
+    if (!reviewName.trim() || !reviewComment.trim() || !product) return;
 
     const newRev = {
       id: `rev-${Date.now()}`,
       author: reviewName,
       rating: reviewRating,
       date: 'Just now',
-      title: 'Verified Customer Feedback',
+      title: 'Customer Feedback',
       comment: reviewComment,
       verified: true,
     };
@@ -545,6 +545,23 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     setReviewSubmitted(true);
     setReviewName('');
     setReviewComment('');
+
+    try {
+      await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: product.id,
+          author: newRev.author,
+          rating: newRev.rating,
+          title: newRev.title,
+          comment: newRev.comment,
+          verified: false,
+        }),
+      });
+    } catch (err) {
+      console.warn('Failed to submit review to server:', err);
+    }
   };
 
   return (

@@ -324,14 +324,17 @@ export interface PromoValidationResult {
 /**
  * Validates promo code and calculates discount strictly on server.
  */
-export async function validatePromoCode(params: ValidatePromoParams): Promise<PromoValidationResult> {
+export async function validatePromoCode(
+  params: ValidatePromoParams,
+  promoOverride?: PromoCode
+): Promise<PromoValidationResult> {
   const cleanCode = (params.code || '').trim().toUpperCase();
 
   if (!cleanCode) {
     return { valid: false, error: 'Please enter a promo code.' };
   }
 
-  const promo = getPromoCodeByCode(cleanCode);
+  const promo = promoOverride || getPromoCodeByCode(cleanCode);
   if (!promo) {
     return { valid: false, error: 'Invalid promo code.' };
   }
