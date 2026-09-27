@@ -5,7 +5,7 @@ import {
   getServerCustomerByShopName,
   sanitizeCustomer,
 } from '@/lib/db/customers-server';
-import { getServerStaffByEmail } from '@/lib/db/staff-server';
+import { getServerStaffByEmailSync } from '@/lib/db/staff-server';
 import { ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
@@ -23,7 +23,7 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
       try {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.email) {
-          const fresh = getServerStaffByEmail(parsed.email);
+          const fresh = getServerStaffByEmailSync(parsed.email);
           if (fresh && fresh.status !== 'inactive') {
             return fresh;
           } else if (fresh && fresh.status === 'inactive') {
@@ -66,7 +66,7 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
     }
 
     if (emailToFind) {
-      const fresh = getServerStaffByEmail(emailToFind);
+      const fresh = getServerStaffByEmailSync(emailToFind);
       if (fresh) {
         if (fresh.status === 'inactive') return null;
         return fresh;
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const wholesaleAccounts = getServerWholesaleAccounts();
+    const wholesaleAccounts = await getServerWholesaleAccounts();
     const safeList = wholesaleAccounts.map(sanitizeCustomer);
 
     return NextResponse.json({
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = getServerCustomerByShopName(trimmedShopName);
+    const existing = await getServerCustomerByShopName(trimmedShopName);
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'A wholesale account with this shop name already exists.' },
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const created = createWholesaleAccountServer(
+    const created = await createWholesaleAccountServer(
       {
         shopName: trimmedShopName,
         password: trimmedPassword,

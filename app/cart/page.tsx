@@ -22,6 +22,7 @@ export default function CartPage() {
     promoCode,
     applyPromoCode,
     isWholesale,
+    isSuperWholesale,
   } = useCart();
 
   const [inputCode, setInputCode] = useState('');
@@ -90,22 +91,23 @@ export default function CartPage() {
 
             <div className="border border-neutral-200/80 rounded-3xl overflow-hidden divide-y divide-neutral-100">
               {cart.map((item) => {
+                const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
                 let unitPrice: number;
                 if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
                   const modelObj = item.product.models.find(
                     (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
                   );
                   if (modelObj) {
-                    unitPrice = getModelEffectivePrice(item.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                    unitPrice = getModelEffectivePrice(item.product, modelObj, customerTier);
                   } else {
-                    unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                    unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customerTier);
                   }
                 } else {
-                  unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+                  unitPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customerTier);
                 }
 
                 const lineTotal = unitPrice * item.quantity;
-                const isWholesaleActive = isWholesale && item.product.wholesalePrice && Number(item.product.wholesalePrice) > 0;
+                const isWholesaleActive = (isWholesale || isSuperWholesale) && item.product.wholesalePrice && Number(item.product.wholesalePrice) > 0;
                 const validImage = item.selectedImage || getValidImageSrc(item.product?.images);
                 return (
                   <div

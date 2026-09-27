@@ -68,7 +68,26 @@ export function getCategories(): Category[] {
     persistCollection(COLLECTION_KEY, list);
   }
 
+  if (typeof window !== 'undefined' && !hasSyncedCategoriesFromApi) {
+    hasSyncedCategoriesFromApi = true;
+    syncCategoriesFromApi().catch(() => {});
+  }
+
   return list;
+}
+
+let hasSyncedCategoriesFromApi = false;
+export async function syncCategoriesFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/categories');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
+        await persistCollection(COLLECTION_KEY, data.categories);
+      }
+    }
+  } catch {}
 }
 
 export function isCategoryActive(c: Category): boolean {
@@ -140,6 +159,14 @@ export async function createCategory(
 
     const updated = [...categories, newCat];
     await persistCollection(COLLECTION_KEY, updated);
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCat),
+      }).catch(() => {});
+    }
 
     // Remove from deleted slugs blacklist if previously deleted
     const deletedSlugs = getLocal<string[]>(DELETED_CATEGORY_SLUGS_KEY, []);
@@ -239,6 +266,14 @@ export async function updateCategory(
     categories[index] = updated;
     await persistCollection(COLLECTION_KEY, categories);
 
+    if (typeof window !== 'undefined') {
+      fetch(`/api/categories/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sanitizedUpdates),
+      }).catch(() => {});
+    }
+
     await logActivity({
       adminEmail,
       action: 'Updated Category',
@@ -261,6 +296,12 @@ export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'
 
     const filtered = categories.filter((c) => c.id !== id);
     await persistCollection(COLLECTION_KEY, filtered);
+
+    if (typeof window !== 'undefined') {
+      fetch(`/api/categories/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+    }
 
     // Blacklist deleted slug so getCategories() seed rehydration never resurrects it
     const deletedSlugs = getLocal<string[]>(DELETED_CATEGORY_SLUGS_KEY, []);

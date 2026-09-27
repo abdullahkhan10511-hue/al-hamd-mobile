@@ -26,6 +26,7 @@ import {
   Store,
   Globe,
   Building2,
+  Crown,
 } from 'lucide-react';
 
 export default function AdminOrdersPage() {
@@ -35,7 +36,7 @@ export default function AdminOrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'online' | 'pos' | 'wholesale'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'online' | 'pos' | 'wholesale' | 'super_wholesale'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'highest' | 'lowest'>('newest');
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
   const [selectedPosOrder, setSelectedPosOrder] = useState<Order | null>(null);
@@ -176,6 +177,7 @@ export default function AdminOrdersPage() {
             >
               <option value="all">All Channels (All)</option>
               <option value="wholesale">Wholesale Orders</option>
+              <option value="super_wholesale">Super Wholesale Orders</option>
               <option value="online">Online Orders</option>
               <option value="pos">Walk-In / POS Orders</option>
             </select>
@@ -257,10 +259,18 @@ export default function AdminOrdersPage() {
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         {(() => {
                           const orderType = getOrderType(order);
+                          if (orderType === 'super_wholesale') {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                                <Crown className="w-3 h-3 text-purple-700" />
+                                SUPER WHOLESALE
+                              </span>
+                            );
+                          }
                           if (orderType === 'wholesale') {
                             return (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                                <Building2 className="w-3 h-3 text-purple-600" />
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                <Building2 className="w-3 h-3 text-indigo-600" />
                                 WHOLESALE
                               </span>
                             );
@@ -289,7 +299,7 @@ export default function AdminOrdersPage() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      {getOrderType(order) === 'wholesale' ? (
+                      {getOrderType(order) === 'wholesale' || getOrderType(order) === 'super_wholesale' ? (
                         <>
                           <div className="font-bold text-neutral-950 flex items-center gap-1">
                             <span>{order.shopName || order.customer.firstName}</span>

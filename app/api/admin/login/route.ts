@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Lookup staff user in database (checking server-persisted staff first)
-    let staffUser: StaffUser | undefined = getServerStaffByEmail(normalizedEmail);
+    let staffUser: StaffUser | undefined = await getServerStaffByEmail(normalizedEmail);
 
     if (!staffUser) {
       staffUser = getStaffByEmail(normalizedEmail);

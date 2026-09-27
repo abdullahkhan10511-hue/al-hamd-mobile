@@ -10,6 +10,7 @@ import { getCustomers } from '@/lib/db/customers';
 import { getEnabledPaymentMethods } from '@/lib/db/paymentMethods';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { formatPrice } from '@/lib/utils';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
 import {
   Store,
@@ -347,9 +348,10 @@ export default function ShopCounterPosPage() {
     return list;
   }, [products, catalogSearch, selectedCategory, sortBy]);
 
-  // Cart Calculations with standard retail pricing
+  // Cart Calculations with account-type pricing
   const cartCalculations = useMemo(() => {
     let subtotal = 0;
+    const customerTier = selectedCustomer?.customerType || 'RETAIL';
     const items = cart.map((item) => {
       const modelObj =
         item.selectedModel && Array.isArray(item.product.models)
@@ -360,8 +362,8 @@ export default function ShopCounterPosPage() {
             )
           : null;
       const basePrice = modelObj
-        ? (Number(modelObj.price) || Number(item.product.price) || 0)
-        : (item.selectedPrice ?? Number(item.product.price) ?? 0);
+        ? getModelEffectivePrice(item.product, modelObj, customerTier)
+        : getProductEffectivePrice(item.product, customerTier);
       const unitPrice = basePrice;
       const lineTotal = unitPrice * item.quantity;
       subtotal += lineTotal;
@@ -399,7 +401,7 @@ export default function ShopCounterPosPage() {
       grandTotal,
       itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
     };
-  }, [cart, discountType, discountValue, appliedPromo]);
+  }, [cart, discountType, discountValue, appliedPromo, selectedCustomer?.customerType]);
 
   const addSpecificVariantToCart = (live: Product, modelName?: string, colorName?: string) => {
     const modelObj =
@@ -712,12 +714,15 @@ export default function ShopCounterPosPage() {
               lastName: selectedCustomer.lastName,
               email: selectedCustomer.email,
               phone: selectedCustomer.phone,
+              customerType: selectedCustomer.customerType,
+              shopName: selectedCustomer.shopName,
             }
           : {
               firstName: walkinName.trim() || 'Walk-in',
               lastName: 'Customer',
               email: 'counter@alhamd-mobile.com',
               phone: walkinPhone.trim(),
+              customerType: 'RETAIL' as const,
             };
 
       const result = await createPosSale({
@@ -1263,9 +1268,21 @@ export default function ShopCounterPosPage() {
                                 className="p-2 hover:bg-neutral-50 cursor-pointer flex justify-between items-center"
                               >
                                 <div>
-                                  <span className="font-bold text-neutral-900">
-                                    {c.firstName} {c.lastName}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-neutral-900">
+                                      {c.shopName || `${c.firstName} ${c.lastName}`.trim()}
+                                    </span>
+                                    {c.customerType === 'SUPER_WHOLESALE' && (
+                                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                                        Super Wholesale
+                                      </span>
+                                    )}
+                                    {c.customerType === 'WHOLESALE' && (
+                                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-white">
+                                        Wholesale
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="text-[10px] text-neutral-500">{c.phone || c.email}</div>
                                 </div>
                                 <span className="text-[10px] text-emerald-600 font-semibold">
@@ -1279,8 +1296,20 @@ export default function ShopCounterPosPage() {
                   ) : (
                     <div className="p-2 rounded-xl bg-white border border-neutral-200 flex items-center justify-between text-xs">
                       <div>
-                        <div className="font-bold text-neutral-900">
-                          {selectedCustomer.firstName} {selectedCustomer.lastName}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-neutral-900">
+                            {selectedCustomer.shopName || `${selectedCustomer.firstName} ${selectedCustomer.lastName}`.trim()}
+                          </span>
+                          {selectedCustomer.customerType === 'SUPER_WHOLESALE' && (
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                              Super Wholesale
+                            </span>
+                          )}
+                          {selectedCustomer.customerType === 'WHOLESALE' && (
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-white">
+                              Wholesale
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-neutral-500">
                           {selectedCustomer.phone || selectedCustomer.email} • {selectedCustomer.totalOrders || 0} orders

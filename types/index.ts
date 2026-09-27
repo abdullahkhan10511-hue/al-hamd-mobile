@@ -40,6 +40,7 @@ export interface ProductModelVariant {
   price: number;
   compareAtPrice?: number;
   wholesalePrice?: number;
+  superWholesalePrice?: number;
   stock?: number;
   sku?: string;
   isActive: boolean;
@@ -64,6 +65,7 @@ export interface Product {
   price: number;
   compareAtPrice?: number;
   wholesalePrice?: number;
+  superWholesalePrice?: number;
   discountPercentage?: number;
   images: string[];
   videos?: string[];

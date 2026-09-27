@@ -93,6 +93,8 @@ export async function createPromoCode(
   const updated = [newPromo, ...promos];
   await savePromoCodes(updated);
 
+
+
   await logActivity({
     adminEmail: operatorEmail,
     action: 'Created Promo Code',
@@ -135,6 +137,8 @@ export async function updatePromoCode(
 
   promos[index] = updatedPromo;
   await savePromoCodes(promos);
+
+
 
   await logActivity({
     adminEmail: operatorEmail,
@@ -192,6 +196,8 @@ export async function deletePromoCode(
   const remaining = promos.filter((p) => p.id !== id);
   await savePromoCodes(remaining);
 
+
+
   await logActivity({
     adminEmail: operatorEmail,
     action: 'Deleted Promo Code',
@@ -242,6 +248,8 @@ export async function recordPromoUsage(
 
   const updatedUsages = [newUsage, ...usages];
   await persistCollection(PROMO_USAGES_KEY, updatedUsages);
+
+
 
   // Increment usedCount on PromoCode
   const promos = getPromoCodes();

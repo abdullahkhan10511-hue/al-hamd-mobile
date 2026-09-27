@@ -195,12 +195,29 @@ export async function getWholesaleAccounts(): Promise<Customer[]> {
   return customers.filter((c) => c.customerType === 'WHOLESALE');
 }
 
+export async function getSuperWholesaleAccounts(): Promise<Customer[]> {
+  const customers = await getCustomers();
+  return customers.filter((c) => c.customerType === 'SUPER_WHOLESALE');
+}
+
 export async function getWholesaleAccountByShopName(shopName: string): Promise<Customer | null> {
   const clean = shopName.trim().toLowerCase();
   const customers = await getCustomers();
   const found = customers.find(
     (c) =>
       c.customerType === 'WHOLESALE' &&
+      c.shopName &&
+      c.shopName.trim().toLowerCase() === clean
+  );
+  return found || null;
+}
+
+export async function getSuperWholesaleAccountByShopName(shopName: string): Promise<Customer | null> {
+  const clean = shopName.trim().toLowerCase();
+  const customers = await getCustomers();
+  const found = customers.find(
+    (c) =>
+      c.customerType === 'SUPER_WHOLESALE' &&
       c.shopName &&
       c.shopName.trim().toLowerCase() === clean
   );
@@ -609,6 +626,201 @@ export async function deleteWholesaleAccount(
   return { success: true };
 }
 
+export async function createSuperWholesaleAccount(
+  data: {
+    shopName: string;
+    password: string;
+    phone?: string;
+    address?: string;
+    status?: 'active' | 'inactive';
+  },
+  operatorEmail = 'admin@alhamd.com'
+): Promise<SanitizedCustomer> {
+  const shopName = (data.shopName || '').trim();
+  if (!shopName) {
+    throw new Error('Shop Name is required.');
+  }
+
+  if (!data.password || !data.password.trim()) {
+    throw new Error('Password is required.');
+  }
+
+  if (data.password.trim().length < 4) {
+    throw new Error('Password must be at least 4 characters long.');
+  }
+
+  const existing = await getCustomerByShopName(shopName);
+  if (existing) {
+    throw new Error('An account with this shop name already exists.');
+  }
+
+  const salt = generateSalt(16);
+  const passwordHash = await hashCustomerPassword(data.password.trim(), salt);
+
+  const cleanSlug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const id = `cust-swh-${Date.now()}-${cleanSlug.slice(0, 15) || 'shop'}`;
+
+  const newAccount = await saveCustomer(
+    {
+      id,
+      customerType: 'SUPER_WHOLESALE',
+      shopName,
+      fullName: shopName,
+      firstName: shopName,
+      lastName: '',
+      phone: (data.phone || '').trim(),
+      address: (data.address || '').trim(),
+      passwordHash,
+      passwordSalt: salt,
+      status: data.status === 'inactive' ? 'inactive' : 'active',
+      totalOrders: 0,
+      totalSpent: 0,
+      createdAt: new Date().toISOString(),
+    },
+    operatorEmail
+  );
+
+  await logActivity({
+    adminEmail: operatorEmail,
+    action: 'Created Super Wholesale Account',
+    target: shopName,
+    details: `Created active super wholesale account for "${shopName}" (ID: ${id})`,
+  });
+
+  return sanitizeCustomer(newAccount);
+}
+
+export async function updateSuperWholesaleAccount(
+  id: string,
+  updates: {
+    shopName?: string;
+    phone?: string;
+    address?: string;
+    status?: 'active' | 'suspended' | 'deactivated' | 'inactive';
+    password?: string;
+  },
+  operatorEmail = 'admin@alhamd.com'
+): Promise<SanitizedCustomer> {
+  const customers = await getCustomers();
+  const targetIndex = customers.findIndex(
+    (c) =>
+      c.id === id ||
+      (c.customerType === 'SUPER_WHOLESALE' && c.shopName?.toLowerCase() === id.toLowerCase())
+  );
+
+  if (targetIndex === -1) {
+    throw new Error('Super wholesale account not found.');
+  }
+
+  const target = customers[targetIndex];
+
+  let newShopName = target.shopName;
+  if (
+    updates.shopName &&
+    updates.shopName.trim() &&
+    updates.shopName.trim().toLowerCase() !== target.shopName?.toLowerCase()
+  ) {
+    const duplicate = await getCustomerByShopName(updates.shopName.trim());
+    if (duplicate && duplicate.id !== target.id) {
+      throw new Error(`An account for "${updates.shopName.trim()}" already exists.`);
+    }
+    newShopName = updates.shopName.trim();
+  }
+
+  let newPasswordHash = target.passwordHash;
+  let newPasswordSalt = target.passwordSalt;
+
+  if (updates.password && updates.password.trim()) {
+    if (updates.password.trim().length < 4) {
+      throw new Error('New password must be at least 4 characters long.');
+    }
+    newPasswordSalt = generateSalt(16);
+    newPasswordHash = await hashCustomerPassword(updates.password.trim(), newPasswordSalt);
+  }
+
+  const updatedAccount: Customer = {
+    ...target,
+    shopName: newShopName,
+    fullName: newShopName || target.fullName,
+    firstName: newShopName || target.firstName,
+    phone: updates.phone !== undefined ? updates.phone.trim() : target.phone,
+    address: updates.address !== undefined ? updates.address.trim() : target.address,
+    status: updates.status || target.status || 'active',
+    passwordHash: newPasswordHash,
+    passwordSalt: newPasswordSalt,
+  };
+
+  customers[targetIndex] = updatedAccount;
+  await persistCollection(STORAGE_KEY, customers);
+
+  await logActivity({
+    adminEmail: operatorEmail,
+    action: 'Updated Super Wholesale Account',
+    target: updatedAccount.shopName || updatedAccount.id,
+    details: `Updated super wholesale account "${updatedAccount.shopName}"`,
+  });
+
+  return sanitizeCustomer(updatedAccount);
+}
+
+export async function updateSuperWholesaleAccountStatus(
+  id: string,
+  status: 'active' | 'suspended' | 'deactivated' | 'inactive',
+  operatorEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  const customers = await getCustomers();
+  const target = customers.find(
+    (c) =>
+      c.id === id ||
+      (c.customerType === 'SUPER_WHOLESALE' && c.shopName?.toLowerCase() === id.toLowerCase())
+  );
+
+  if (!target) {
+    return false;
+  }
+
+  target.status = status;
+  await persistCollection(STORAGE_KEY, customers);
+
+  await logActivity({
+    adminEmail: operatorEmail,
+    action: 'Updated Super Wholesale Account Status',
+    target: target.shopName || target.email || target.id,
+    details: `Changed account status for "${target.shopName}" to ${status.toUpperCase()}`,
+  });
+
+  return true;
+}
+
+export async function deleteSuperWholesaleAccount(
+  id: string,
+  operatorEmail = 'admin@alhamd.com'
+): Promise<{ success: boolean; error?: string }> {
+  const customers = await getCustomers();
+  const targetIndex = customers.findIndex(
+    (c) =>
+      c.id === id ||
+      (c.customerType === 'SUPER_WHOLESALE' && c.shopName?.toLowerCase() === id.toLowerCase())
+  );
+
+  if (targetIndex === -1) {
+    return { success: false, error: 'Super wholesale account not found.' };
+  }
+
+  const target = customers[targetIndex];
+  const updated = customers.filter((_, idx) => idx !== targetIndex);
+  await persistCollection(STORAGE_KEY, updated);
+
+  await logActivity({
+    adminEmail: operatorEmail,
+    action: 'Deleted Super Wholesale Account',
+    target: target.shopName || target.email || target.id,
+    details: `Safely deleted super wholesale account "${target.shopName}". Associated historical orders were preserved intact.`,
+  });
+
+  return { success: true };
+}
+
 /**
  * Authenticate wholesale customer credentials using Shop Name + Password.
  */
@@ -664,21 +876,21 @@ export async function authenticateCustomer(
 
   const customers = await getCustomers();
 
-  // 1. Check for Wholesale account match by Shop Name first
+  // 1. Check for Wholesale or Super Wholesale account match by Shop Name first
   const wholesaleMatch = customers.find(
     (c) =>
-      c.customerType === 'WHOLESALE' &&
+      (c.customerType === 'WHOLESALE' || c.customerType === 'SUPER_WHOLESALE') &&
       Boolean(c.shopName) &&
       c.shopName!.trim().toLowerCase() === normalized
   );
 
   if (wholesaleMatch) {
     if (wholesaleMatch.status && wholesaleMatch.status !== 'active') {
-      throw new Error('Your wholesale account is deactivated. Please contact customer support.');
+      throw new Error('Your account is deactivated. Please contact customer support.');
     }
 
     if (!wholesaleMatch.passwordHash || !wholesaleMatch.passwordSalt) {
-      throw new Error('This wholesale account has no password set. Please contact administration.');
+      throw new Error('This account has no password set. Please contact administration.');
     }
 
     const isValid = await verifyCustomerPassword(password, wholesaleMatch.passwordSalt, wholesaleMatch.passwordHash);
@@ -691,7 +903,11 @@ export async function authenticateCustomer(
 
   // 2. Standard Retail Customer by Email
   const customer = customers.find(
-    (c) => c.customerType !== 'WHOLESALE' && c.email && c.email.toLowerCase() === normalized
+    (c) =>
+      c.customerType !== 'WHOLESALE' &&
+      c.customerType !== 'SUPER_WHOLESALE' &&
+      c.email &&
+      c.email.toLowerCase() === normalized
   );
 
   if (!customer) {

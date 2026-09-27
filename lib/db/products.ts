@@ -136,7 +136,26 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
     persistCollection(COLLECTION_KEY, list);
   }
 
+  if (typeof window !== 'undefined' && !hasSyncedProductsFromApi) {
+    hasSyncedProductsFromApi = true;
+    syncProductsFromApi().catch(() => {});
+  }
+
   return list;
+}
+
+let hasSyncedProductsFromApi = false;
+export async function syncProductsFromApi(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/products');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.products) && data.products.length > 0) {
+        await persistCollection(COLLECTION_KEY, data.products);
+      }
+    }
+  } catch {}
 }
 
 export function getProductById(id: string) {
@@ -242,6 +261,13 @@ export async function createProduct(
       Number(data.wholesalePrice) > 0
         ? Number(data.wholesalePrice)
         : undefined,
+    superWholesalePrice:
+      data.superWholesalePrice !== undefined &&
+      data.superWholesalePrice !== null &&
+      !isNaN(Number(data.superWholesalePrice)) &&
+      Number(data.superWholesalePrice) > 0
+        ? Number(data.superWholesalePrice)
+        : undefined,
     stock: finalStock,
     lowStockThreshold: data.lowStockThreshold !== undefined && data.lowStockThreshold !== null ? Number(data.lowStockThreshold) : 0,
     description: data.description || '',
@@ -267,6 +293,14 @@ export async function createProduct(
 
   const updated = [newProduct, ...products];
   await persistCollection(COLLECTION_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    fetch('/api/admin/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newProduct),
+    }).catch(() => {});
+  }
 
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {
@@ -393,6 +427,14 @@ export async function updateProduct(
   products[index] = updatedProduct;
   await persistCollection(COLLECTION_KEY, products);
 
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => {});
+  }
+
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {
     try {
@@ -441,6 +483,12 @@ export async function deleteProduct(
   // 1. Permanently remove from product database collection
   const filtered = products.filter((p) => p.id !== id);
   await persistCollection(COLLECTION_KEY, filtered);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+  }
 
   // 2. Blacklist deleted ID so getProducts() seed rehydration never resurrects it
   const deletedIds = getLocal<string[]>(DELETED_PRODUCT_IDS_KEY, []);
@@ -611,6 +659,14 @@ export async function adjustStock(
   }
 
   await persistCollection(COLLECTION_KEY, products);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock: product.stock, models: product.models }),
+    }).catch(() => {});
+  }
 
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {

@@ -37,6 +37,7 @@ import {
   Store,
   TicketPercent,
   Building2,
+  Crown,
   Video,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
@@ -69,6 +70,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Inventory', href: '/admin/inventory', icon: Warehouse, permission: 'inventory.view' },
   { label: 'Customers', href: '/admin/customers', icon: Users, permission: 'customers.view' },
   { label: 'Wholesale Accounts', href: '/admin/wholesale', icon: Building2, permission: 'wholesale.manage' },
+  { label: 'Super Wholesale Accounts', href: '/admin/super-wholesale', icon: Crown, permission: 'wholesale.manage' },
   { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['orders.view', 'products.view'] },
   { label: 'Home Page Videos', href: '/admin/homepage-videos', icon: Video, permissions: ['content.homepage', 'content.media'] },
   { label: 'Homepage Control', href: '/admin/homepage', icon: Sparkles, permission: 'content.homepage' },

@@ -35,6 +35,7 @@ interface CartContextType {
   discount: number;
   total: number;
   isWholesale: boolean;
+  isSuperWholesale: boolean;
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
   promoCode: string;
@@ -56,7 +57,7 @@ const DEFAULT_FREE_SHIPPING_THRESHOLD = 5000;
 const DEFAULT_STANDARD_SHIPPING_FEE = 200;
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const { customer, isWholesale } = useCustomerAuth();
+  const { customer, isWholesale, isSuperWholesale } = useCustomerAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [promoCode, setPromoCode] = useState('');
@@ -403,6 +404,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         discount,
         total,
         isWholesale,
+        isSuperWholesale,
         isCartOpen,
         setIsCartOpen,
         promoCode,

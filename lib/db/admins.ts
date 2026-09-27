@@ -125,7 +125,7 @@ export function canAccessAdminRoute(
   }
 
   // Wholesale Account Management
-  if (pathname.startsWith('/admin/wholesale')) {
+  if (pathname.startsWith('/admin/wholesale') || pathname.startsWith('/admin/super-wholesale')) {
     return has('wholesale.manage');
   }
 

@@ -19,10 +19,10 @@ function WholesaleLoginContent() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // If already authenticated as wholesale, redirect
+  // If already authenticated as wholesale or super wholesale, redirect
   useEffect(() => {
     if (isAuthenticated && customer) {
-      if (isWholesale) {
+      if (isWholesale || customer.customerType === 'SUPER_WHOLESALE') {
         router.replace(redirectUrl);
       }
     }
@@ -46,7 +46,7 @@ function WholesaleLoginContent() {
     setIsLoading(true);
     try {
       const authCustomer = await login(cleanShopName, password);
-      if (authCustomer.customerType !== 'WHOLESALE') {
+      if (authCustomer.customerType !== 'WHOLESALE' && authCustomer.customerType !== 'SUPER_WHOLESALE') {
         // Logged in with an account that isn't wholesale
         setError('This account does not have wholesale customer privileges.');
         return;

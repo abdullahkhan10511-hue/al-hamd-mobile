@@ -15,6 +15,7 @@ interface CustomerAuthContextType {
   customer: SanitizedCustomer | null;
   isAuthenticated: boolean;
   isWholesale: boolean;
+  isSuperWholesale: boolean;
   isLoading: boolean;
   login: (emailOrShopName: string, password: string) => Promise<SanitizedCustomer>;
   register: (data: {
@@ -279,6 +280,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         customer,
         isAuthenticated: !!customer,
         isWholesale: customer?.customerType === 'WHOLESALE',
+        isSuperWholesale: customer?.customerType === 'SUPER_WHOLESALE',
         isLoading,
         login,
         register,

@@ -207,22 +207,13 @@ export async function updateStoreSettings(
 
   setLocal(SETTINGS_KEY, updated);
 
-  // Sync to server storage file
+  // Sync to server storage and database via API
   if (typeof window !== 'undefined') {
     fetch('/api/admin/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     }).catch(() => {});
-  } else {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const filePath = path.join(process.cwd(), 'data', 'store-settings.json');
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf8');
-    } catch {}
   }
 
   // Attempt Firestore sync with non-destructive merge

@@ -333,6 +333,10 @@ export function Footer() {
             <Link href="/wholesale/login" className="hover:text-neutral-400 transition-colors">
               Wholesale Portal
             </Link>
+            <span>•</span>
+            <Link href="/super-wholesale/login" className="hover:text-neutral-400 transition-colors">
+              Super Wholesale
+            </Link>
           </div>
         </div>
       </div>

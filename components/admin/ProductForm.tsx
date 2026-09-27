@@ -57,6 +57,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   const [wholesalePrice, setWholesalePrice] = useState<number | ''>(
     initialProduct?.wholesalePrice !== undefined ? initialProduct.wholesalePrice : ''
   );
+  const [superWholesalePrice, setSuperWholesalePrice] = useState<number | ''>(
+    initialProduct?.superWholesalePrice !== undefined ? initialProduct.superWholesalePrice : ''
+  );
   const [stock, setStock] = useState<number | ''>(
     initialProduct?.stock !== undefined ? initialProduct.stock : ''
   );
@@ -169,6 +172,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       price: price === '' ? 0 : Number(price),
       compareAtPrice: compareAtPrice === '' ? undefined : Number(compareAtPrice),
       wholesalePrice: wholesalePrice === '' ? undefined : Number(wholesalePrice),
+      superWholesalePrice: superWholesalePrice === '' ? undefined : Number(superWholesalePrice),
       stock: stock === '' ? 0 : Number(stock),
       sku: '',
       isActive: true,
@@ -447,6 +451,21 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       wholesalePrice === '' || wholesalePrice === undefined || wholesalePrice === null || Number(wholesalePrice) <= 0
         ? undefined
         : Number(wholesalePrice);
+    const numSuperWholesalePrice =
+      superWholesalePrice === '' || superWholesalePrice === undefined || superWholesalePrice === null || Number(superWholesalePrice) <= 0
+        ? undefined
+        : Number(superWholesalePrice);
+
+    if (
+      numPrice < 0 ||
+      (numCompareAtPrice !== undefined && numCompareAtPrice < 0) ||
+      (numWholesalePrice !== undefined && numWholesalePrice < 0) ||
+      (numSuperWholesalePrice !== undefined && numSuperWholesalePrice < 0)
+    ) {
+      setError('Prices cannot be negative. Please enter valid numeric values.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     const numStock = stock === '' || stock === undefined || stock === null ? 0 : Number(stock);
     const numLowStock =
       lowStockThreshold === '' || lowStockThreshold === undefined || lowStockThreshold === null
@@ -493,6 +512,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       price: numPrice,
       compareAtPrice: numCompareAtPrice,
       wholesalePrice: numWholesalePrice,
+      superWholesalePrice: numSuperWholesalePrice,
       discountPercentage:
         numCompareAtPrice && numCompareAtPrice > numPrice
           ? Math.round(((numCompareAtPrice - numPrice) / numCompareAtPrice) * 100)
@@ -522,6 +542,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               price: Number(m.price) || 0,
               compareAtPrice: m.compareAtPrice ? Number(m.compareAtPrice) : undefined,
               wholesalePrice: m.wholesalePrice ? Number(m.wholesalePrice) : undefined,
+              superWholesalePrice: m.superWholesalePrice ? Number(m.superWholesalePrice) : undefined,
               stock: m.stock !== undefined ? Number(m.stock) : 0,
               isActive: m.isActive !== false,
               images: Array.isArray(m.images) ? m.images.filter(Boolean) : [],
@@ -1136,6 +1157,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                             </label>
                             <input
                               type="number"
+                              min="0"
                               value={mod.wholesalePrice ?? ''}
                               onChange={(e) =>
                                 handleUpdateModel(idx, {
@@ -1144,6 +1166,24 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                               }
                               placeholder="Special wholesale rate"
                               className="w-full p-2 rounded-xl border border-indigo-200 bg-indigo-50/20 font-mono"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="font-semibold text-purple-900 block mb-1">
+                              Super Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={mod.superWholesalePrice ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  superWholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
+                                })
+                              }
+                              placeholder="Super wholesale tier rate"
+                              className="w-full p-2 rounded-xl border border-purple-200 bg-purple-50/30 font-mono text-purple-950 font-bold"
                             />
                           </div>
                         </div>
@@ -1461,6 +1501,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <input
                 type="number"
                 step="1"
+                min="0"
                 value={wholesalePrice}
                 onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="Special wholesale rate (optional)"
@@ -1474,6 +1515,34 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                   </span>
                 ) : (
                   'Leave blank to automatically apply standard retail price to wholesale buyers.'
+                )}
+              </span>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-semibold text-neutral-700">Super Wholesale Price (PKR)</label>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                  Super Wholesale
+                </span>
+              </div>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                value={superWholesalePrice}
+                onChange={(e) => setSuperWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="Super wholesale tier rate (optional)"
+                className="w-full p-2.5 rounded-xl border border-purple-200 bg-purple-50/30 font-mono font-bold text-sm text-purple-950 focus:bg-white focus:border-purple-400"
+              />
+              <span className="text-[10px] text-neutral-500 mt-1 block">
+                {superWholesalePrice && Number(superWholesalePrice) > 0 && Number(price || 0) > Number(superWholesalePrice) ? (
+                  <span className="text-purple-700 font-semibold">
+                    Super wholesale savings: Rs. {(Number(price) - Number(superWholesalePrice)).toLocaleString('en-PK')} (
+                    {Math.round(((Number(price) - Number(superWholesalePrice)) / Number(price)) * 100)}% discount)
+                  </span>
+                ) : (
+                  'Leave blank or 0 for safe fallback: wholesale price will apply automatically to super wholesale partners.'
                 )}
               </span>
             </div>

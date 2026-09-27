@@ -23,7 +23,7 @@ interface ProductCardProps {
 export function ProductCard({ product, className = '', priority = false }: ProductCardProps) {
   const { addToCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
-  const { isWholesale } = useCustomerAuth();
+  const { isWholesale, isSuperWholesale } = useCustomerAuth();
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
@@ -152,9 +152,23 @@ export function ProductCard({ product, className = '', priority = false }: Produ
 
         {/* Price & Quick Add */}
         <div className="mt-3.5 pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
-          {isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0 ? (
+          {isSuperWholesale ? (
             <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-base font-bold font-mono text-purple-950">
+                  {formatPrice(getProductEffectivePrice(product, 'SUPER_WHOLESALE'))}
+                </span>
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-700 text-white tracking-wider">
+                  Super Wholesale
+                </span>
+              </div>
+              <span className="text-[11px] text-neutral-400 line-through font-mono">
+                Retail: {formatPrice(product.price)}
+              </span>
+            </div>
+          ) : isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0 ? (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-base font-bold font-mono text-neutral-950">
                   {formatPrice(Number(product.wholesalePrice))}
                 </span>

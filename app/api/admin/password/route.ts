@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Locate the current administrator in database
-    const allStaff = getServerStaffUsers();
+    const allStaff = await getServerStaffUsers();
     const targetEmail = session?.email?.toLowerCase();
     const targetId = session?.id;
 
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     };
 
     allStaff[index] = updatedUser;
-    saveServerStaffUsers(allStaff);
+    await saveServerStaffUsers(allStaff);
 
     // If primary owner, sync in-code seed fallback files
     if (

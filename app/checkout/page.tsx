@@ -80,7 +80,10 @@ export default function CheckoutPage() {
     removePromoCode,
   } = useCart();
   const { customer, isAuthenticated, updateProfile } = useCustomerAuth();
+  const isSuperWholesale = customer?.customerType === 'SUPER_WHOLESALE';
   const isWholesale = customer?.customerType === 'WHOLESALE';
+  const isWholesaleTier = isWholesale || isSuperWholesale;
+  const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
 
   // Promo Code State
   const [promoInput, setPromoInput] = useState('');
@@ -99,7 +102,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (customer) {
       if (customer.email) setEmail(customer.email);
-      if (customer.customerType === 'WHOLESALE') {
+      if (customer.customerType === 'WHOLESALE' || customer.customerType === 'SUPER_WHOLESALE') {
         if (customer.shopName) {
           setFirstName(customer.shopName);
           setLastName('');
@@ -133,7 +136,7 @@ export default function CheckoutPage() {
   // Wholesale details memory & editing state
   const [isEditingWholesaleDetails, setIsEditingWholesaleDetails] = useState(false);
   const hasSavedWholesaleInfo = Boolean(
-    isWholesale && customer?.shopName && (customer?.phone || phone) && (customer?.address || streetAddress)
+    isWholesaleTier && customer?.shopName && (customer?.phone || phone) && (customer?.address || streetAddress)
   );
 
   // Logistics
@@ -253,7 +256,7 @@ export default function CheckoutPage() {
 
     setOrderError('');
 
-    if (isWholesale) {
+    if (isWholesaleTier) {
       if (!phone.trim() || !streetAddress.trim()) {
         setOrderError('Please provide your shop contact phone number and delivery address.');
         return;
@@ -296,6 +299,7 @@ export default function CheckoutPage() {
     try {
       const formattedPhone = normalizePhone(phone);
       const fullAddress = `${streetAddress}${area ? `, ${area}` : ''}, ${province}`;
+      const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
 
       // Map cart items into OrderItem format using authorized effective pricing
       const orderItems = cart.map((ci) => {
@@ -309,8 +313,8 @@ export default function CheckoutPage() {
             : null;
 
         const effectivePrice = modelObj
-          ? getModelEffectivePrice(ci.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL')
-          : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL'));
+          ? getModelEffectivePrice(ci.product, modelObj, customerTier)
+          : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, customerTier));
 
         const lineTotal = effectivePrice * ci.quantity;
         const validImage =
@@ -344,15 +348,15 @@ export default function CheckoutPage() {
 
       // Persist real order in database with PKR currency & unique ORD-2026 ID
       const newOrder = await createOrder({
-        orderType: isWholesale ? 'wholesale' : 'online',
-        customerType: isWholesale ? 'WHOLESALE' : 'RETAIL',
-        shopName: isWholesale ? customer?.shopName : undefined,
-        wholesaleAccountId: isWholesale ? customer?.id : undefined,
+        orderType: isSuperWholesale ? 'super_wholesale' : isWholesale ? 'wholesale' : 'online',
+        customerType: isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL',
+        shopName: isWholesaleTier ? customer?.shopName : undefined,
+        wholesaleAccountId: isWholesaleTier ? customer?.id : undefined,
         customer: {
           id: customer?.id,
-          firstName: isWholesale ? (customer?.shopName || 'Shop') : firstName.trim(),
-          lastName: isWholesale ? '' : lastName.trim(),
-          email: isWholesale
+          firstName: isWholesaleTier ? (customer?.shopName || 'Shop') : firstName.trim(),
+          lastName: isWholesaleTier ? '' : lastName.trim(),
+          email: isWholesaleTier
             ? (email.trim() || customer?.email || undefined)
             : (email.trim() || customer?.email || 'customer@alhamd-mobile.com'),
           phone: formattedPhone,
@@ -386,7 +390,7 @@ export default function CheckoutPage() {
       });
 
       // Save / update wholesale customer profile for future instant checkout
-      if (isWholesale && customer) {
+      if (isWholesaleTier && customer) {
         try {
           await updateProfile({
             phone: formattedPhone,
@@ -528,7 +532,7 @@ export default function CheckoutPage() {
         <form onSubmit={handleSubmitOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
           {/* Left Form: Customer & Delivery Details */}
           <div className="lg:col-span-7 space-y-6">
-            {isWholesale ? (
+            {isWholesaleTier ? (
               hasSavedWholesaleInfo && !isEditingWholesaleDetails ? (
                 /* SAVED WHOLESALE DETAILS CARD (REPEAT ORDERS) */
                 <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-xs space-y-4">
@@ -539,7 +543,7 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-neutral-950">
-                          Wholesale Account Details
+                          {isSuperWholesale ? 'Super Wholesale Account Details' : 'Wholesale Account Details'}
                         </h2>
                         <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
                           Saved Information
@@ -588,10 +592,12 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-neutral-950">
-                          {isEditingWholesaleDetails ? 'Edit Wholesale Details' : 'Wholesale Customer Information'}
+                          {isSuperWholesale
+                            ? (isEditingWholesaleDetails ? 'Edit Super Wholesale Details' : 'Super Wholesale Customer Information')
+                            : (isEditingWholesaleDetails ? 'Edit Wholesale Details' : 'Wholesale Customer Information')}
                         </h2>
                         <span className="text-[10px] font-bold text-neutral-700 bg-neutral-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          Wholesale Partner
+                          {isSuperWholesale ? 'Super Wholesale Partner' : 'Wholesale Partner'}
                         </span>
                       </div>
                     </div>
@@ -693,7 +699,7 @@ export default function CheckoutPage() {
                     </div>
 
                     <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/70 text-[11px] text-neutral-500">
-                      Your phone and address will be saved to your wholesale account automatically for faster repeat orders.
+                      Your phone and address will be saved to your {isSuperWholesale ? 'super wholesale' : 'wholesale'} account automatically for faster repeat orders.
                     </div>
                   </div>
                 </div>
@@ -1178,8 +1184,8 @@ export default function CheckoutPage() {
                         )
                       : null;
                   const effectivePrice = modelObj
-                    ? getModelEffectivePrice(ci.product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL')
-                    : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, isWholesale ? 'WHOLESALE' : 'RETAIL'));
+                    ? getModelEffectivePrice(ci.product, modelObj, customerTier)
+                    : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, customerTier));
                   const lineTotal = effectivePrice * ci.quantity;
                   const validImage =
                     ci.selectedImage ||

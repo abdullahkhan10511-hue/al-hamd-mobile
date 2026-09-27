@@ -341,7 +341,10 @@ function AccountDashboardContent() {
     );
   }
 
-  const customerFullName = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || 'Valued Customer';
+  const customerFullName =
+    customer?.shopName ||
+    `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() ||
+    'Valued Customer';
 
   return (
     <div className="min-h-screen bg-neutral-50/60 py-8 sm:py-12">
@@ -350,15 +353,27 @@ function AccountDashboardContent() {
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-neutral-950 text-white flex items-center justify-center text-xl font-bold uppercase shadow-sm">
-              {customer?.firstName?.[0] || 'C'}
-              {customer?.lastName?.[0] || ''}
+              {customer?.shopName ? customer.shopName[0] : (customer?.firstName?.[0] || 'C')}
+              {customer?.shopName ? '' : (customer?.lastName?.[0] || '')}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Verified Customer</span>
-                </span>
+                {customer?.customerType === 'SUPER_WHOLESALE' ? (
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Super Wholesale Partner</span>
+                  </span>
+                ) : customer?.customerType === 'WHOLESALE' ? (
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Wholesale Partner</span>
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Verified Customer</span>
+                  </span>
+                )}
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-neutral-950 tracking-tight mt-0.5">
                 Welcome, {customerFullName}

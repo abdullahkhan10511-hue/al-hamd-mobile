@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const customer = registerCustomerServer({
+    const customer = await registerCustomerServer({
       fullName: fullName.trim(),
       email: email.trim().toLowerCase(),
       phone: (phone || '').trim(),

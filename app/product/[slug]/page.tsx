@@ -102,7 +102,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const router = useRouter();
   const { addToCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
-  const { isWholesale } = useCustomerAuth();
+  const { isWholesale, isSuperWholesale, customer } = useCustomerAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
@@ -455,12 +455,22 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const canAddToCart = !isOutOfStock && (!isModelRequired || Boolean(selectedModel));
 
   // Pricing calculations
+  const customerTier = isSuperWholesale
+    ? 'SUPER_WHOLESALE'
+    : isWholesale
+    ? 'WHOLESALE'
+    : 'RETAIL';
+
   let effectivePrice: number;
   let isWholesaleActive = false;
+  let isSuperWholesaleActive = false;
   let comparePrice: number | undefined;
 
   if (selectedModelObj) {
-    if (isWholesale) {
+    if (isSuperWholesale) {
+      effectivePrice = getModelEffectivePrice(product, selectedModelObj, 'SUPER_WHOLESALE');
+      isSuperWholesaleActive = true;
+    } else if (isWholesale) {
       effectivePrice = getModelEffectivePrice(product, selectedModelObj, 'WHOLESALE');
       isWholesaleActive =
         Boolean(selectedModelObj.wholesalePrice && Number(selectedModelObj.wholesalePrice) > 0) ||
@@ -470,13 +480,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     }
     comparePrice = selectedModelObj.compareAtPrice;
   } else {
-    effectivePrice = getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
-    isWholesaleActive = Boolean(isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0);
+    effectivePrice = getProductEffectivePrice(product, customerTier);
+    if (isSuperWholesale) {
+      isSuperWholesaleActive = true;
+    } else if (isWholesale) {
+      isWholesaleActive = Boolean(product.wholesalePrice && Number(product.wholesalePrice) > 0);
+    }
     comparePrice = product.compareAtPrice;
   }
 
   const hasDiscount =
-    !isWholesaleActive && comparePrice !== undefined && comparePrice > effectivePrice;
+    !isWholesaleActive && !isSuperWholesaleActive && comparePrice !== undefined && comparePrice > effectivePrice;
   const discountPercentage =
     hasDiscount && comparePrice
       ? Math.round(((comparePrice - effectivePrice) / comparePrice) * 100)
@@ -704,12 +718,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 <span className="text-3xl sm:text-4xl font-extrabold font-mono text-neutral-950 tracking-tight">
                   {formatPrice(effectivePrice)}
                 </span>
-                {isWholesaleActive && (
+                {isSuperWholesaleActive ? (
+                  <span className="px-3 py-1 rounded-full bg-purple-700 text-white font-bold text-xs uppercase tracking-wider">
+                    Super Wholesale Price
+                  </span>
+                ) : isWholesaleActive ? (
                   <span className="px-3 py-1 rounded-full bg-neutral-950 text-white font-bold text-xs uppercase tracking-wider">
                     Wholesale Price
                   </span>
-                )}
-                {isWholesaleActive ? (
+                ) : null}
+                {isSuperWholesaleActive || isWholesaleActive ? (
                   <span className="text-base text-neutral-400 line-through font-mono">
                     Retail: {formatPrice(product.price)}
                   </span>
@@ -753,6 +771,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                   {activeModels.map((m: any) => {
                     const isSelected = selectedModel === m.name;
                     const isModelOut = m.stock !== undefined && m.stock <= 0;
+                    const modelPrice = getModelEffectivePrice(product, m, customerTier);
                     return (
                       <button
                         key={m.id || m.name}
@@ -774,7 +793,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                             isSelected ? 'text-neutral-300' : 'text-neutral-500'
                           }`}
                         >
-                          Rs. {Number(m.price).toLocaleString('en-PK')}
+                          Rs. {modelPrice.toLocaleString('en-PK')}
                         </span>
                         {isModelOut && (
                           <span className="text-[10px] text-rose-500 font-normal ml-0.5">

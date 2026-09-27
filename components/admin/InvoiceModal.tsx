@@ -163,7 +163,8 @@ export default function InvoiceModal({
                   <div>INV: <span className="font-bold">{order.invoiceNumber}</span></div>
                   <div>ORD: {order.id}</div>
                   <div>DATE: {new Date(order.createdAt).toLocaleDateString()} {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                  <div>CUST: {order.customerType === 'WHOLESALE' ? (order.shopName || order.customer.firstName) : `${order.customer.firstName} ${order.customer.lastName}`}</div>
+                  <div>CUST: {order.customerType === 'WHOLESALE' || order.customerType === 'SUPER_WHOLESALE' ? (order.shopName || order.customer.firstName) : `${order.customer.firstName} ${order.customer.lastName}`}</div>
+                  {order.customerType === 'SUPER_WHOLESALE' && <div>TYPE: SUPER WHOLESALE ACCOUNT</div>}
                   {order.customerType === 'WHOLESALE' && <div>TYPE: WHOLESALE ACCOUNT</div>}
                   <div>TEL: {order.customer.phone}</div>
                 </div>
@@ -324,14 +325,20 @@ export default function InvoiceModal({
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <h4 className="font-bold text-neutral-400 uppercase tracking-wider">Billed To</h4>
-                      {order.customerType === 'WHOLESALE' && (
-                        <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200">
+                      {order.customerType === 'SUPER_WHOLESALE' ? (
+                        <span className="text-[10px] font-bold bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded border border-purple-300">
+                          SUPER WHOLESALE ACCOUNT
+                        </span>
+                      ) : order.customerType === 'WHOLESALE' ? (
+                        <span className="text-[10px] font-bold bg-indigo-50 text-indigo-800 px-1.5 py-0.5 rounded border border-indigo-200">
                           WHOLESALE ACCOUNT
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <p className="font-bold text-sm text-neutral-900">
-                      {order.customerType === 'WHOLESALE' ? (order.shopName || order.customer.firstName) : `${order.customer.firstName} ${order.customer.lastName}`}
+                      {order.customerType === 'WHOLESALE' || order.customerType === 'SUPER_WHOLESALE'
+                        ? (order.shopName || order.customer.firstName)
+                        : `${order.customer.firstName} ${order.customer.lastName}`}
                     </p>
                     {order.customer.email ? (
                       <p className="text-neutral-600 mt-1">{order.customer.email}</p>

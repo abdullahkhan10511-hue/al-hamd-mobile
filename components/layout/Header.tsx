@@ -317,7 +317,17 @@ export function Header() {
                               <p className="font-bold text-neutral-950 truncate">
                                 {customer.firstName} {customer.lastName}
                               </p>
-                              <p className="text-[11px] text-neutral-500 truncate">{customer.email}</p>
+                              {customer.customerType === 'SUPER_WHOLESALE' ? (
+                                <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold text-[9px] uppercase tracking-wider border border-purple-200">
+                                  Super Wholesale Partner
+                                </span>
+                              ) : customer.customerType === 'WHOLESALE' ? (
+                                <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-800 font-bold text-[9px] uppercase tracking-wider">
+                                  Wholesale Partner
+                                </span>
+                              ) : (
+                                <p className="text-[11px] text-neutral-500 truncate">{customer.email}</p>
+                              )}
                             </div>
 
                             <Link

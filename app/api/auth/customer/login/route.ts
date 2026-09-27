@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Check if user is an Administrator or Staff member first (only if format could be an email)
     if (normalizedIdentifier.includes('@')) {
-      const staffUser = getServerStaffByEmail(normalizedIdentifier);
+      const staffUser = await getServerStaffByEmail(normalizedIdentifier);
       if (staffUser && staffUser.status !== 'inactive' && staffUser.salt && staffUser.passwordHash) {
         const isStaffValid = verifyServerPassword(password, staffUser.salt, staffUser.passwordHash);
         if (isStaffValid) {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Authenticate as Customer (supports both Retail email and Wholesale shopName)
-    const customer = authenticateCustomerServer(identifier, password);
+    const customer = await authenticateCustomerServer(identifier, password);
     const sanitized = sanitizeCustomer(customer);
 
     const sessionPayload = {

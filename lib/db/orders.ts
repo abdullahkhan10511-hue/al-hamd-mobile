@@ -7,7 +7,7 @@ import { addNotification } from './notifications';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
-import { getModelEffectivePrice } from '@/lib/wholesale';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 const COLLECTION_KEY = 'orders';
 
@@ -77,7 +77,10 @@ function getVerifiedWholesaleCustomer(customerId?: string, shopName?: string): C
     }
     if (customerId) {
       const match = customers.find(
-        (c) => c.id === customerId && c.customerType === 'WHOLESALE' && c.status === 'active'
+        (c) =>
+          c.id === customerId &&
+          (c.customerType === 'WHOLESALE' || c.customerType === 'SUPER_WHOLESALE') &&
+          c.status === 'active'
       );
       if (match) return match;
     }
@@ -85,7 +88,7 @@ function getVerifiedWholesaleCustomer(customerId?: string, shopName?: string): C
       const normalized = shopName.trim().toLowerCase();
       const match = customers.find(
         (c) =>
-          c.customerType === 'WHOLESALE' &&
+          (c.customerType === 'WHOLESALE' || c.customerType === 'SUPER_WHOLESALE') &&
           c.shopName &&
           c.shopName.trim().toLowerCase() === normalized &&
           c.status === 'active'
@@ -102,15 +105,32 @@ export async function createOrder(
   orderData: Omit<Order, 'id' | 'invoiceNumber' | 'createdAt' | 'updatedAt'>
 ): Promise<Order> {
   // 1. Server-side validation of customerType and wholesale status
-  const verifiedWholesaleCustomer =
-    orderData.customerType === 'WHOLESALE' || orderData.shopName || orderData.orderType === 'wholesale'
+  const isReqSuperWholesale =
+    orderData.customerType === 'SUPER_WHOLESALE' || orderData.orderType === 'super_wholesale';
+  const isReqWholesale =
+    orderData.customerType === 'WHOLESALE' || orderData.orderType === 'wholesale';
+
+  const verifiedCustomer =
+    isReqSuperWholesale || isReqWholesale || orderData.shopName
       ? getVerifiedWholesaleCustomer(orderData.customer?.id, orderData.shopName)
       : null;
 
+  const isSuperWholesaleOrder =
+    (verifiedCustomer && verifiedCustomer.customerType === 'SUPER_WHOLESALE') ||
+    orderData.customerType === 'SUPER_WHOLESALE' ||
+    orderData.orderType === 'super_wholesale';
+
   const isWholesaleOrder =
-    Boolean(verifiedWholesaleCustomer) ||
-    orderData.customerType === 'WHOLESALE' ||
-    orderData.orderType === 'wholesale';
+    !isSuperWholesaleOrder &&
+    (Boolean(verifiedCustomer) ||
+      orderData.customerType === 'WHOLESALE' ||
+      orderData.orderType === 'wholesale');
+
+  const resolvedTier = isSuperWholesaleOrder
+    ? 'SUPER_WHOLESALE'
+    : isWholesaleOrder
+    ? 'WHOLESALE'
+    : 'RETAIL';
 
   // 2. Validate stock and securely recalculate items against verified database prices
   let calculatedSubtotal = 0;
@@ -138,26 +158,13 @@ export async function createOrder(
     // Determine authorized base price
     let basePrice: number;
     if (modelObj) {
-      if (isWholesaleOrder) {
-        basePrice = getModelEffectivePrice(product!, modelObj, 'WHOLESALE');
+      if (resolvedTier === 'SUPER_WHOLESALE' || resolvedTier === 'WHOLESALE') {
+        basePrice = getModelEffectivePrice(product!, modelObj, resolvedTier);
       } else {
         basePrice = Number(modelObj.price) || (product ? product.price : item.price);
       }
-    } else if (isWholesaleOrder) {
-      // Use wholesalePrice if configured (>0), otherwise fallback safely to regular retail price
-      if (
-        product &&
-        product.wholesalePrice !== undefined &&
-        product.wholesalePrice !== null &&
-        Number(product.wholesalePrice) > 0
-      ) {
-        basePrice = Number(product.wholesalePrice);
-      } else {
-        basePrice = product ? product.price : item.price;
-      }
     } else {
-      // Standard retail price strictly enforced for retail customers
-      basePrice = product ? product.price : item.price;
+      basePrice = product ? getProductEffectivePrice(product, resolvedTier) : item.price;
     }
 
     const lineTotal = basePrice * item.quantity;
@@ -217,10 +224,28 @@ export async function createOrder(
 
   const newOrder: Order = {
     ...orderData,
-    orderType: orderData.orderType || (isWholesaleOrder ? 'wholesale' : (orderData.orderSource === 'POS' ? 'walk_in' : 'online')),
-    customerType: isWholesaleOrder ? 'WHOLESALE' : (orderData.customerType || 'RETAIL'),
-    shopName: isWholesaleOrder ? (verifiedWholesaleCustomer?.shopName || orderData.shopName) : undefined,
-    wholesaleAccountId: isWholesaleOrder ? (verifiedWholesaleCustomer?.id || orderData.customer?.id) : undefined,
+    orderType:
+      orderData.orderType ||
+      (isSuperWholesaleOrder
+        ? 'super_wholesale'
+        : isWholesaleOrder
+        ? 'wholesale'
+        : orderData.orderSource === 'POS'
+        ? 'walk_in'
+        : 'online'),
+    customerType: isSuperWholesaleOrder
+      ? 'SUPER_WHOLESALE'
+      : isWholesaleOrder
+      ? 'WHOLESALE'
+      : orderData.customerType || 'RETAIL',
+    shopName:
+      isSuperWholesaleOrder || isWholesaleOrder
+        ? verifiedCustomer?.shopName || orderData.shopName
+        : undefined,
+    wholesaleAccountId:
+      isSuperWholesaleOrder || isWholesaleOrder
+        ? verifiedCustomer?.id || orderData.customer?.id
+        : undefined,
     items: validatedItems,
     subtotal,
     discount: totalDiscount,
@@ -239,6 +264,25 @@ export async function createOrder(
 
   const updated = [newOrder, ...orders];
   await persistCollection(COLLECTION_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOrder),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.order) {
+        const currentOrders = getOrders().filter((o) => o.id !== data.order.id);
+        const next = [data.order, ...currentOrders];
+        await persistCollection(COLLECTION_KEY, next);
+        return data.order;
+      }
+    } catch (e) {
+      console.warn('API /api/orders notice:', e);
+    }
+  }
 
   // Record promo usage in persistent log
   if (promoDetails) {
@@ -331,6 +375,14 @@ export async function updateOrderStatus(
 
   await persistCollection(COLLECTION_KEY, orders);
 
+  if (typeof window !== 'undefined') {
+    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, paymentStatus }),
+    }).catch(() => {});
+  }
+
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {
     try {
@@ -378,6 +430,14 @@ export async function verifyPayment(
   };
 
   await persistCollection(COLLECTION_KEY, orders);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentStatus: newPaymentStatus, note }),
+    }).catch(() => {});
+  }
 
   // Requirement 23: Payment Audit Log
   await logActivity({
@@ -477,11 +537,13 @@ export function filterAndSortOrders(
   if (options.source && options.source !== 'all') {
     const src = options.source.toLowerCase();
     result = result.filter((o) => {
-      const isWs = o.orderType === 'wholesale' || o.customerType === 'WHOLESALE' || Boolean(o.shopName);
+      const isSuperWs = o.orderType === 'super_wholesale' || o.customerType === 'SUPER_WHOLESALE';
+      const isWs = !isSuperWs && (o.orderType === 'wholesale' || o.customerType === 'WHOLESALE' || Boolean(o.shopName));
       const isPos = o.orderType === 'walk_in' || o.orderSource === 'POS';
+      if (src === 'super_wholesale') return isSuperWs;
       if (src === 'wholesale') return isWs;
-      if (src === 'pos' || src === 'walk_in') return isPos && !isWs;
-      if (src === 'online') return !isPos && !isWs;
+      if (src === 'pos' || src === 'walk_in') return isPos && !isWs && !isSuperWs;
+      if (src === 'online') return !isPos && !isWs && !isSuperWs;
       return true;
     });
   }

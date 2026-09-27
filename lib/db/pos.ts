@@ -1,4 +1,4 @@
-import { Order, OrderItem, InventoryLog } from '@/types/admin';
+import { Order, OrderItem, InventoryLog, CustomerType } from '@/types/admin';
 import { Product } from '@/types';
 import { getStoredCollection, persistCollection } from './storage';
 import { getProducts } from './products';
@@ -8,6 +8,7 @@ import { logActivity } from './activity';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
+import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 export interface PosCartItem {
   productId: string;
@@ -27,6 +28,8 @@ export interface CreatePosSaleParams {
     lastName?: string;
     email?: string;
     phone?: string;
+    customerType?: CustomerType;
+    shopName?: string;
   };
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
@@ -120,10 +123,11 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
         };
       }
 
-      // Model price or standard retail price
+      // Model price or standard retail price or wholesale/super wholesale
+      const customerTier = params.customer?.customerType || 'RETAIL';
       const basePrice = modelObj
-        ? (Number(modelObj.price) || Number(product.price) || 0)
-        : (Number(product.price) || 0);
+        ? getModelEffectivePrice(product, modelObj, customerTier)
+        : getProductEffectivePrice(product, customerTier);
       const unitPrice = basePrice;
       const lineTotal = unitPrice * cartItem.quantity;
 
@@ -289,11 +293,18 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
     const custPhone = (params.customer?.phone || '').trim();
 
     // Construct Order
+    const isSuperWholesale = params.customer?.customerType === 'SUPER_WHOLESALE';
+    const isWholesale = params.customer?.customerType === 'WHOLESALE';
+    const isWholesaleTier = isSuperWholesale || isWholesale;
+
     const newOrder: Order = {
       id: orderId,
       invoiceNumber,
       orderSource: 'POS',
-      orderType: 'walk_in',
+      orderType: isSuperWholesale ? 'super_wholesale' : isWholesale ? 'wholesale' : 'walk_in',
+      customerType: isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL',
+      shopName: isWholesaleTier ? (params.customer?.shopName || custFirstName) : undefined,
+      wholesaleAccountId: isWholesaleTier ? params.customer?.id : undefined,
       customer: {
         id: params.customer?.id,
         firstName: custFirstName,
@@ -360,6 +371,15 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
       } catch (e) {
         console.warn('POS promo usage logging notice:', e);
       }
+    }
+
+    // Direct MySQL sync via API
+    if (typeof window !== 'undefined') {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOrder),
+      }).catch(() => {});
     }
 
     // Direct Firestore sync for order
@@ -471,6 +491,14 @@ export async function voidPosSale(
 
     orders[orderIndex] = updatedOrder;
     await persistCollection('orders', orders);
+
+    if (typeof window !== 'undefined') {
+      fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Cancelled', paymentStatus: 'Refunded', voidReason: cleanReason }),
+      }).catch(() => {});
+    }
 
     // Direct Firestore sync
     if (db && typeof (db as any).type === 'string') {

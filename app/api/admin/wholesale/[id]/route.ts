@@ -6,7 +6,7 @@ import {
   updateWholesaleAccountStatusServer,
   sanitizeCustomer,
 } from '@/lib/db/customers-server';
-import { getServerStaffByEmail } from '@/lib/db/staff-server';
+import { getServerStaffByEmailSync } from '@/lib/db/staff-server';
 import { ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
@@ -24,7 +24,7 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
       try {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.email) {
-          const fresh = getServerStaffByEmail(parsed.email);
+          const fresh = getServerStaffByEmailSync(parsed.email);
           if (fresh && fresh.status !== 'inactive') {
             return fresh;
           } else if (fresh && fresh.status === 'inactive') {
@@ -67,7 +67,7 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
     }
 
     if (emailToFind) {
-      const fresh = getServerStaffByEmail(emailToFind);
+      const fresh = getServerStaffByEmailSync(emailToFind);
       if (fresh) {
         if (fresh.status === 'inactive') return null;
         return fresh;
@@ -118,7 +118,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const account = getServerCustomerById(id);
+    const account = await getServerCustomerById(id);
 
     if (!account || account.customerType !== 'WHOLESALE') {
       return NextResponse.json(
@@ -167,7 +167,7 @@ export async function PUT(
     const body = await request.json();
     const { shopName, phone, address, status, password } = body;
 
-    const updated = updateWholesaleAccountServer(
+    const updated = await updateWholesaleAccountServer(
       id,
       {
         shopName: shopName ? String(shopName).trim() : undefined,
@@ -227,7 +227,7 @@ export async function PATCH(
       );
     }
 
-    const success = updateWholesaleAccountStatusServer(id, status);
+    const success = await updateWholesaleAccountStatusServer(id, status);
     if (!success) {
       return NextResponse.json(
         { success: false, error: 'Wholesale account not found.' },
@@ -273,7 +273,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const result = deleteWholesaleAccountServer(id);
+    const result = await deleteWholesaleAccountServer(id);
 
     if (!result.success) {
       return NextResponse.json(

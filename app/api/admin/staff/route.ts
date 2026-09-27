@@ -5,14 +5,18 @@ import {
   getServerStaffByEmail,
   generateServerSalt,
   hashServerPassword,
+  createStaffInDb,
+  updateStaffInDb,
+  deleteStaffInDb,
 } from '@/lib/db/staff-server';
+import { isDbConfigured } from '@/lib/db/mysql';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
-function getSessionUser(request: NextRequest): (StaffUser & { role: string }) | null {
+async function getSessionUser(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
   const cookieVal =
     request.cookies.get(COOKIE_NAME)?.value ||
     request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
@@ -23,7 +27,7 @@ function getSessionUser(request: NextRequest): (StaffUser & { role: string }) | 
       try {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.email) {
-          const fresh = getServerStaffByEmail(parsed.email);
+          const fresh = await getServerStaffByEmail(parsed.email);
           if (fresh && fresh.status !== 'inactive') {
             return fresh;
           } else if (fresh && fresh.status === 'inactive') {
@@ -66,7 +70,7 @@ function getSessionUser(request: NextRequest): (StaffUser & { role: string }) | 
     }
 
     if (emailToFind) {
-      const fresh = getServerStaffByEmail(emailToFind);
+      const fresh = await getServerStaffByEmail(emailToFind);
       if (fresh) {
         if (fresh.status === 'inactive') return null;
         return fresh;
@@ -93,7 +97,7 @@ function getSessionUser(request: NextRequest): (StaffUser & { role: string }) | 
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = await getSessionUser(request);
     const authHeader = request.headers.get('authorization');
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
       return NextResponse.json(
@@ -102,7 +106,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const allStaff = getServerStaffUsers();
+    const allStaff = await getServerStaffUsers();
     // Strip cryptographic salts and hashes before sending to client
     const safeStaffList = allStaff.map(({ passwordHash, salt, ...safe }) => safe);
 
@@ -124,7 +128,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = await getSessionUser(request);
     const authHeader = request.headers.get('authorization');
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
       return NextResponse.json(
@@ -160,7 +164,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Check for duplicate email
-    const allStaff = getServerStaffUsers();
+    const allStaff = await getServerStaffUsers();
     const existing = allStaff.find((u) => u.email.toLowerCase() === normalizedEmail);
     if (existing) {
       return NextResponse.json(
@@ -199,7 +203,24 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    // 6. Save to server persistent storage
+    // 6. Save to MySQL or server storage
+    if (isDbConfigured()) {
+      try {
+        await createStaffInDb({
+          name: newStaff.name,
+          email: newStaff.email,
+          password,
+          role: newStaff.role,
+          phone: newStaff.phone,
+          avatar: newStaff.avatar,
+          status: newStaff.status,
+          permissions: newStaff.permissions,
+        });
+      } catch (err: any) {
+        console.warn('MySQL create staff notice:', err.message);
+      }
+    }
+
     saveServerStaffUsers([...allStaff, newStaff]);
 
     // 7. Strip sensitive credentials before returning in API response
@@ -227,7 +248,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = await getSessionUser(request);
     const authHeader = request.headers.get('authorization');
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
       return NextResponse.json(
@@ -243,7 +264,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Staff ID is required.' }, { status: 400 });
     }
 
-    const allStaff = getServerStaffUsers();
+    const allStaff = await getServerStaffUsers();
     const index = allStaff.findIndex(
       (u) => u.id === id || (email && u.email.toLowerCase() === email.toLowerCase())
     );
@@ -337,6 +358,24 @@ export async function PATCH(request: NextRequest) {
       updated.passwordHash = hashServerPassword(passwordToSet, newSalt);
     }
 
+    // Update in MySQL if configured
+    if (isDbConfigured()) {
+      try {
+        await updateStaffInDb(target.id, {
+          name: updated.name,
+          email: updated.email,
+          phone: updated.phone,
+          avatar: updated.avatar,
+          status: updated.status,
+          role: updated.role,
+          permissions: updated.permissions,
+          newPassword: passwordToSet,
+        });
+      } catch (err: any) {
+        console.warn('MySQL update staff notice:', err.message);
+      }
+    }
+
     allStaff[index] = updated;
     saveServerStaffUsers(allStaff);
 
@@ -356,7 +395,7 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = await getSessionUser(request);
     const authHeader = request.headers.get('authorization');
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
       return NextResponse.json(
@@ -372,7 +411,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Staff ID is required.' }, { status: 400 });
     }
 
-    const allStaff = getServerStaffUsers();
+    const allStaff = await getServerStaffUsers();
     const target = allStaff.find(
       (u) => u.id === id || u.email.toLowerCase() === id.toLowerCase()
     );
@@ -427,6 +466,14 @@ export async function DELETE(request: NextRequest) {
         { success: false, error: 'Cannot delete the last remaining active SUPER_ADMIN account.' },
         { status: 400 }
       );
+    }
+
+    if (isDbConfigured()) {
+      try {
+        await deleteStaffInDb(target.id);
+      } catch (err: any) {
+        console.warn('MySQL delete staff notice:', err.message);
+      }
     }
 
     const filtered = allStaff.filter(

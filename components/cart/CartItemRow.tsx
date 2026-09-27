@@ -15,7 +15,8 @@ interface CartItemRowProps {
 }
 
 export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
-  const { updateQuantity, removeFromCart, isWholesale } = useCart();
+  const { updateQuantity, removeFromCart, isWholesale, isSuperWholesale } = useCart();
+  const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
   const { product, quantity, selectedSize, selectedColor, selectedModel, selectedImage, selectedPrice } = item;
 
   let unitPrice: number;
@@ -24,16 +25,16 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
       (m) => m.name.toLowerCase() === selectedModel.toLowerCase() || m.id === selectedModel
     );
     if (modelObj) {
-      unitPrice = getModelEffectivePrice(product, modelObj, isWholesale ? 'WHOLESALE' : 'RETAIL');
+      unitPrice = getModelEffectivePrice(product, modelObj, customerTier);
     } else {
-      unitPrice = selectedPrice ?? getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+      unitPrice = selectedPrice ?? getProductEffectivePrice(product, customerTier);
     }
   } else {
-    unitPrice = selectedPrice ?? getProductEffectivePrice(product, isWholesale ? 'WHOLESALE' : 'RETAIL');
+    unitPrice = selectedPrice ?? getProductEffectivePrice(product, customerTier);
   }
 
   const lineTotal = unitPrice * quantity;
-  const isWholesaleActive = isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0;
+  const isWholesaleActive = (isWholesale || isSuperWholesale) && product.wholesalePrice && Number(product.wholesalePrice) > 0;
   const validImage = selectedImage || getValidImageSrc(product?.images);
 
   return (

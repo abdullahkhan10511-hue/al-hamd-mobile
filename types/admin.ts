@@ -141,9 +141,9 @@ export interface OrderItem {
   total: number;
 }
 
-export type CustomerType = 'RETAIL' | 'WHOLESALE';
+export type CustomerType = 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE';
 
-export type OrderType = 'wholesale' | 'online' | 'walk_in';
+export type OrderType = 'wholesale' | 'online' | 'walk_in' | 'super_wholesale';
 
 export function getOrderType(order: {
   orderType?: OrderType;
@@ -154,6 +154,9 @@ export function getOrderType(order: {
   deliveryMethod?: string;
 }): OrderType {
   if (order.orderType) return order.orderType;
+  if (order.customerType === 'SUPER_WHOLESALE') {
+    return 'super_wholesale';
+  }
   if (order.customerType === 'WHOLESALE' || Boolean(order.shopName) || Boolean(order.wholesaleAccountId)) {
     return 'wholesale';
   }

@@ -7,12 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup:admin": "node scripts/setup-admin.js"
+    "setup:admin": "node scripts/setup-admin.js",
+    "db:migrate": "node scripts/migrations/migrate.js",
+    "db:import": "npx tsx scripts/migrations/import-data.ts",
+    "db:test": "node scripts/migrations/test-db.js"
   },
   "dependencies": {
     "firebase": "^12.18.0",
     "framer-motion": "^13.2.0",
     "lucide-react": "^1.41.0",
+    "mysql2": "^3.24.4",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
