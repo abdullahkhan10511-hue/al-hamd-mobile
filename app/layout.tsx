@@ -56,7 +56,10 @@ export async function generateMetadata(): Promise<Metadata> {
         ];
 
   return {
-    metadataBase: new URL('https://alhamd.pk'),
+    metadataBase: new URL('https://alhamdshop.com'),
+    alternates: {
+      canonical: 'https://alhamdshop.com',
+    },
     title,
     description,
     keywords,
@@ -64,7 +67,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title,
       description,
-      url: 'https://alhamd.pk',
+      url: 'https://alhamdshop.com',
       siteName: settings.storeName || 'AL-HAMD MOBILE ACCESSORIES',
       images: [
         {
