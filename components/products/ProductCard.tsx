@@ -134,8 +134,29 @@ export function ProductCard({ product, className = '', priority = false }: Produ
       <div className="pt-3.5 flex flex-col flex-1 justify-between">
         <div>
           <div className="flex items-center justify-between text-xs text-neutral-400 uppercase tracking-wider mb-1">
-            <span>{product.brand}</span>
-            <span>{product.category}</span>
+            {product.brand ? (
+              <Link
+                href={`/brand/${product.brandSlug || product.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                onClick={(e) => e.stopPropagation()}
+                className="hover:text-neutral-900 transition-colors font-semibold truncate max-w-[120px]"
+                title={`View ${product.brand} products`}
+              >
+                {product.brand}
+              </Link>
+            ) : (
+              <span />
+            )}
+            {product.categorySlug ? (
+              <Link
+                href={`/category/${product.categorySlug}`}
+                onClick={(e) => e.stopPropagation()}
+                className="hover:text-neutral-900 transition-colors truncate max-w-[100px] text-right"
+              >
+                {product.category}
+              </Link>
+            ) : (
+              <span className="truncate max-w-[100px] text-right">{product.category}</span>
+            )}
           </div>
 
           <Link href={`/product/${product.slug}`}>

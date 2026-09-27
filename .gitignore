@@ -43,3 +43,8 @@ next-env.d.ts
 
 data/customers.json
 data/staff-users.json
+
+# persistent uploaded media (keep directories, ignore user uploaded files)
+/public/uploads/*
+!/public/uploads/**/.gitkeep
+

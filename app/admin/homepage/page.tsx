@@ -426,7 +426,7 @@ export default function HomepageControlPage() {
                   <div className="flex-1">
                     <h3 className="text-base font-bold text-neutral-900">Delete Promotional Banner</h3>
                     <p className="text-xs text-neutral-600 mt-1">
-                      Are you sure you want to delete &quot;{deleteTargetBanner.title}&quot;? It will be removed immediately from the Home Page and database.
+                      Are you sure you want to delete &quot;{deleteTargetBanner.title}&quot;? It will be removed immediately from the Home Page.
                     </p>
                   </div>
                 </div>

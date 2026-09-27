@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { updateBrandInDb, deleteBrandInDb } from '@/lib/db/repositories/brands';
+import {
+  getBrandByIdOrSlugFromDb,
+  updateBrandInDb,
+  deleteBrandInDb,
+} from '@/lib/db/repositories/brands';
 import { getAdminSession } from '@/lib/db/adminAuth';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const brand = await getBrandByIdOrSlugFromDb(id);
+
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Brand not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, brand });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
+  }
+}
 
 export async function PUT(
   request: NextRequest,

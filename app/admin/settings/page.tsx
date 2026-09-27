@@ -39,9 +39,6 @@ import {
   RefreshCw,
   AlertCircle,
   Loader2,
-  Database,
-  Server,
-  CheckCircle2,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import Link from 'next/link';
@@ -50,24 +47,10 @@ export default function AdminSettingsPage() {
   const { admin: currentAdmin, changePassword: authChangePassword } = useAdminAuth();
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'general' | 'contact' | 'currency' | 'shipping' | 'social' | 'seo' | 'security' | 'database'
+    'general' | 'contact' | 'currency' | 'shipping' | 'social' | 'seo' | 'security'
   >('general');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
-
-  // Database Migration State
-  const [dbStatus, setDbStatus] = useState<{
-    configured: boolean;
-    connected: boolean;
-    database?: string;
-    host?: string;
-    tableCounts?: Record<string, number>;
-    error?: string;
-  } | null>(null);
-  const [isLoadingDbStatus, setIsLoadingDbStatus] = useState(false);
-  const [isMigrating, setIsMigrating] = useState(false);
-  const [migrationResult, setMigrationResult] = useState<any | null>(null);
-  const [migrationError, setMigrationError] = useState('');
 
   // Security / Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -184,57 +167,6 @@ export default function AdminSettingsPage() {
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
-
-  const fetchDbStatus = async () => {
-    setIsLoadingDbStatus(true);
-    setMigrationError('');
-    try {
-      const res = await fetch('/api/admin/migrate-data', { cache: 'no-store' });
-      const data = await res.json();
-      setDbStatus(data);
-    } catch (err: any) {
-      setMigrationError(err.message || 'Failed to check database connection.');
-    } finally {
-      setIsLoadingDbStatus(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'database') {
-      fetchDbStatus();
-    }
-  }, [activeTab]);
-
-  const handleRunMigration = async () => {
-    if (
-      !window.confirm(
-        'Execute production database migration?\n\nThis will safely migrate existing catalog, media, settings, promotions, and store configurations into the Hostinger MySQL database without duplicate entries.'
-      )
-    ) {
-      return;
-    }
-
-    setIsMigrating(true);
-    setMigrationError('');
-    setMigrationResult(null);
-
-    try {
-      const res = await fetch('/api/admin/migrate-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Migration failed.');
-      }
-      setMigrationResult(data);
-      await fetchDbStatus();
-    } catch (err: any) {
-      setMigrationError(err.message || 'Error executing production migration.');
-    } finally {
-      setIsMigrating(false);
-    }
-  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -589,19 +521,6 @@ export default function AdminSettingsPage() {
           Account Security
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('database')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-            activeTab === 'database'
-              ? 'bg-neutral-900 text-white'
-              : 'bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          Database & Migration
-        </button>
-
         <Link
           href="/admin/settings/login-appearance"
           className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap bg-neutral-100 text-neutral-700 border border-neutral-200 hover:bg-neutral-200 transition-colors ml-auto"
@@ -868,7 +787,7 @@ export default function AdminSettingsPage() {
               <div>
                 <h3 className="text-base font-bold text-neutral-900">Social Media Accounts &amp; Visibility</h3>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  Individually activate or deactivate social accounts. Inactive platforms are completely hidden from the customer website, while their configured URLs remain safely stored in the database.
+                  Individually activate or deactivate social accounts. Inactive platforms are completely hidden from the customer website, while their configured URLs remain safely saved.
                 </p>
               </div>
 
@@ -1520,235 +1439,7 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* TAB: DATABASE & MIGRATION */}
-        {activeTab === 'database' && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-base font-bold text-neutral-900 flex items-center gap-2">
-                <Database className="w-5 h-5 text-neutral-700" />
-                Hostinger MySQL Database & Source of Truth
-              </h3>
-              <p className="text-xs text-neutral-500 mt-1">
-                Manage the production Hostinger MySQL database as the single source of truth for all persistent business data.
-              </p>
-            </div>
-
-            {/* Connection Status Card */}
-            <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-3.5 h-3.5 rounded-full ${
-                      dbStatus?.connected
-                        ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50 animate-pulse'
-                        : dbStatus?.configured
-                        ? 'bg-amber-500'
-                        : 'bg-neutral-400'
-                    }`}
-                  />
-                  <div>
-                    <h4 className="font-bold text-sm text-neutral-900">
-                      {dbStatus?.connected
-                        ? 'Hostinger MySQL Database Connected'
-                        : dbStatus?.configured
-                        ? 'Database Configured (Connecting...)'
-                        : 'Local Development Mode (Database Not Configured)'}
-                    </h4>
-                    <p className="text-xs text-neutral-500 mt-0.5">
-                      {dbStatus?.connected
-                        ? `Connected to database "${dbStatus.database}" on host "${dbStatus.host}"`
-                        : 'Server uses environment variables: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME'}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={fetchDbStatus}
-                  disabled={isLoadingDbStatus}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-neutral-200 text-neutral-700 rounded-xl text-xs font-semibold hover:bg-neutral-100 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDbStatus ? 'animate-spin' : ''}`} />
-                  {isLoadingDbStatus ? 'Checking...' : 'Refresh Status'}
-                </button>
-              </div>
-
-              {/* Status Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-neutral-200 text-xs">
-                <div className="p-3 bg-white rounded-xl border border-neutral-200">
-                  <span className="text-neutral-500 block text-[11px]">Database Configuration</span>
-                  <span className="font-semibold text-neutral-900">
-                    {dbStatus?.configured ? 'Active (Environment Variables)' : 'Not Configured (Local Mode)'}
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-neutral-200">
-                  <span className="text-neutral-500 block text-[11px]">Production Host</span>
-                  <span className="font-semibold text-neutral-900 font-mono text-[11px]">
-                    {dbStatus?.host || 'Hostinger Internal Network'}
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-neutral-200">
-                  <span className="text-neutral-500 block text-[11px]">Single Source of Truth</span>
-                  <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    MySQL Database
-                  </span>
-                </div>
-              </div>
-
-              {dbStatus?.error && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                  <span>{dbStatus.error}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Architecture Notice */}
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-blue-900 text-xs space-y-1">
-              <h5 className="font-bold flex items-center gap-1.5">
-                <Server className="w-4 h-4 text-blue-600" />
-                Single Source of Truth Architecture
-              </h5>
-              <p className="text-blue-800 text-[11px] leading-relaxed">
-                All persistent store records (products, categories, brands, orders, inventory, promotions, settings, custom pages, and videos) are queried and mutated directly in MySQL on the server. No local files are modified during production operations.
-              </p>
-            </div>
-
-            {/* Live Table Records Grid */}
-            {dbStatus?.tableCounts && (
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs text-neutral-800 uppercase tracking-wider">
-                  Live MySQL Table Record Counts
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                  {Object.entries(dbStatus.tableCounts).map(([tableName, count]) => (
-                    <div
-                      key={tableName}
-                      className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200 text-center"
-                    >
-                      <span className="text-[10px] text-neutral-500 block font-mono truncate" title={tableName}>
-                        {tableName}
-                      </span>
-                      <span className="text-sm font-bold text-neutral-900 mt-0.5 block">
-                        {count.toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Migration Action Card */}
-            <div className="p-6 bg-neutral-900 text-white rounded-2xl space-y-4 shadow-sm">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h4 className="font-bold text-sm flex items-center gap-2">
-                    <Database className="w-4 h-4 text-amber-400" />
-                    One-Time Production Data Migration
-                  </h4>
-                  <p className="text-neutral-300 text-xs mt-1 max-w-xl">
-                    Safely populate your Hostinger MySQL database from the existing repository data sources. This process preserves existing IDs, relationships, stock, models, and prices, and prevents duplicate records.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleRunMigration}
-                  disabled={isMigrating || !dbStatus?.connected}
-                  className="px-5 py-2.5 bg-white text-neutral-900 hover:bg-neutral-100 rounded-xl font-bold text-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isMigrating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-neutral-900" />
-                      Migrating Data...
-                    </>
-                  ) : (
-                    <>
-                      <Database className="w-4 h-4 text-neutral-900" />
-                      Run Production Migration
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {!dbStatus?.connected && (
-                <div className="p-3 bg-neutral-800 rounded-xl text-neutral-400 text-[11px]">
-                  Note: The migration button is active when the server is connected to the Hostinger MySQL database.
-                </div>
-              )}
-            </div>
-
-            {/* Migration Error */}
-            {migrationError && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{migrationError}</span>
-              </div>
-            )}
-
-            {/* Migration Results Report */}
-            {migrationResult && (
-              <div className="p-5 bg-white rounded-2xl border border-emerald-200 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  {migrationResult.message || 'Migration executed successfully!'}
-                </div>
-
-                {migrationResult.report && (
-                  <div className="space-y-3">
-                    <div className="text-xs text-neutral-600">
-                      Execution Time: <span className="font-semibold">{migrationResult.report.timestamp}</span>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-neutral-200 bg-neutral-50 text-neutral-600">
-                            <th className="py-2 px-3 font-semibold">Data Category</th>
-                            <th className="py-2 px-3 font-semibold">Records Migrated</th>
-                            <th className="py-2 px-3 font-semibold">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-200">
-                          {Object.entries(migrationResult.report.summary || {}).map(([category, count]: any) => (
-                            <tr key={category} className="hover:bg-neutral-50">
-                              <td className="py-2 px-3 font-medium text-neutral-800 capitalize">
-                                {category.replace(/([A-Z])/g, ' $1')}
-                              </td>
-                              <td className="py-2 px-3 font-bold text-neutral-900">
-                                {Number(count).toLocaleString()}
-                              </td>
-                              <td className="py-2 px-3">
-                                <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                                  <Check className="w-3.5 h-3.5" />
-                                  Synced to MySQL
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {Array.isArray(migrationResult.report.warnings) && migrationResult.report.warnings.length > 0 && (
-                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-[11px] space-y-1">
-                        <span className="font-bold">Migration Notices:</span>
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {migrationResult.report.warnings.map((w: string, i: number) => (
-                            <li key={i}>{w}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab !== 'security' && activeTab !== 'database' && (
+        {activeTab !== 'security' && (
           <div className="pt-4 border-t border-neutral-200 flex justify-end">
             <button
               type="submit"

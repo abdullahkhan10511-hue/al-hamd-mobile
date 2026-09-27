@@ -1083,7 +1083,7 @@ export default function PromoCodesAdminPage() {
                     Promo Code Usage History {selectedPromoForUsage ? `(${selectedPromoForUsage.code})` : '(All)'}
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    {displayedUsages.length} total redemptions recorded in the database
+                    {displayedUsages.length} total redemptions recorded
                   </p>
                 </div>
               </div>

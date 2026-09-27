@@ -91,6 +91,10 @@ export function mapRowToProduct(
     category: row.category,
     categorySlug: row.category_slug,
     brand: row.brand,
+    brandId: (row as any).brand_id || undefined,
+    brandSlug:
+      (row as any).brand_slug ||
+      (row.brand ? row.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ''),
     sku: row.sku || `ALH-${row.id}`,
     stock: Number(row.stock),
     lowStockThreshold: Number(row.low_stock_threshold),

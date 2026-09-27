@@ -11,8 +11,11 @@ export async function GET() {
       try {
         list = await getAllCategoriesFromDb();
       } catch (err: any) {
-        console.warn('MySQL error in /api/categories, falling back to seed:', err.message);
-        list = initialCategories;
+        console.error('MySQL error in /api/categories GET:', err);
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch categories. Please try again later.' },
+          { status: 500 }
+        );
       }
     } else {
       list = initialCategories;

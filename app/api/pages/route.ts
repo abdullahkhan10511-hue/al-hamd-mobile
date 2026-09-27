@@ -11,8 +11,11 @@ export async function GET() {
       try {
         pages = await getAllPagesFromDb();
       } catch (err: any) {
-        console.warn('MySQL error in /api/pages:', err.message);
-        pages = seedPages;
+        console.error('MySQL error in /api/pages:', err);
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch pages. Please try again later.' },
+          { status: 500 }
+        );
       }
     } else {
       pages = seedPages;

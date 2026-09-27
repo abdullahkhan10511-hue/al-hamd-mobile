@@ -14,9 +14,15 @@ export async function GET(
     }
 
     if (isDbConfigured()) {
-      const page = await getPageBySlugFromDb(slug);
-      if (page) {
+      try {
+        const page = await getPageBySlugFromDb(slug);
+        if (!page) {
+          return NextResponse.json({ success: false, error: 'Page not found' }, { status: 404 });
+        }
         return NextResponse.json({ success: true, page });
+      } catch (err: any) {
+        console.error('MySQL error in /api/pages/[slug]:', err);
+        return NextResponse.json({ success: false, error: 'Failed to fetch page' }, { status: 500 });
       }
     }
 

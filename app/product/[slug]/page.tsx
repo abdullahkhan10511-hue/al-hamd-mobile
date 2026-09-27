@@ -705,10 +705,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
           {/* RIGHT: Product Buy Box */}
           <div className="lg:col-span-5 space-y-6">
             <div>
-              {/* Brand Tag (No stock status or stock quantity) */}
+              {/* Brand Tag (Clickable link to brand collection) */}
               {product.brand && (
-                <div className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-1.5">
-                  {product.brand}
+                <div className="mb-1.5">
+                  <Link
+                    href={`/brand/${product.brandSlug || product.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                    className="inline-block text-xs font-bold text-neutral-400 hover:text-neutral-950 uppercase tracking-widest transition-colors hover:underline"
+                    title={`Browse all ${product.brand} products`}
+                  >
+                    {product.brand}
+                  </Link>
                 </div>
               )}
 
@@ -1112,7 +1118,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 {product.brand && (
                   <div className="grid grid-cols-3 p-3.5 bg-neutral-50/50">
                     <span className="font-semibold text-neutral-500">Brand</span>
-                    <span className="col-span-2 text-neutral-900 font-medium">{product.brand}</span>
+                    <Link
+                      href={`/brand/${product.brandSlug || product.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                      className="col-span-2 text-neutral-900 font-semibold hover:underline"
+                      title={`Browse all ${product.brand} products`}
+                    >
+                      {product.brand}
+                    </Link>
                   </div>
                 )}
                 {product.category && (

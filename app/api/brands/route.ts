@@ -4,19 +4,25 @@ import { getAllBrandsFromDb, insertBrandToDb } from '@/lib/db/repositories/brand
 import { seedBrands } from '@/lib/db/seed';
 import { getAdminSession } from '@/lib/db/adminAuth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const activeOnly = searchParams.get('active') === 'true';
+
     let brands: any[] = [];
 
     if (isDbConfigured()) {
       try {
-        brands = await getAllBrandsFromDb();
+        brands = await getAllBrandsFromDb(activeOnly);
       } catch (err: any) {
-        console.warn('MySQL error in /api/brands GET:', err.message);
-        brands = seedBrands;
+        console.error('MySQL error in /api/brands GET:', err);
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch brands. Please try again later.' },
+          { status: 500 }
+        );
       }
     } else {
-      brands = seedBrands;
+      brands = activeOnly ? seedBrands.filter((b) => b.status === 'active') : seedBrands;
     }
 
     return NextResponse.json(

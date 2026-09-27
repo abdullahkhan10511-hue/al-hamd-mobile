@@ -73,6 +73,8 @@ export interface Product {
   category: string;
   categorySlug: string;
   brand: string;
+  brandId?: string;
+  brandSlug?: string;
   rating: number;
   reviewCount: number;
   stock: number;

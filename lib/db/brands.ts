@@ -6,22 +6,26 @@ import { logActivity } from './activity';
 const COLLECTION_KEY = 'brands';
 
 let hasSyncedBrandsFromApi = false;
-export async function syncBrandsFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
+export async function syncBrandsFromApi(): Promise<Brand[]> {
+  if (typeof window === 'undefined') return seedBrands;
   try {
     const res = await fetch('/api/brands', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.brands) && data.brands.length > 0) {
+      if (data.success && Array.isArray(data.brands)) {
         await persistCollection(COLLECTION_KEY, data.brands);
         window.dispatchEvent(
           new CustomEvent('alhamd:data-updated', {
             detail: { key: COLLECTION_KEY, value: data.brands },
           })
         );
+        return data.brands;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Could not sync brands from API:', err);
+  }
+  return getStoredCollection(COLLECTION_KEY, seedBrands);
 }
 
 export function getBrands(): Brand[] {
@@ -32,12 +36,32 @@ export function getBrands(): Brand[] {
   return getStoredCollection(COLLECTION_KEY, seedBrands);
 }
 
+export function getActiveBrands(): Brand[] {
+  return getBrands().filter((b) => b.status === 'active');
+}
+
+export function getBrandById(id: string): Brand | undefined {
+  const brands = getBrands();
+  return brands.find((b) => b.id === id);
+}
+
+export function getBrandBySlug(slug: string): Brand | undefined {
+  const brands = getBrands();
+  const clean = (slug || '').trim().toLowerCase();
+  return brands.find(
+    (b) =>
+      b.slug.toLowerCase() === clean ||
+      b.id.toLowerCase() === clean ||
+      b.name.toLowerCase() === clean
+  );
+}
+
 export async function createBrand(
   data: Omit<Brand, 'id'>,
   adminEmail = 'admin@alhamd.com'
 ): Promise<{ success: boolean; brand?: Brand; error?: string }> {
   const brands = getBrands();
-  const slug = data.slug.trim().toLowerCase().replace(/\s+/g, '-');
+  const slug = (data.slug || data.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
   if (brands.some((b) => b.slug.toLowerCase() === slug)) {
     return { success: false, error: `Brand slug "${slug}" already exists.` };
@@ -50,15 +74,29 @@ export async function createBrand(
     status: data.status || 'active',
   };
 
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/brands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBrand),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to create brand in database.' };
+      }
+      if (json.brand) {
+        newBrand.id = json.brand.id || newBrand.id;
+      }
+    } catch (err: any) {
+      console.warn('API error creating brand, persisting locally:', err);
+    }
+  }
+
   const updated = [...brands, newBrand];
   await persistCollection(COLLECTION_KEY, updated);
 
   if (typeof window !== 'undefined') {
-    fetch('/api/brands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newBrand),
-    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: updated },
@@ -87,20 +125,31 @@ export async function updateBrand(
     return { success: false, error: 'Brand not found.' };
   }
 
-  const updated = {
+  const updated: Brand = {
     ...brands[index],
     ...updates,
   };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/brands/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to update brand in database.' };
+      }
+    } catch (err: any) {
+      console.warn('API error updating brand:', err);
+    }
+  }
 
   brands[index] = updated;
   await persistCollection(COLLECTION_KEY, brands);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/brands/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: brands },
@@ -122,13 +171,24 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
   const target = brands.find((b) => b.id === id);
   if (!target) return false;
 
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/brands/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        console.error('API error deleting brand:', json.error);
+      }
+    } catch (err: any) {
+      console.warn('API error deleting brand:', err);
+    }
+  }
+
   const filtered = brands.filter((b) => b.id !== id);
   await persistCollection(COLLECTION_KEY, filtered);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/brands/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: filtered },

@@ -56,7 +56,8 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
       memoryStaffUsers = users;
       return users;
     } catch (err) {
-      console.warn('MySQL error in getServerStaffUsers, falling back to local storage:', err);
+      console.warn('MySQL error in getServerStaffUsers:', err);
+      return [];
     }
   }
 
@@ -92,9 +93,10 @@ export async function getServerStaffByEmail(email: string): Promise<StaffUser | 
   if (isDbConfigured()) {
     try {
       const found = await getStaffByEmailFromDb(normalized);
-      if (found) return found;
+      return found || undefined;
     } catch (err) {
       console.warn('MySQL error in getServerStaffByEmail:', err);
+      return undefined;
     }
   }
 

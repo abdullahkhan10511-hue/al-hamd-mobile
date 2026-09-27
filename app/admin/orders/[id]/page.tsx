@@ -72,7 +72,7 @@ export default function AdminOrderDetailPage() {
       <div className="p-12 text-center">
         <AlertCircle className="w-10 h-10 text-neutral-400 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-neutral-900">Order Not Found</h2>
-        <p className="text-xs text-neutral-500 mt-1 mb-4">The order ID #{orderId} does not exist in the database.</p>
+        <p className="text-xs text-neutral-500 mt-1 mb-4">The order ID #{orderId} was not found.</p>
         <Link
           href="/admin/orders"
           className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold"

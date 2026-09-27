@@ -87,6 +87,51 @@ export async function runProductionMigration(): Promise<MigrationReport> {
 
   const stats: MigrationEntityStat[] = [];
 
+  // 0. Safety Lock Check: Never re-populate or restore deleted records if migration has already run
+  // or if MySQL already contains catalog/store data.
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version VARCHAR(100) NOT NULL PRIMARY KEY,
+        executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    const alreadyRun = await query<RowDataPacket[]>(
+      "SELECT version FROM schema_migrations WHERE version = 'initial_seed_data' LIMIT 1"
+    );
+    if (alreadyRun && alreadyRun.length > 0) {
+      return {
+        success: true,
+        databaseConfigured: true,
+        timestamp,
+        stats: [],
+        summary: 'One-time initial seed migration has already been executed on this database. Seed data will not re-populate to prevent restoring admin-deleted records.',
+      };
+    }
+
+    // Check if products or categories tables already contain live records
+    const [existingProds, existingCats] = await Promise.all([
+      query<RowDataPacket[]>('SELECT COUNT(*) as cnt FROM products'),
+      query<RowDataPacket[]>('SELECT COUNT(*) as cnt FROM categories'),
+    ]);
+    const prodCount = Number(existingProds[0]?.cnt || 0);
+    const catCount = Number(existingCats[0]?.cnt || 0);
+
+    if (prodCount > 0 || catCount > 0) {
+      await execute("INSERT IGNORE INTO schema_migrations (version) VALUES ('initial_seed_data')");
+      return {
+        success: true,
+        databaseConfigured: true,
+        timestamp,
+        stats: [],
+        summary: `Production database already contains ${prodCount} products and ${catCount} categories. Seed data re-population was skipped to preserve database records and prevent resurrecting deleted items.`,
+      };
+    }
+  } catch (err: any) {
+    console.warn('[Migration] Safety check notice:', err.message);
+  }
+
   // ---------------------------------------------------------------------------
   // 1. CATEGORIES
   // ---------------------------------------------------------------------------
@@ -858,6 +903,9 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   const totalImported = stats.reduce((sum, s) => sum + s.imported, 0);
   const totalSkipped = stats.reduce((sum, s) => sum + s.skipped, 0);
   const totalErrors = stats.reduce((sum, s) => sum + s.errors, 0);
+  try {
+    await execute("INSERT IGNORE INTO schema_migrations (version) VALUES ('initial_seed_data')");
+  } catch {}
 
   return {
     success: totalErrors === 0,

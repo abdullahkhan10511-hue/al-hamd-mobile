@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +18,8 @@ import {
   Video,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Search,
   Maximize2,
   Film,
   X,
@@ -27,9 +29,11 @@ import {
   Palette,
 } from 'lucide-react';
 import { getCategories } from '@/lib/db/categories';
+import { getBrands, getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { createProduct, updateProduct } from '@/lib/db/products';
 import { uploadMediaFile } from '@/lib/db/media';
 import { Product, ProductMediaItem, ProductModelVariant, ProductColorVariant } from '@/types';
+import { Brand } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
 interface ProductFormProps {
@@ -47,6 +51,82 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   const [slug, setSlug] = useState(initialProduct?.slug || '');
   const [sku, setSku] = useState(initialProduct?.sku || '');
   const [brand, setBrand] = useState(initialProduct?.brand || '');
+  const [brandsList, setBrandsList] = useState<Brand[]>([]);
+  const [brandSearch, setBrandSearch] = useState('');
+  const [brandDropdownOpen, setBrandDropdownOpen] = useState(false);
+  const brandDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const loadBrands = async () => {
+      const active = getActiveBrands();
+      setBrandsList(active);
+      const synced = await syncBrandsFromApi();
+      if (synced && synced.length > 0) {
+        setBrandsList(synced);
+      }
+    };
+    loadBrands();
+
+    const handleDataUpdated = () => {
+      setBrandsList(getActiveBrands());
+    };
+    window.addEventListener('alhamd:data-updated', handleBrandUpdate);
+    return () => window.removeEventListener('alhamd:data-updated', handleBrandUpdate);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (brandDropdownRef.current && !brandDropdownRef.current.contains(e.target as Node)) {
+        setBrandDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleBrandUpdate = () => {
+    setBrandsList(getActiveBrands());
+  };
+
+  const selectableBrands = useMemo(() => {
+    const active = brandsList.filter((b) => b.status === 'active');
+    // If the product being edited already has a brand that is inactive or not in active list, preserve it!
+    if (brand && brand.trim() && !active.some((b) => b.name.toLowerCase() === brand.trim().toLowerCase())) {
+      const all = getBrands();
+      const existingBrandObj = all.find((b) => b.name.toLowerCase() === brand.trim().toLowerCase());
+      return [
+        existingBrandObj || {
+          id: `brand-${brand}`,
+          name: brand,
+          slug: brand.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          status: 'inactive' as const,
+          productCount: 0,
+        },
+        ...active,
+      ];
+    }
+    return active;
+  }, [brandsList, brand]);
+
+  const filteredBrands = useMemo(() => {
+    if (!brandSearch.trim()) return selectableBrands;
+    const q = brandSearch.trim().toLowerCase();
+    return selectableBrands.filter(
+      (b) =>
+        b.name.toLowerCase().includes(q) ||
+        b.slug.toLowerCase().includes(q)
+    );
+  }, [selectableBrands, brandSearch]);
+
+  const selectedBrand = useMemo(() => {
+    if (!brand) return null;
+    return (
+      selectableBrands.find((b) => b.name.toLowerCase() === brand.trim().toLowerCase()) ||
+      getBrands().find((b) => b.name.toLowerCase() === brand.trim().toLowerCase()) ||
+      null
+    );
+  }, [selectableBrands, brand]);
+
   const [categorySlug, setCategorySlug] = useState(initialProduct?.categorySlug || '');
   const [price, setPrice] = useState<number | ''>(
     initialProduct?.price !== undefined ? initialProduct.price : ''
@@ -507,6 +587,8 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       slug: slug.trim().toLowerCase(),
       sku: sku.trim().toUpperCase(),
       brand: brand.trim(),
+      brandId: selectedBrand?.id || (initialProduct as any)?.brandId,
+      brandSlug: selectedBrand?.slug || (initialProduct as any)?.brandSlug,
       category: categoryName,
       categorySlug: categorySlug || '',
       price: numPrice,
@@ -1598,15 +1680,133 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               </select>
             </div>
 
-            <div>
-              <label className="font-semibold text-neutral-700 block mb-1">Brand</label>
-              <input
-                type="text"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                placeholder="e.g. Apple, Samsung, Anker, Baseus, UGREEN, Audionic..."
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white text-neutral-900"
-              />
+            <div className="relative" ref={brandDropdownRef}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-semibold text-neutral-700 block">Brand</label>
+                <Link
+                  href="/admin/brands"
+                  target="_blank"
+                  className="text-[10px] text-neutral-500 hover:text-neutral-900 font-medium underline"
+                >
+                  Manage Brands
+                </Link>
+              </div>
+
+              {/* Select Trigger */}
+              <button
+                type="button"
+                onClick={() => setBrandDropdownOpen(!brandDropdownOpen)}
+                className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-colors cursor-pointer text-xs ${
+                  brandDropdownOpen
+                    ? 'border-neutral-900 bg-white ring-2 ring-neutral-900/10'
+                    : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100/70 focus:bg-white'
+                }`}
+              >
+                <span className={brand ? 'font-bold text-neutral-950 flex items-center gap-2' : 'text-neutral-400 font-normal'}>
+                  {brand ? (
+                    <>
+                      <span>{brand}</span>
+                      {selectedBrand?.status === 'inactive' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold uppercase">
+                          Inactive
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    'Select Brand'
+                  )}
+                </span>
+                <div className="flex items-center gap-1.5 text-neutral-400">
+                  {brand && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBrand('');
+                      }}
+                      className="p-1 hover:text-neutral-900 rounded-md transition-colors"
+                      title="Clear brand"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${brandDropdownOpen ? 'rotate-180 text-neutral-900' : ''}`} />
+                </div>
+              </button>
+
+              {/* Dropdown Menu */}
+              {brandDropdownOpen && (
+                <div className="absolute left-0 right-0 mt-1.5 bg-white border border-neutral-200 rounded-2xl shadow-xl z-50 overflow-hidden text-xs">
+                  {/* Search Input */}
+                  <div className="p-2 border-b border-neutral-100 bg-neutral-50">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={brandSearch}
+                        onChange={(e) => setBrandSearch(e.target.value)}
+                        placeholder="Search brands (e.g. Apple, Samsung)..."
+                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-neutral-200 rounded-lg text-xs focus:outline-none focus:border-neutral-900"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {/* Brand Options List */}
+                  <div className="max-h-56 overflow-y-auto p-1 divide-y divide-neutral-50">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBrand('');
+                        setBrandDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                        !brand ? 'bg-neutral-100 font-bold text-neutral-900' : 'hover:bg-neutral-50 text-neutral-500'
+                      }`}
+                    >
+                      <span>-- No Brand / Unbranded --</span>
+                      {!brand && <Check className="w-3.5 h-3.5 text-neutral-900" />}
+                    </button>
+
+                    {filteredBrands.map((b) => {
+                      const isSelected = brand.toLowerCase() === b.name.toLowerCase();
+                      return (
+                        <button
+                          type="button"
+                          key={b.id}
+                          onClick={() => {
+                            setBrand(b.name);
+                            setBrandDropdownOpen(false);
+                            setBrandSearch('');
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-neutral-900 text-white font-bold'
+                              : 'hover:bg-neutral-100 text-neutral-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{b.name}</span>
+                            {b.status === 'inactive' && (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-white/20 text-white' : 'bg-neutral-200 text-neutral-600'}`}>
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                        </button>
+                      );
+                    })}
+
+                    {filteredBrands.length === 0 && (
+                      <div className="p-3 text-center text-neutral-400 text-xs">
+                        No brands found matching &quot;{brandSearch}&quot;
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -51,19 +51,6 @@ export function getCategories(): Category[] {
     modified = true;
   }
 
-  // Ensure all recommended mobile categories exist, ignoring any explicitly deleted categories
-  const existingSlugs = new Set(list.map((c) => c.slug.toLowerCase()));
-  const missingInitial = initialCategories.filter(
-    (ic) =>
-      !existingSlugs.has(ic.slug.toLowerCase()) &&
-      !LEGACY_UNRELATED_SLUGS.has(ic.slug.toLowerCase()) &&
-      !deletedSlugs.has(ic.slug.toLowerCase())
-  );
-  if (missingInitial.length > 0) {
-    list = [...list, ...missingInitial];
-    modified = true;
-  }
-
   if (modified) {
     persistCollection(COLLECTION_KEY, list);
   }
@@ -80,11 +67,16 @@ let hasSyncedCategoriesFromApi = false;
 export async function syncCategoriesFromApi(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/categories');
+    const res = await fetch('/api/categories', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
+      if (data.success && Array.isArray(data.categories)) {
         await persistCollection(COLLECTION_KEY, data.categories);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: data.categories },
+          })
+        );
       }
     }
   } catch {}
@@ -267,11 +259,15 @@ export async function updateCategory(
     await persistCollection(COLLECTION_KEY, categories);
 
     if (typeof window !== 'undefined') {
-      fetch(`/api/categories/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitizedUpdates),
-      }).catch(() => {});
+      try {
+        await fetch(`/api/categories/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sanitizedUpdates),
+        });
+      } catch (err) {
+        console.warn('API error updating category:', err);
+      }
     }
 
     await logActivity({
@@ -298,9 +294,13 @@ export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'
     await persistCollection(COLLECTION_KEY, filtered);
 
     if (typeof window !== 'undefined') {
-      fetch(`/api/categories/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      }).catch(() => {});
+      try {
+        await fetch(`/api/categories/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.warn('API error deleting category:', err);
+      }
     }
 
     // Blacklist deleted slug so getCategories() seed rehydration never resurrects it

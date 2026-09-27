@@ -104,13 +104,9 @@ function saveLocalFileCustomers(customers: Customer[]): void {
  */
 export async function getServerCustomers(): Promise<Customer[]> {
   if (isDbConfigured()) {
-    try {
-      const customers = await getAllCustomersFromDb();
-      memoryCustomers = customers;
-      return customers;
-    } catch (err) {
-      console.warn('MySQL error in getServerCustomers, falling back to local storage:', err);
-    }
+    const customers = await getAllCustomersFromDb();
+    memoryCustomers = customers;
+    return customers;
   }
 
   if (memoryCustomers && memoryCustomers.length > 0) {
@@ -156,11 +152,7 @@ export function verifyCustomerPasswordServer(
 
 export async function getServerWholesaleAccounts(): Promise<Customer[]> {
   if (isDbConfigured()) {
-    try {
-      return await getAllCustomersFromDb('WHOLESALE');
-    } catch (err) {
-      console.warn('MySQL error in getServerWholesaleAccounts:', err);
-    }
+    return await getAllCustomersFromDb('WHOLESALE');
   }
   const all = getServerCustomersSync();
   return all.filter((c) => c.customerType === 'WHOLESALE');
@@ -168,11 +160,7 @@ export async function getServerWholesaleAccounts(): Promise<Customer[]> {
 
 export async function getServerSuperWholesaleAccounts(): Promise<Customer[]> {
   if (isDbConfigured()) {
-    try {
-      return await getAllCustomersFromDb('SUPER_WHOLESALE');
-    } catch (err) {
-      console.warn('MySQL error in getServerSuperWholesaleAccounts:', err);
-    }
+    return await getAllCustomersFromDb('SUPER_WHOLESALE');
   }
   const all = getServerCustomersSync();
   return all.filter((c) => c.customerType === 'SUPER_WHOLESALE');
@@ -181,12 +169,8 @@ export async function getServerSuperWholesaleAccounts(): Promise<Customer[]> {
 export async function getServerCustomerById(id: string): Promise<Customer | undefined> {
   if (!id) return undefined;
   if (isDbConfigured()) {
-    try {
-      const found = await getCustomerByIdFromDb(id);
-      if (found) return found;
-    } catch (err) {
-      console.warn('MySQL error in getServerCustomerById:', err);
-    }
+    const found = await getCustomerByIdFromDb(id);
+    return found || undefined;
   }
   const all = getServerCustomersSync();
   return all.find(
@@ -202,12 +186,8 @@ export async function getServerCustomerByShopName(shopName: string): Promise<Cus
   if (!shopName) return undefined;
   const normalized = shopName.trim().toLowerCase();
   if (isDbConfigured()) {
-    try {
-      const found = await getCustomerByShopNameFromDb(normalized);
-      if (found) return found;
-    } catch (err) {
-      console.warn('MySQL error in getServerCustomerByShopName:', err);
-    }
+    const found = await getCustomerByShopNameFromDb(normalized);
+    return found || undefined;
   }
   const all = getServerCustomersSync();
   return all.find(
@@ -222,12 +202,8 @@ export async function getServerCustomerByEmail(email: string): Promise<Customer 
   if (!email) return undefined;
   const normalized = email.trim().toLowerCase();
   if (isDbConfigured()) {
-    try {
-      const found = await getCustomerByEmailFromDb(normalized);
-      if (found) return found;
-    } catch (err) {
-      console.warn('MySQL error in getServerCustomerByEmail:', err);
-    }
+    const found = await getCustomerByEmailFromDb(normalized);
+    return found || undefined;
   }
   const all = getServerCustomersSync();
   return all.find(

@@ -15,8 +15,11 @@ export async function GET(request: NextRequest) {
       try {
         products = await getAllProductsFromDb();
       } catch (err: any) {
-        console.warn('MySQL error in /api/products, falling back to seed:', err.message);
-        products = seedProducts;
+        console.error('MySQL error in /api/products:', err);
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch products. Please try again later.' },
+          { status: 500 }
+        );
       }
     } else {
       products = seedProducts;

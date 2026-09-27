@@ -67,71 +67,6 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
     return p;
   });
 
-  // 3. Ensure all mobile accessories from seedProducts exist in list ONLY if not explicitly deleted
-  const existingIds = new Set(list.map((p) => p.id));
-  const missingSeeds = seedProducts.filter(
-    (sp) => !existingIds.has(sp.id) && !OBSOLETE_NON_MOBILE_IDS.has(sp.id) && !deletedIds.has(sp.id)
-  );
-  if (missingSeeds.length > 0) {
-    list = [...list, ...missingSeeds];
-    modified = true;
-  }
-
-  // 4. Update existing products with fresh mobile accessory metadata
-  if (list && list.length > 0) {
-    list = list.map((p) => {
-      const seedMatch = seedProducts.find((sp) => sp.id === p.id);
-      if (seedMatch && p.id !== 'prod-1' && p.id !== 'prod-2') {
-        let changed = false;
-        let pCat = p.category;
-        let pCatSlug = p.categorySlug;
-        let pImages = p.images;
-        let pIsActive = (p as any).isActive;
-
-        if (pCat !== seedMatch.category || pCatSlug !== seedMatch.categorySlug) {
-          pCat = seedMatch.category;
-          pCatSlug = seedMatch.categorySlug;
-          changed = true;
-        }
-
-        if (pIsActive === undefined) {
-          pIsActive = true;
-          changed = true;
-        }
-
-        // Migrate any leftover fashion or broken/warehouse images
-        if (
-          pImages &&
-          (pImages[0]?.includes('photo-1483985988355-763728e1935b') ||
-            pImages.some(
-              (img) =>
-                img.includes('photo-1609592426867') ||
-                img.includes('photo-1622445262464') ||
-                img.includes('photo-1616401784845')
-            ))
-        ) {
-          pImages = seedMatch.images;
-          changed = true;
-        }
-
-        if (changed) {
-          modified = true;
-          return {
-            ...p,
-            category: pCat,
-            categorySlug: pCatSlug,
-            images: pImages,
-            isActive: pIsActive,
-            tags: p.tags || seedMatch.tags,
-            isNewArrival: p.isNewArrival ?? seedMatch.isNewArrival,
-            isBestSeller: p.isBestSeller ?? seedMatch.isBestSeller,
-          };
-        }
-      }
-      return p;
-    });
-  }
-
   if (modified) {
     persistCollection(COLLECTION_KEY, list);
   }
@@ -148,11 +83,16 @@ let hasSyncedProductsFromApi = false;
 export async function syncProductsFromApi(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/products');
+    const res = await fetch('/api/products', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.products) && data.products.length > 0) {
+      if (data.success && Array.isArray(data.products)) {
         await persistCollection(COLLECTION_KEY, data.products);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: data.products },
+          })
+        );
       }
     }
   } catch {}
@@ -485,9 +425,13 @@ export async function deleteProduct(
   await persistCollection(COLLECTION_KEY, filtered);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }).catch(() => {});
+    try {
+      await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.warn('API error deleting product:', err);
+    }
   }
 
   // 2. Blacklist deleted ID so getProducts() seed rehydration never resurrects it

@@ -151,7 +151,17 @@ function LargeBestSellerCard({ product }: { product: Product }) {
       <div className="pt-5 flex flex-col flex-1 justify-between">
         <div>
           <div className="flex items-center justify-between text-xs text-neutral-400 uppercase tracking-wider mb-1.5">
-            <span>{product.brand}</span>
+            {product.brand ? (
+              <Link
+                href={`/brand/${product.brandSlug || product.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                className="hover:text-neutral-900 transition-colors font-semibold truncate max-w-[150px]"
+                title={`View ${product.brand} products`}
+              >
+                {product.brand}
+              </Link>
+            ) : (
+              <span />
+            )}
             <StarRating rating={product.rating} reviewCount={product.reviewCount} size="sm" />
           </div>
 

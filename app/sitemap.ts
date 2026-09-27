@@ -2,11 +2,13 @@ import type { MetadataRoute } from 'next';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllProductsFromDb } from '@/lib/db/repositories/products';
 import { getAllCategoriesFromDb } from '@/lib/db/repositories/categories';
+import { getAllBrandsFromDb } from '@/lib/db/repositories/brands';
 import { getProducts } from '@/lib/db/products';
 import { getActiveCategories } from '@/lib/db/categories';
+import { getBrands } from '@/lib/db/brands';
 import { getBlogPosts } from '@/lib/db/blog';
 import { Category, Product } from '@/types';
-import { BlogPost } from '@/types/admin';
+import { BlogPost, Brand } from '@/types/admin';
 
 export const revalidate = 3600;
 
@@ -33,6 +35,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     {
       url: `${baseUrl}/categories`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/brands`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.8,
@@ -148,6 +156,41 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
+  // Fetch Brands (MySQL with graceful fallback to local data)
+  let rawBrands: Brand[] = [];
+  if (isDbConfigured()) {
+    try {
+      rawBrands = await getAllBrandsFromDb(true);
+    } catch (err) {
+      console.warn('[sitemap] Unable to load brands from MySQL, using local fallback:', err);
+    }
+  }
+
+  if (!rawBrands || rawBrands.length === 0) {
+    try {
+      rawBrands = getBrands().filter((b) => b.status === 'active');
+    } catch {
+      rawBrands = [];
+    }
+  }
+
+  const brandMap = new Map<string, Brand>();
+  for (const b of rawBrands) {
+    if (b && b.slug && typeof b.slug === 'string' && b.status === 'active') {
+      const cleanSlug = b.slug.trim().toLowerCase();
+      if (cleanSlug && !brandMap.has(cleanSlug)) {
+        brandMap.set(cleanSlug, b);
+      }
+    }
+  }
+
+  const brandEntries: MetadataRoute.Sitemap = Array.from(brandMap.values()).map((b) => ({
+    url: `${baseUrl}/brand/${encodeURIComponent(b.slug.trim())}`,
+    lastModified: new Date(),
+    changeFrequency: 'weekly',
+    priority: 0.8,
+  }));
+
   // 4. Fetch Products (MySQL with graceful fallback to local data)
   let rawProducts: Product[] = [];
   if (isDbConfigured()) {
@@ -227,6 +270,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     homeEntry,
     ...corePages,
     ...categoryEntries,
+    ...brandEntries,
     ...productEntries,
     ...blogEntries,
   ];

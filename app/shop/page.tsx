@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { getProducts } from '@/lib/db/products';
 import { getActiveCategories } from '@/lib/db/categories';
-import { getBrands } from '@/lib/db/brands';
+import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
@@ -32,6 +32,7 @@ export default function ShopPage() {
 function ShopContent() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get('category') || 'all';
+  const initialBrand = searchParams.get('brand') || '';
   const initialFilter = searchParams.get('filter') || '';
   const initialSearch = searchParams.get('search') || '';
 
@@ -41,7 +42,7 @@ function ShopContent() {
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrand ? [initialBrand] : []);
   const [maxPrice, setMaxPrice] = useState<number>(100000);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
@@ -63,7 +64,7 @@ function ShopContent() {
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     // Only fetch active, non-archived mobile accessories for storefront
     const activeProds = getProducts().filter(
       (p) =>
@@ -73,7 +74,9 @@ function ShopContent() {
     );
     setProductsList(activeProds);
     setCategoriesList(getActiveCategories());
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+
+    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
+    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
   useEffect(() => {
@@ -133,10 +136,13 @@ function ShopContent() {
     setTimeout(() => setHasDragged(false), 50);
   };
 
-  // Update selected category when query parameter changes
+  // Update selected category or brand when query parameter changes
   useEffect(() => {
     const cat = searchParams.get('category');
     if (cat) setSelectedCategory(cat);
+
+    const brandParam = searchParams.get('brand');
+    if (brandParam) setSelectedBrands([brandParam]);
   }, [searchParams]);
 
   // Extract available brands
@@ -144,8 +150,37 @@ function ShopContent() {
     if (brandsList.length > 0) {
       return brandsList.map((b) => b.name);
     }
-    return Array.from(new Set(productsList.map((p) => p.brand)));
+    const set = new Set<string>();
+    productsList.forEach((p) => {
+      if (p.brand) set.add(p.brand);
+    });
+    return Array.from(set);
   }, [brandsList, productsList]);
+
+  const isBrandSelected = (brandName: string) => {
+    const bLower = brandName.toLowerCase();
+    const matchedBrandObj = brandsList.find(
+      (b) => b.name.toLowerCase() === bLower || b.slug.toLowerCase() === bLower
+    );
+    return selectedBrands.some((sel) => {
+      const s = sel.toLowerCase();
+      return (
+        s === bLower ||
+        (matchedBrandObj && s === matchedBrandObj.slug.toLowerCase()) ||
+        (matchedBrandObj && s === matchedBrandObj.name.toLowerCase())
+      );
+    });
+  };
+
+  const toggleBrand = (brandName: string) => {
+    const bLower = brandName.toLowerCase();
+    setSelectedBrands((prev) => {
+      const exists = prev.some((b) => b.toLowerCase() === bLower);
+      return exists
+        ? prev.filter((b) => b.toLowerCase() !== bLower)
+        : [...prev, brandName];
+    });
+  };
 
   // Filter logic (ALL ITEMS automatically contains every active product)
   const filteredProducts = useMemo(() => {
@@ -159,8 +194,26 @@ function ShopContent() {
       }
 
       // Brand filter
-      if (selectedBrands.length > 0 && !selectedBrands.includes(product.brand)) {
-        return false;
+      if (selectedBrands.length > 0) {
+        const matchesBrand = selectedBrands.some((sel) => {
+          const s = sel.trim().toLowerCase();
+          const pBrand = (product.brand || '').trim().toLowerCase();
+          const pSlug = (product.brandSlug || '').trim().toLowerCase();
+          const pId = (product.brandId || '').trim().toLowerCase();
+          const brandObj = brandsList.find(
+            (b) => b.slug.toLowerCase() === s || b.name.toLowerCase() === s || b.id.toLowerCase() === s
+          );
+          const matchedTargetName = brandObj ? brandObj.name.toLowerCase() : s;
+          const matchedTargetSlug = brandObj ? brandObj.slug.toLowerCase() : s;
+          return (
+            s === pBrand ||
+            s === pSlug ||
+            (pId && s === pId) ||
+            pBrand === matchedTargetName ||
+            pSlug === matchedTargetSlug
+          );
+        });
+        if (!matchesBrand) return false;
       }
 
       // Price filter
@@ -192,7 +245,7 @@ function ShopContent() {
 
       return true;
     });
-  }, [productsList, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, searchQuery]);
+  }, [productsList, selectedCategory, selectedBrands, brandsList, maxPrice, minRating, inStockOnly, searchQuery]);
 
   // Sort logic
   const sortedProducts = useMemo(() => {
@@ -214,16 +267,10 @@ function ShopContent() {
     }
   }, [filteredProducts, sortBy]);
 
-  const toggleBrand = (brand: string) => {
-    setSelectedBrands((prev) =>
-      prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
-    );
-  };
-
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrands([]);
-    setMaxPrice(500);
+    setMaxPrice(100000);
     setMinRating(null);
     setInStockOnly(false);
     setSearchQuery('');
@@ -233,7 +280,7 @@ function ShopContent() {
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     selectedBrands.length +
-    (maxPrice < 500 ? 1 : 0) +
+    (maxPrice < 100000 ? 1 : 0) +
     (minRating !== null ? 1 : 0) +
     (inStockOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
@@ -458,9 +505,19 @@ function ShopContent() {
 
             {/* Brand Filter */}
             <div className="pt-4 border-t border-neutral-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 mb-2.5">
-                Brands
-              </h3>
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900">
+                  Brands
+                </h3>
+                {selectedBrands.length > 0 && (
+                  <button
+                    onClick={() => setSelectedBrands([])}
+                    className="text-[10px] text-neutral-400 hover:text-neutral-950 font-semibold cursor-pointer"
+                  >
+                    Clear ({selectedBrands.length})
+                  </button>
+                )}
+              </div>
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                 {availableBrands.map((brand) => (
                   <label
@@ -469,7 +526,7 @@ function ShopContent() {
                   >
                     <input
                       type="checkbox"
-                      checked={selectedBrands.includes(brand)}
+                      checked={isBrandSelected(brand)}
                       onChange={() => toggleBrand(brand)}
                       className="w-3.5 h-3.5 rounded text-neutral-950 focus:ring-neutral-950"
                     />
@@ -535,6 +592,177 @@ function ShopContent() {
           </div>
         </div>
       </div>
+      {/* Mobile Slide-Over Filter Drawer */}
+      <AnimatePresence>
+        {mobileFiltersOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileFiltersOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-xs"
+            />
+
+            {/* Slide-over panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-neutral-100">
+                <h2 className="text-base font-bold text-neutral-950 flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4" />
+                  <span>Filters {activeFilterCount > 0 && `(${activeFilterCount})`}</span>
+                </h2>
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="p-1 rounded-lg text-neutral-400 hover:text-neutral-900"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                {/* Search */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 mb-2">
+                    Search
+                  </h3>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Keywords, brand..."
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                    />
+                    <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                {/* Categories */}
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 mb-2">
+                    Category
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('all')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                        selectedCategory === 'all'
+                          ? 'bg-neutral-950 text-white'
+                          : 'bg-neutral-100 text-neutral-700'
+                      }`}
+                    >
+                      All Items
+                    </button>
+                    {categoriesList.map((cat) => (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => setSelectedCategory(cat.slug)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                          selectedCategory === cat.slug
+                            ? 'bg-neutral-950 text-white'
+                            : 'bg-neutral-100 text-neutral-700'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* In stock */}
+                <label className="flex items-center justify-between cursor-pointer py-1">
+                  <span className="text-xs font-semibold text-neutral-800">In-Stock Only</span>
+                  <input
+                    type="checkbox"
+                    checked={inStockOnly}
+                    onChange={(e) => setInStockOnly(e.target.checked)}
+                    className="w-4 h-4 rounded text-neutral-950"
+                  />
+                </label>
+
+                {/* Price Ceiling */}
+                <div className="pt-4 border-t border-neutral-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900">
+                      Price Ceiling
+                    </h3>
+                    <span className="text-xs font-mono font-bold text-neutral-900">{formatPrice(maxPrice)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="100000"
+                    step="1000"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(Number(e.target.value))}
+                    className="w-full accent-neutral-950"
+                  />
+                </div>
+
+                {/* Brand Filter */}
+                <div className="pt-4 border-t border-neutral-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900">
+                      Brands
+                    </h3>
+                    {selectedBrands.length > 0 && (
+                      <button
+                        onClick={() => setSelectedBrands([])}
+                        className="text-[10px] text-neutral-400 hover:text-neutral-950 font-semibold"
+                      >
+                        Clear ({selectedBrands.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {availableBrands.map((brand) => (
+                      <label
+                        key={brand}
+                        className="flex items-center gap-2.5 text-xs text-neutral-700 hover:text-neutral-950 cursor-pointer py-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isBrandSelected(brand)}
+                          onChange={() => toggleBrand(brand)}
+                          className="w-3.5 h-3.5 rounded text-neutral-950"
+                        />
+                        <span className="truncate">{brand}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex items-center gap-3">
+                <button
+                  onClick={resetFilters}
+                  className="flex-1 py-2.5 rounded-full border border-neutral-200 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 text-center"
+                >
+                  Reset All
+                </button>
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="flex-1 py-2.5 rounded-full bg-neutral-950 text-white text-xs font-semibold hover:bg-neutral-800 text-center"
+                >
+                  Apply ({filteredProducts.length})
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
