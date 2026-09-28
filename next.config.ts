@@ -14,6 +14,17 @@ const nextConfig: NextConfig = {
       }
     ],
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = {
+        ...(config.resolve.fallback || {}),
+        fs: false,
+        path: false,
+      };
+    }
+    return config;
+  },
   async redirects() {
     return [
       {
@@ -26,3 +37,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
