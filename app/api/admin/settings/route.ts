@@ -37,7 +37,7 @@ function getSessionUser(request: NextRequest): { email: string; role: string } |
 
 const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
 
-export function readLocalFileSettings(): StoreSettings {
+function readLocalFileSettings(): StoreSettings {
   try {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const content = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8');
@@ -58,7 +58,7 @@ export function readLocalFileSettings(): StoreSettings {
   return seedStoreSettings;
 }
 
-export async function readServerSettings(): Promise<StoreSettings> {
+async function readServerSettings(): Promise<StoreSettings> {
   if (isDbConfigured()) {
     try {
       return await getStoreSettingsFromDb();
@@ -69,7 +69,7 @@ export async function readServerSettings(): Promise<StoreSettings> {
   return readLocalFileSettings();
 }
 
-export async function writeServerSettings(settings: StoreSettings): Promise<void> {
+async function writeServerSettings(settings: StoreSettings): Promise<void> {
   if (isDbConfigured()) {
     await updateStoreSettingsInDb(settings);
     return;

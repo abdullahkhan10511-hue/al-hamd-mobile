@@ -109,8 +109,10 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
 function getServerSavedSettings(): Partial<StoreSettings> | null {
   if (typeof window !== 'undefined') return null;
   try {
-    const fs = require('fs');
-    const path = require('path');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path') as typeof import('path');
     const filePath = path.join(process.cwd(), 'data', 'store-settings.json');
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, 'utf8');
