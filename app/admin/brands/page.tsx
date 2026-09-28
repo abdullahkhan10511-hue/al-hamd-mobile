@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Tag, Plus, Edit2, Trash2, Check, X, AlertCircle, Search, ImageIcon, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Tag, Plus, Edit2, Trash2, Check, X, AlertCircle, Search, ImageIcon, ExternalLink, Upload, Loader2 } from 'lucide-react';
 import { getBrands, createBrand, updateBrand, deleteBrand, syncBrandsFromApi } from '@/lib/db/brands';
 import { subscribeToKey } from '@/lib/db/storage';
 import { Brand } from '@/types/admin';
@@ -22,6 +22,39 @@ export default function AdminBrandsPage() {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [error, setError] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/admin/brands/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.url) {
+        throw new Error(data.error || 'Failed to upload brand logo.');
+      }
+
+      setLogo(data.url);
+    } catch (err: any) {
+      console.error('Brand logo upload error:', err);
+      setError(err?.message || 'Failed to upload brand logo.');
+    } finally {
+      setIsUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     syncBrandsFromApi().then((fresh) => {
@@ -312,25 +345,70 @@ export default function AdminBrandsPage() {
               </div>
 
               <div>
-                <label className="font-semibold text-neutral-700 block mb-1">Logo / Image URL (Optional)</label>
-                <div className="flex items-center gap-2">
+                <label className="font-semibold text-neutral-700 block mb-1">Brand Logo / Image (Optional)</label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    {logo ? (
+                      <div className="relative group">
+                        <img
+                          src={logo}
+                          alt="Logo Preview"
+                          className="w-14 h-14 rounded-xl object-contain bg-neutral-50 border border-neutral-200 p-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setLogo('')}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs shadow-sm hover:bg-rose-600"
+                          title="Remove logo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl bg-neutral-100 border border-dashed border-neutral-300 flex items-center justify-center text-neutral-400">
+                        <ImageIcon className="w-6 h-6" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 space-y-1">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleLogoUpload}
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingLogo ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{logo ? 'Replace Logo' : 'Upload Logo'}</span>
+                          </>
+                        )}
+                      </button>
+                      <p className="text-[10px] text-neutral-400">
+                        PNG, JPG, WebP, or SVG (Max 15MB)
+                      </p>
+                    </div>
+                  </div>
+
                   <input
-                    type="url"
+                    type="text"
                     value={logo}
                     onChange={(e) => setLogo(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                    placeholder="Or paste image URL (e.g. https://...)"
+                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 text-xs"
                   />
-                  {logo && (
-                    <img
-                      src={logo}
-                      alt="Preview"
-                      className="w-9 h-9 rounded-lg object-contain bg-neutral-50 border border-neutral-200 shrink-0 p-0.5"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                  )}
                 </div>
               </div>
 

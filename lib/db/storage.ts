@@ -9,6 +9,8 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 
+import { allowDevMockFallback } from '../env';
+
 const STORAGE_PREFIX = 'alhamd_store_';
 
 // Check if window and localStorage are available
@@ -17,9 +19,57 @@ const isBrowser = typeof window !== 'undefined';
 // Unified in-memory cache for SSR & client synchronization
 const memoryCache: Record<string, any> = {};
 
+function isStaleMockData(key: string, data: any): boolean {
+  if (!Array.isArray(data)) return false;
+  if (key === 'products') {
+    return data.some(
+      (p: any) =>
+        p &&
+        (p.slug === 'essential-hoodie' ||
+          p.slug === 'air-max-270' ||
+          (p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && p.sku === 'AP-APP2-015') ||
+          (p.id === 'prod-16' && p.slug === 'anker-20000mah-power-bank'))
+    );
+  }
+  if (key === 'categories') {
+    return data.some(
+      (c: any) =>
+        c &&
+        (c.slug === 'fashion' ||
+          c.slug === 'beauty' ||
+          c.slug === 'fitness' ||
+          c.slug === 'home-decor' ||
+          c.id === 'cat-phone-cases' ||
+          c.id === 'cat-screen-protectors' ||
+          c.id === 'cat-chargers')
+    );
+  }
+  if (key === 'customers') {
+    return data.some(
+      (c: any) =>
+        c &&
+        (c.email === 'hamza.khan@gmail.com' || c.email === 'ayesha.malik@outlook.com')
+    );
+  }
+  if (key === 'homepage_banners') {
+    return data.some(
+      (b: any) =>
+        b &&
+        b.id === 'banner-1' &&
+        typeof b.image === 'string' &&
+        b.image.includes('photo-1556905055-8f358a7a47b2')
+    );
+  }
+  return false;
+}
+
 export function getLocal<T>(key: string, fallback: T): T {
   if (memoryCache[key] !== undefined) {
-    return memoryCache[key] as T;
+    if (!allowDevMockFallback() && isStaleMockData(key, memoryCache[key])) {
+      delete memoryCache[key];
+    } else {
+      return memoryCache[key] as T;
+    }
   }
   if (!isBrowser) return fallback;
 
@@ -27,6 +77,11 @@ export function getLocal<T>(key: string, fallback: T): T {
     const item = localStorage.getItem(STORAGE_PREFIX + key);
     if (item !== null) {
       const parsed = JSON.parse(item);
+      if (!allowDevMockFallback() && isStaleMockData(key, parsed)) {
+        localStorage.removeItem(STORAGE_PREFIX + key);
+        memoryCache[key] = fallback;
+        return fallback;
+      }
       memoryCache[key] = parsed;
       return parsed;
     }

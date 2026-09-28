@@ -26,7 +26,7 @@ import {
   Sparkles,
   ChevronRight as BreadcrumbChevron,
 } from 'lucide-react';
-import { getProductBySlug, getProducts } from '@/lib/db/products';
+import { getProductBySlug, getProducts, fetchProductBySlug, syncProductsFromApi } from '@/lib/db/products';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { StarRating } from '@/components/ui/StarRating';
@@ -382,8 +382,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
-  const loadData = () => {
-    const found = getProductBySlug(resolvedParams.slug);
+  const loadData = async () => {
+    const found = getProductBySlug(resolvedParams.slug) || (await fetchProductBySlug(resolvedParams.slug));
     if (found && (found as any).status !== 'archived' && (found as any).isActive !== false) {
       setProduct(found);
       if (!selectedSize && found.variants?.sizes?.[0]) {
@@ -399,14 +399,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
       }
       setReviewsList(found.reviews || []);
 
-      const all = getProducts().filter(
+      let all = getProducts().filter(
         (p) =>
           (p as any).status !== 'archived' &&
           (p as any).status !== 'inactive' &&
           (p as any).isActive !== false &&
-          p.id !== found.id &&
-          p.categorySlug === found.categorySlug
+          p.id !== found!.id &&
+          p.categorySlug === found!.categorySlug
       );
+      if (all.length === 0) {
+        const synced = await syncProductsFromApi();
+        all = synced.filter(
+          (p) =>
+            (p as any).status !== 'archived' &&
+            (p as any).status !== 'inactive' &&
+            (p as any).isActive !== false &&
+            p.id !== found!.id &&
+            p.categorySlug === found!.categorySlug
+        );
+      }
       setRelatedProducts(all.slice(0, 4));
     } else {
       setProduct(null);

@@ -55,8 +55,16 @@ const seedCustomers: Customer[] = [
   },
 ];
 
+import { allowDevMockFallback } from '../env';
+
 export async function getCustomers(): Promise<Customer[]> {
-  const baseCustomers = getStoredCollection<Customer>(STORAGE_KEY, seedCustomers);
+  const fallback = allowDevMockFallback() ? seedCustomers : [];
+  let baseCustomers = getStoredCollection<Customer>(STORAGE_KEY, fallback);
+  if (!allowDevMockFallback()) {
+    baseCustomers = baseCustomers.filter(
+      (c) => c.email !== 'hamza.khan@gmail.com' && c.email !== 'ayesha.malik@outlook.com'
+    );
+  }
   const orders = await getOrders();
 
   // Aggregate dynamic metrics from orders

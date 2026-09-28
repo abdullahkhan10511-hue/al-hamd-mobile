@@ -2,11 +2,13 @@ import { AnnouncementItem } from '@/types/admin';
 import { seedAnnouncements } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'announcements';
 
 export function getAnnouncements(): AnnouncementItem[] {
-  const items = getStoredCollection(COLLECTION_KEY, seedAnnouncements).map((a) => {
+  const fallback = allowDevMockFallback() ? seedAnnouncements : [];
+  const items = getStoredCollection(COLLECTION_KEY, fallback).map((a) => {
     if (a.text.includes('Worldwide Shipping') || a.text.includes('$50')) {
       return { ...a, text: 'Free Nationwide Delivery on Orders Over Rs. 5,000' };
     }

@@ -15,9 +15,9 @@ import {
   ArrowRight,
   PackageX,
 } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
-import { getActiveCategories } from '@/lib/db/categories';
-import { getBrands } from '@/lib/db/brands';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
+import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
@@ -54,9 +54,12 @@ function NewArrivalsContent() {
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     // Only fetch non-archived products that are marked as newArrival or isNew
-    const all = getProducts();
+    let all = getProducts();
+    if (all.length === 0) {
+      all = await syncProductsFromApi().catch(() => []);
+    }
     const newItems = all.filter(
       (p) =>
         (p as any).status !== 'archived' &&
@@ -65,8 +68,28 @@ function NewArrivalsContent() {
         (p.isNewArrival || p.isNew)
     );
     setProductsList(newItems);
-    setCategoriesList(getActiveCategories());
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+
+    syncProductsFromApi().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        const freshNewItems = fresh.filter(
+          (p) =>
+            (p as any).status !== 'archived' &&
+            (p as any).status !== 'inactive' &&
+            (p as any).isActive !== false &&
+            (p.isNewArrival || p.isNew)
+        );
+        setProductsList(freshNewItems);
+      }
+    }).catch(() => {});
+
+    let cats = deduplicateCategoriesById(getActiveCategories());
+    setCategoriesList(cats);
+    syncCategoriesFromApi().then(() => {
+      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+    }).catch(() => {});
+
+    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
+    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
   useEffect(() => {

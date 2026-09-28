@@ -85,6 +85,19 @@ export async function runProductionMigration(): Promise<MigrationReport> {
     };
   }
 
+  // 0. Critical Production Safety Lock:
+  // Data seeding and demo importing must NEVER execute in production.
+  // The Hostinger MySQL database is the sole source of truth for persistent business data.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    return {
+      success: true,
+      databaseConfigured: true,
+      timestamp,
+      stats: [],
+      summary: 'Data migration/seeding is permanently disabled in production mode. Existing Hostinger MySQL production data is preserved and untouched.',
+    };
+  }
+
   const stats: MigrationEntityStat[] = [];
 
   // 0. Safety Lock Check: Never re-populate or restore deleted records if migration has already run

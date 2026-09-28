@@ -1,7 +1,7 @@
 import { query, execute, isDbConfigured } from '../mysql';
 import { Brand } from '@/types/admin';
-import { seedBrands } from '../seed';
 import { RowDataPacket } from 'mysql2/promise';
+import { ensureSafeMediaUrl } from '../serverMedia';
 
 interface BrandRow extends RowDataPacket {
   id: string;
@@ -39,10 +39,7 @@ export function generateBrandSlug(name: string): string {
  */
 export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
   if (!isDbConfigured()) {
-    if (activeOnly) {
-      return seedBrands.filter((b) => b.status === 'active');
-    }
-    return seedBrands;
+    throw new Error('Database is not configured.');
   }
 
   const whereClause = activeOnly ? "WHERE b.status = 'active'" : '';
@@ -67,7 +64,7 @@ export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
 export async function getBrandByIdFromDb(id: string): Promise<Brand | null> {
   if (!id) return null;
   if (!isDbConfigured()) {
-    return seedBrands.find((b) => b.id === id) || null;
+    throw new Error('Database is not configured.');
   }
 
   const rows = await query<BrandRow[]>(
@@ -89,14 +86,7 @@ export async function getBrandBySlugFromDb(slug: string): Promise<Brand | null> 
   const cleanSlug = slug.trim().toLowerCase();
 
   if (!isDbConfigured()) {
-    return (
-      seedBrands.find(
-        (b) =>
-          b.slug.toLowerCase() === cleanSlug ||
-          b.id.toLowerCase() === cleanSlug ||
-          b.name.toLowerCase() === cleanSlug
-      ) || null
-    );
+    throw new Error('Database is not configured.');
   }
 
   const rows = await query<BrandRow[]>(
@@ -118,14 +108,7 @@ export async function getBrandByIdOrSlugFromDb(identifier: string): Promise<Bran
   const clean = identifier.trim().toLowerCase();
 
   if (!isDbConfigured()) {
-    return (
-      seedBrands.find(
-        (b) =>
-          b.id.toLowerCase() === clean ||
-          b.slug.toLowerCase() === clean ||
-          b.name.toLowerCase() === clean
-      ) || null
-    );
+    throw new Error('Database is not configured.');
   }
 
   const rows = await query<BrandRow[]>(
@@ -143,6 +126,8 @@ export async function insertBrandToDb(brand: Partial<Brand>): Promise<Brand> {
   const name = (brand.name || '').trim();
   const slug = (brand.slug ? brand.slug.trim() : generateBrandSlug(name)).toLowerCase();
   const id = brand.id || `brand-${Date.now()}`;
+  const rawLogo = brand.logo ? brand.logo.trim() : null;
+  const safeLogo = await ensureSafeMediaUrl(rawLogo, 'brands');
 
   await execute(
     `INSERT INTO brands (id, name, slug, logo, description, status, product_count)
@@ -151,7 +136,7 @@ export async function insertBrandToDb(brand: Partial<Brand>): Promise<Brand> {
       id,
       name,
       slug,
-      brand.logo ? brand.logo.trim() : null,
+      safeLogo,
       brand.description ? brand.description.trim() : null,
       brand.status || 'active',
       brand.productCount || 0,
@@ -162,7 +147,7 @@ export async function insertBrandToDb(brand: Partial<Brand>): Promise<Brand> {
     id,
     name,
     slug,
-    logo: brand.logo ? brand.logo.trim() : undefined,
+    logo: safeLogo || undefined,
     description: brand.description ? brand.description.trim() : undefined,
     status: brand.status || 'active',
     productCount: brand.productCount || 0,
@@ -177,7 +162,8 @@ export async function updateBrandInDb(id: string, updates: Partial<Brand>): Prom
 
   const name = updates.name !== undefined ? updates.name.trim() : existing.name;
   const slug = updates.slug !== undefined ? updates.slug.trim().toLowerCase() : (updates.name ? generateBrandSlug(updates.name) : existing.slug);
-  const logo = updates.logo !== undefined ? (updates.logo ? updates.logo.trim() : null) : (existing.logo || null);
+  const rawLogo = updates.logo !== undefined ? (updates.logo ? updates.logo.trim() : null) : (existing.logo || null);
+  const logo = await ensureSafeMediaUrl(rawLogo, 'brands');
   const description = updates.description !== undefined ? (updates.description ? updates.description.trim() : null) : (existing.description || null);
   const status = updates.status !== undefined ? updates.status : existing.status;
 

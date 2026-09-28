@@ -15,9 +15,9 @@ import {
   X,
   Filter,
 } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
-import { getCategories } from '@/lib/db/categories';
-import { getBrands } from '@/lib/db/brands';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
+import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice, getProductImage, DEFAULT_PRODUCT_IMAGE, normalizeSearchText } from '@/lib/utils';
 import { Product, Category } from '@/types';
@@ -66,16 +66,27 @@ function SearchContent() {
   const [sortBy, setSortBy] = useState<string>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
 
-  const loadData = () => {
-    const all = getProducts().filter(
+  const loadData = async () => {
+    let prods = getProducts();
+    if (prods.length === 0) {
+      prods = await syncProductsFromApi().catch(() => []);
+    }
+    const all = prods.filter(
       (p) =>
         (p as any).status !== 'archived' &&
         (p as any).status !== 'inactive' &&
         (p as any).isActive !== false
     );
     setProductsList(all);
-    setCategoriesList(getCategories().filter((c) => c.status === 'active'));
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+
+    let cats = deduplicateCategoriesById(getActiveCategories());
+    setCategoriesList(cats);
+    syncCategoriesFromApi().then(() => {
+      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+    }).catch(() => {});
+
+    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
+    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
   useEffect(() => {

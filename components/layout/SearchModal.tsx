@@ -18,7 +18,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useSearch } from '@/context/SearchContext';
-import { getProducts } from '@/lib/db/products';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import {
   formatPrice,
   getProductImage,
@@ -109,14 +109,18 @@ export function SearchModal() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Load products from live database
-  const loadData = () => {
-    const prods = getProducts().filter(
+  const loadData = async () => {
+    let prods = getProducts();
+    if (prods.length === 0) {
+      prods = await syncProductsFromApi().catch(() => []);
+    }
+    const filtered = prods.filter(
       (p) =>
         (p as any).status !== 'archived' &&
         (p as any).status !== 'inactive' &&
         (p as any).isActive !== false
     );
-    setProductsList(prods);
+    setProductsList(filtered);
   };
 
   useEffect(() => {

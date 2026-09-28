@@ -6,6 +6,7 @@ import {
   insertReviewInDb,
 } from '@/lib/db/repositories/reviews';
 import { isDbConfigured } from '@/lib/db/mysql';
+import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,18 +14,28 @@ export async function GET(request: NextRequest) {
     const productId = searchParams.get('productId');
     const email = searchParams.get('email');
 
+    if (!isDbConfigured()) {
+      if (!allowDevMockFallback()) {
+        return NextResponse.json(
+          { success: false, error: 'Database service is currently unavailable.' },
+          { status: 503, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return NextResponse.json({ success: true, reviews: [] }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     if (productId) {
       const reviews = await getReviewsByProductIdFromDb(productId);
-      return NextResponse.json({ success: true, reviews });
+      return NextResponse.json({ success: true, reviews }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (email) {
       const reviews = await getReviewsByCustomerEmailFromDb(email);
-      return NextResponse.json({ success: true, reviews });
+      return NextResponse.json({ success: true, reviews }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const reviews = await getAllReviewsFromDb();
-    return NextResponse.json({ success: true, reviews });
+    return NextResponse.json({ success: true, reviews }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {
     console.error('Error fetching reviews:', error);
     return NextResponse.json(
@@ -47,7 +58,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isDbConfigured()) {
-      // Return accepted with mock/local structure if db not configured
+      if (!allowDevMockFallback()) {
+        return NextResponse.json(
+          { success: false, error: 'Database service is currently unavailable.' },
+          { status: 503 }
+        );
+      }
+      // Return accepted with mock/local structure if db not configured in dev
       return NextResponse.json({
         success: true,
         review: {

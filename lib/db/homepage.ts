@@ -15,6 +15,7 @@ import {
 } from './seed';
 import { getStoredCollection, getLocal, setLocal, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { allowDevMockFallback } from '../env';
 
 const SECTIONS_KEY = 'homepage_sections';
 const HERO_KEY = 'homepage_hero';
@@ -43,7 +44,14 @@ export async function updateHomepageSections(
 
 // Hero Config
 export function getHeroConfig(): HeroConfig {
-  let hero = getLocal<HeroConfig>(HERO_KEY, seedHeroConfig);
+  const fallbackHero: HeroConfig = allowDevMockFallback()
+    ? seedHeroConfig
+    : {
+        ...seedHeroConfig,
+        floatingProducts: [],
+      };
+
+  let hero = getLocal<HeroConfig>(HERO_KEY, fallbackHero);
   let changed = false;
 
   // Migrate old non-mobile hero image or floating cards
@@ -57,7 +65,23 @@ export function getHeroConfig(): HeroConfig {
     changed = true;
   }
 
-  if (hero.floatingProducts) {
+  if (!allowDevMockFallback()) {
+    // In production, strictly purge fake demo products from floating cards
+    if (hero.floatingProducts && Array.isArray(hero.floatingProducts)) {
+      const cleanFloating = hero.floatingProducts.filter(
+        (fp) =>
+          fp.productId !== 'prod-15' &&
+          fp.productId !== 'prod-16' &&
+          fp.productId !== 'prod-case-01' &&
+          fp.productId !== 'prod-1' &&
+          fp.productId !== 'prod-2'
+      );
+      if (cleanFloating.length !== hero.floatingProducts.length) {
+        hero.floatingProducts = cleanFloating;
+        changed = true;
+      }
+    }
+  } else if (hero.floatingProducts) {
     const hasOldFloating = hero.floatingProducts.some(
       (fp) => fp.productId === 'prod-2' || fp.productId === 'prod-5' || fp.productId === 'prod-1'
     );
@@ -90,7 +114,9 @@ export async function updateHeroConfig(
 
 // Floating Product Cards
 export function getFloatingProducts(): FloatingProductConfig[] {
-  return getHeroConfig().floatingProducts || seedHeroConfig.floatingProducts;
+  const heroFloating = getHeroConfig().floatingProducts;
+  if (heroFloating && heroFloating.length > 0) return heroFloating;
+  return allowDevMockFallback() ? seedHeroConfig.floatingProducts : [];
 }
 
 export async function updateFloatingProducts(
@@ -104,18 +130,42 @@ export async function updateFloatingProducts(
 
 // Flash Sale Config
 export function getFlashSaleConfig(): FlashSaleConfig {
-  let flash = getLocal<FlashSaleConfig>(FLASH_SALE_KEY, seedFlashSaleConfig);
+  const fallbackFlash: FlashSaleConfig = allowDevMockFallback()
+    ? seedFlashSaleConfig
+    : {
+        ...seedFlashSaleConfig,
+        productIds: [],
+      };
+
+  let flash = getLocal<FlashSaleConfig>(FLASH_SALE_KEY, fallbackFlash);
   let changed = false;
 
   if (flash.bannerImage && flash.bannerImage.includes('photo-1556905055-8f358a7a47b2')) {
     flash.bannerImage = seedFlashSaleConfig.bannerImage;
     flash.subtitle = seedFlashSaleConfig.subtitle;
     flash.title = seedFlashSaleConfig.title;
-    flash.productIds = seedFlashSaleConfig.productIds;
+    flash.productIds = allowDevMockFallback() ? seedFlashSaleConfig.productIds : [];
     changed = true;
   }
 
-  if (flash.productIds && (flash.productIds.includes('prod-1') || flash.productIds.includes('prod-2'))) {
+  if (!allowDevMockFallback()) {
+    // In production, strictly purge fake demo products from flash sale
+    if (flash.productIds && Array.isArray(flash.productIds)) {
+      const cleanIds = flash.productIds.filter(
+        (id) =>
+          id !== 'prod-15' &&
+          id !== 'prod-16' &&
+          id !== 'prod-case-01' &&
+          id !== 'prod-chg-01' &&
+          id !== 'prod-1' &&
+          id !== 'prod-2'
+      );
+      if (cleanIds.length !== flash.productIds.length) {
+        flash.productIds = cleanIds;
+        changed = true;
+      }
+    }
+  } else if (flash.productIds && (flash.productIds.includes('prod-1') || flash.productIds.includes('prod-2'))) {
     flash.productIds = seedFlashSaleConfig.productIds;
     changed = true;
   }

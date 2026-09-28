@@ -23,7 +23,7 @@ import { useWishlist } from '@/context/WishlistContext';
 import { useSearch } from '@/context/SearchContext';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getNavigation } from '@/lib/db/navigation';
-import { getActiveCategories } from '@/lib/db/categories';
+import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getStoreSettings, getActiveSocialAccounts } from '@/lib/db/settings';
 import { getActiveShopLocation } from '@/lib/db/locations';
 import { getPages } from '@/lib/db/pages';
@@ -75,13 +75,16 @@ export function Header() {
     } catch {
       setNavItems(baseNav);
     }
-    setCategories(getActiveCategories());
+    setCategories(deduplicateCategoriesById(getActiveCategories()));
     setSettings(getStoreSettings());
     setActiveLocation(getActiveShopLocation());
   };
 
   useEffect(() => {
     loadData();
+    syncCategoriesFromApi().then(() => {
+      setCategories(deduplicateCategoriesById(getActiveCategories()));
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);

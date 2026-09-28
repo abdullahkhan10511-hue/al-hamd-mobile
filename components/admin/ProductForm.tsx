@@ -28,7 +28,7 @@ import {
   Smartphone,
   Palette,
 } from 'lucide-react';
-import { getCategories } from '@/lib/db/categories';
+import { getCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands, getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { createProduct, updateProduct } from '@/lib/db/products';
 import { uploadMediaFile } from '@/lib/db/media';
@@ -44,7 +44,7 @@ interface ProductFormProps {
 export function ProductForm({ initialProduct, isNew = false }: ProductFormProps) {
   const router = useRouter();
   const { admin } = useAdminAuth();
-  const categories = getCategories();
+  const categories = deduplicateCategoriesById(getCategories());
 
   // Form Fields - All fields are completely optional
   const [name, setName] = useState(initialProduct?.name || '');
@@ -278,17 +278,28 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const res = await uploadMediaFile(file, 'product');
-      if (res.success && res.item?.url) {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/products/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.items?.[0]?.url) {
         setModels((prev) => {
           const next = [...prev];
           const currentImgs = next[index].images || [];
-          next[index] = { ...next[index], images: [...currentImgs, res.item!.url] };
+          next[index] = { ...next[index], images: [...currentImgs, data.items[0].url] };
           return next;
         });
+      } else {
+        alert(data.error || 'Failed to upload model image');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to upload model image', err);
+      alert(err?.message || 'Failed to upload model image');
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -375,35 +386,8 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         setMediaError(data.warnings.join(' '));
       }
     } catch (err: any) {
-      console.warn('API upload error, attempting fallback to local/storage upload:', err);
-      let fallbackSuccessCount = 0;
-      const fallbackErrors: string[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setUploadProgressText(`Uploading ${i + 1} of ${files.length}...`);
-        const fallbackRes = await uploadMediaFile(file, admin?.email || 'admin@alhamd.com');
-        if (fallbackRes.success && fallbackRes.item) {
-          const isVid = file.type.startsWith('video/') || file.name.endsWith('.mp4') || file.name.endsWith('.webm');
-          setMediaList((prev) => [
-            ...prev,
-            {
-              id: fallbackRes.item!.id,
-              url: fallbackRes.item!.url,
-              type: isVid ? 'video' : 'image',
-              name: file.name,
-              size: file.size,
-            },
-          ]);
-          fallbackSuccessCount++;
-        } else {
-          fallbackErrors.push(fallbackRes.error || `Failed to upload ${file.name}`);
-        }
-      }
-
-      if (fallbackSuccessCount === 0 && fallbackErrors.length > 0) {
-        setMediaError(fallbackErrors.join(', '));
-      }
+      console.error('Product media upload error:', err);
+      setMediaError(err?.message || 'Failed to upload media files. Please check file format (JPG, PNG, WebP, MP4) and size.');
     } finally {
       setIsUploading(false);
       setUploadProgressText('');
@@ -1171,7 +1155,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
 
                           <div>
                             <label className="font-semibold text-neutral-700 block mb-1">
-                              Price (PKR) <span className="text-rose-500">*</span>
+                              Discount Price (PKR) <span className="text-rose-500">*</span>
                             </label>
                             <input
                               type="number"
@@ -1188,7 +1172,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
 
                           <div>
                             <label className="font-semibold text-neutral-700 block mb-1">
-                              Compare Price (PKR)
+                              Original Price (PKR)
                             </label>
                             <input
                               type="number"
@@ -1545,7 +1529,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             </h3>
 
             <div>
-              <label className="font-semibold text-neutral-700 block mb-1">Price (PKR)</label>
+              <label className="font-semibold text-neutral-700 block mb-1">Discount Price (PKR)</label>
               <input
                 type="number"
                 step="1"
@@ -1557,7 +1541,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             </div>
 
             <div>
-              <label className="font-semibold text-neutral-700 block mb-1">Compare At Price (PKR)</label>
+              <label className="font-semibold text-neutral-700 block mb-1">Original Price (PKR)</label>
               <input
                 type="number"
                 step="1"

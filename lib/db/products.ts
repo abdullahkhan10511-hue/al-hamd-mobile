@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getFlashSaleConfig, getHeroConfig } from './homepage';
 import { getMediaItems } from './media';
+import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'products';
 const DELETED_PRODUCT_IDS_KEY = 'deleted_product_ids';
@@ -19,7 +20,8 @@ export function getDeletedProductIds(): Set<string> {
 
 export function hasProductOrderHistory(productId: string): boolean {
   try {
-    const orders = getStoredCollection<Order>('orders', seedOrders);
+    const fallback = allowDevMockFallback() ? seedOrders : [];
+    const orders = getStoredCollection<Order>('orders', fallback);
     return orders.some((o) => o.items && o.items.some((item) => item.productId === productId));
   } catch {
     return false;
@@ -39,33 +41,50 @@ const OBSOLETE_NON_MOBILE_IDS = new Set([
 ]);
 
 export function getProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
-  let list = getStoredCollection(COLLECTION_KEY, seedProducts);
+  const fallback = allowDevMockFallback() ? seedProducts : [];
+  let list = getStoredCollection(COLLECTION_KEY, fallback);
   let modified = false;
-  const deletedIds = getDeletedProductIds();
 
-  // 1. Purge non-accessory items and permanently deleted IDs
-  const filtered = list.filter((p) => !OBSOLETE_NON_MOBILE_IDS.has(p.id) && !deletedIds.has(p.id));
-  if (filtered.length !== list.length) {
-    list = filtered;
-    modified = true;
-  }
-
-  // 2. Ensure historical products with existing order history are deactivated
-  list = list.map((p) => {
-    if (p.id === 'prod-1' || p.id === 'prod-2') {
-      if ((p as any).isActive !== false || p.status !== 'inactive') {
-        modified = true;
-        return {
-          ...p,
-          isActive: false,
-          status: 'inactive' as const,
-          category: 'Other Mobile Accessories',
-          categorySlug: 'other-mobile-accessories',
-        };
-      }
+  if (!allowDevMockFallback()) {
+    // In production, strictly purge any legacy seed products
+    const cleanList = list.filter(
+      (p) =>
+        p &&
+        p.slug !== 'essential-hoodie' &&
+        p.slug !== 'air-max-270' &&
+        !(p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && p.sku === 'AP-APP2-015') &&
+        !(p.id === 'prod-16' && p.slug === 'anker-20000mah-power-bank')
+    );
+    if (cleanList.length !== list.length) {
+      list = cleanList;
+      modified = true;
     }
-    return p;
-  });
+  } else {
+    const deletedIds = getDeletedProductIds();
+    // 1. Purge non-accessory items and permanently deleted IDs
+    const filtered = list.filter((p) => !OBSOLETE_NON_MOBILE_IDS.has(p.id) && !deletedIds.has(p.id));
+    if (filtered.length !== list.length) {
+      list = filtered;
+      modified = true;
+    }
+
+    // 2. Ensure historical products with existing order history are deactivated
+    list = list.map((p) => {
+      if (p.id === 'prod-1' || p.id === 'prod-2') {
+        if ((p as any).isActive !== false || p.status !== 'inactive') {
+          modified = true;
+          return {
+            ...p,
+            isActive: false,
+            status: 'inactive' as const,
+            category: 'Other Mobile Accessories',
+            categorySlug: 'other-mobile-accessories',
+          };
+        }
+      }
+      return p;
+    });
+  }
 
   if (modified) {
     persistCollection(COLLECTION_KEY, list);
@@ -80,8 +99,16 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
 }
 
 let hasSyncedProductsFromApi = false;
-export async function syncProductsFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
+let isSyncingProducts = false;
+
+export async function syncProductsFromApi(): Promise<
+  (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
+> {
+  if (typeof window === 'undefined') return [];
+  if (isSyncingProducts) {
+    return getProducts();
+  }
+  isSyncingProducts = true;
   try {
     const res = await fetch('/api/products', { cache: 'no-store' });
     if (res.ok) {
@@ -93,9 +120,16 @@ export async function syncProductsFromApi(): Promise<void> {
             detail: { key: COLLECTION_KEY, value: data.products },
           })
         );
+        hasSyncedProductsFromApi = true;
+        return data.products;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('API error syncing products:', err);
+  } finally {
+    isSyncingProducts = false;
+  }
+  return getProducts();
 }
 
 export function getProductById(id: string) {
@@ -103,9 +137,53 @@ export function getProductById(id: string) {
   return products.find((p) => p.id === id);
 }
 
+export async function fetchProductById(
+  id: string
+): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.product) {
+          return json.product;
+        }
+      }
+    } catch (err) {
+      console.warn('API error fetching product by id:', err);
+    }
+  }
+  return getProductById(id) || null;
+}
+
 export function getProductBySlug(slug: string) {
   const products = getProducts();
   return products.find((p) => p.slug === slug);
+}
+
+export async function fetchProductBySlug(
+  slug: string
+): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
+  const local = getProductBySlug(slug);
+  if (local) return local;
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/products?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.products) && json.products.length > 0) {
+          const fetched = json.products[0];
+          const existing = getProducts();
+          if (!existing.some((p) => p.id === fetched.id || p.slug === fetched.slug)) {
+            const updated = [fetched, ...existing];
+            await persistCollection(COLLECTION_KEY, updated);
+          }
+          return fetched;
+        }
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export async function createProduct(
@@ -231,22 +309,36 @@ export async function createProduct(
     status: data.status || 'active',
   } as Product & { sku: string; lowStockThreshold: number; trending?: boolean };
 
-  const updated = [newProduct, ...products];
-  await persistCollection(COLLECTION_KEY, updated);
+  let createdProduct = newProduct;
 
   if (typeof window !== 'undefined') {
-    fetch('/api/admin/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProduct),
-    }).catch(() => {});
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        return { success: false, error: resData.error || 'Failed to save product in database.' };
+      }
+      if (resData.product) {
+        createdProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API create product error:', err);
+      return { success: false, error: err?.message || 'Network error saving product.' };
+    }
   }
+
+  const updated = [createdProduct, ...products.filter((p) => p.id !== createdProduct.id && p.id !== newProduct.id)];
+  await persistCollection(COLLECTION_KEY, updated);
 
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {
     try {
-      const docRef = doc(db, 'products', newProduct.id);
-      await setDoc(docRef, newProduct, { merge: true });
+      const docRef = doc(db, 'products', createdProduct.id);
+      await setDoc(docRef, createdProduct, { merge: true });
     } catch (err) {
       console.warn('Firestore create product notice:', err);
     }
@@ -263,11 +355,11 @@ export async function createProduct(
   await logActivity({
     adminEmail,
     action: 'Created Product',
-    target: newProduct.name || 'Untitled Product',
-    details: `SKU: ${newProduct.sku || 'N/A'}, Price: Rs. ${newProduct.price}, Stock: ${newProduct.stock}`,
+    target: createdProduct.name || 'Untitled Product',
+    details: `SKU: ${createdProduct.sku || 'N/A'}, Price: Rs. ${createdProduct.price}, Stock: ${createdProduct.stock}`,
   });
 
-  return { success: true, product: newProduct };
+  return { success: true, product: createdProduct };
 }
 
 export async function updateProduct(
@@ -364,22 +456,36 @@ export async function updateProduct(
     };
   }
 
-  products[index] = updatedProduct;
-  await persistCollection(COLLECTION_KEY, products);
+  let finalUpdatedProduct = updatedProduct;
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }).catch(() => {});
+    try {
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        return { success: false, error: resData.error || 'Failed to update product in database.' };
+      }
+      if (resData.product) {
+        finalUpdatedProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API update product error:', err);
+      return { success: false, error: err?.message || 'Network error updating product.' };
+    }
   }
+
+  products[index] = finalUpdatedProduct;
+  await persistCollection(COLLECTION_KEY, products);
 
   // Direct Firestore doc sync
   if (db && typeof (db as any).type === 'string') {
     try {
       const docRef = doc(db, 'products', id);
-      await setDoc(docRef, updatedProduct, { merge: true });
+      await setDoc(docRef, finalUpdatedProduct, { merge: true });
     } catch (err) {
       console.warn('Firestore update product notice:', err);
     }
@@ -396,7 +502,7 @@ export async function updateProduct(
   await logActivity({
     adminEmail,
     action: 'Updated Product',
-    target: updatedProduct.name,
+    target: finalUpdatedProduct.name,
     details: `Updated fields: ${Object.keys(updates).join(', ')}`,
   });
 

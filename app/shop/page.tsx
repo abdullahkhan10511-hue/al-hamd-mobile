@@ -13,8 +13,8 @@ import {
   Check,
   RotateCcw,
 } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
-import { getActiveCategories } from '@/lib/db/categories';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
@@ -66,14 +66,35 @@ function ShopContent() {
 
   const loadData = async () => {
     // Only fetch active, non-archived mobile accessories for storefront
-    const activeProds = getProducts().filter(
+    let prods = getProducts();
+    if (prods.length === 0) {
+      prods = await syncProductsFromApi().catch(() => []);
+    }
+    const activeProds = prods.filter(
       (p) =>
         (p as any).status !== 'archived' &&
         (p as any).status !== 'inactive' &&
         (p as any).isActive !== false
     );
     setProductsList(activeProds);
-    setCategoriesList(getActiveCategories());
+
+    syncProductsFromApi().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        const activeFresh = fresh.filter(
+          (p) =>
+            (p as any).status !== 'archived' &&
+            (p as any).status !== 'inactive' &&
+            (p as any).isActive !== false
+        );
+        setProductsList(activeFresh);
+      }
+    }).catch(() => {});
+
+    let cats = deduplicateCategoriesById(getActiveCategories());
+    setCategoriesList(cats);
+    syncCategoriesFromApi().then(() => {
+      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+    }).catch(() => {});
 
     const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
     setBrandsList(freshBrands.filter((b) => b.status === 'active'));

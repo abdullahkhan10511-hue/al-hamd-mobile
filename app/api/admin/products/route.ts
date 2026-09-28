@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { insertProductToDb, getAllProductsFromDb } from '@/lib/db/repositories/products';
+import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,15 +14,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isDbConfigured()) {
+    if (isDbConfigured()) {
+      const products = await getAllProductsFromDb();
+      return NextResponse.json({ success: true, products });
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { getDevProducts } = await import('@/lib/db/serverDevStorage');
+      const products = getDevProducts();
+      return NextResponse.json({ success: true, products });
+    } else {
       return NextResponse.json(
-        { success: false, error: 'Database is not configured. Please define DB_HOST, DB_USER, DB_NAME in .env.' },
+        { success: false, error: 'Database is not configured in production.' },
         { status: 503 }
       );
     }
-
-    const products = await getAllProductsFromDb();
-    return NextResponse.json({ success: true, products });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to fetch products' },
@@ -40,13 +45,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isDbConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'Database is not configured. Please define DB_HOST, DB_USER, DB_NAME in .env.' },
-        { status: 503 }
-      );
-    }
-
     const body = await request.json();
     if (!body.name || !body.name.trim()) {
       return NextResponse.json(
@@ -55,10 +53,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const product = await insertProductToDb(body, session.email);
-    return NextResponse.json({ success: true, product }, { status: 201 });
+    if (isDbConfigured()) {
+      const product = await insertProductToDb(body, session.email);
+      return NextResponse.json({ success: true, product }, { status: 201 });
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { insertDevProduct } = await import('@/lib/db/serverDevStorage');
+      const product = await insertDevProduct(body, session.email);
+      return NextResponse.json({ success: true, product }, { status: 201 });
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
+    }
   } catch (err: any) {
-    console.error('Error creating product in MySQL:', err);
+    console.error('Error creating product:', err);
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to create product.' },
       { status: 500 }

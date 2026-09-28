@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronRight, PackageX, ChevronDown, Tag } from 'lucide-react';
 import { getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
-import { getProducts } from '@/lib/db/products';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Brand } from '@/types/admin';
 import { Product } from '@/types';
@@ -62,7 +62,12 @@ export default function BrandPage() {
       const targetSlug = (currentBrand?.slug || slug).trim().toLowerCase();
       const targetId = currentBrand?.id ? currentBrand.id.toLowerCase() : '';
 
-      const prods = getProducts().filter((p) => {
+      let allProds = getProducts();
+      if (allProds.length === 0) {
+        allProds = await syncProductsFromApi().catch(() => []);
+      }
+
+      const prods = allProds.filter((p) => {
         // Exclude archived/inactive
         if ((p as any).status === 'archived' || (p as any).status === 'inactive' || (p as any).isActive === false) {
           return false;

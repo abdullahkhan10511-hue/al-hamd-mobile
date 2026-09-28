@@ -73,7 +73,12 @@ export const INITIAL_CUSTOMERS: Customer[] = [
 
 let memoryCustomers: Customer[] | null = null;
 
+import { allowDevMockFallback } from '../env';
+
 function loadLocalFileCustomers(): Customer[] {
+  if (!allowDevMockFallback()) {
+    return [];
+  }
   try {
     if (fs.existsSync(CUSTOMERS_FILE)) {
       const content = fs.readFileSync(CUSTOMERS_FILE, 'utf8');
@@ -107,6 +112,10 @@ export async function getServerCustomers(): Promise<Customer[]> {
     const customers = await getAllCustomersFromDb();
     memoryCustomers = customers;
     return customers;
+  }
+
+  if (!allowDevMockFallback()) {
+    return [];
   }
 
   if (memoryCustomers && memoryCustomers.length > 0) {

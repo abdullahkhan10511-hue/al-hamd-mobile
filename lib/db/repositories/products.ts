@@ -3,6 +3,7 @@ import { Product, ProductModelVariant, ProductColorVariant, ProductMediaItem, Bu
 import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
 import { recordInventoryLog } from '@/lib/db/repositories/inventory';
+import { ensureSafeMediaUrl, ensureSafeMediaUrls } from '../serverMedia';
 
 interface ProductRow extends RowDataPacket {
   id: string;
@@ -65,11 +66,22 @@ export function mapRowToProduct(
 ): Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean } {
   // Extract gallery images and videos from media
   const galleryImages = media
-    .filter((m) => m.type === 'image')
+    .filter((m) => m.type === 'image' || !m.type)
     .map((m) => m.url);
   const galleryVideos = media
     .filter((m) => m.type === 'video')
     .map((m) => m.url);
+
+  // If no direct gallery images, check if models have variant images
+  const modelImages = models
+    .flatMap((m) => m.images || [])
+    .filter((url) => typeof url === 'string' && url.trim().length > 0);
+
+  const finalImages = galleryImages.length > 0
+    ? galleryImages
+    : modelImages.length > 0
+    ? modelImages
+    : [];
 
   const parsedSpecs = parseJsonField<Record<string, string>>(row.specifications, {});
   const parsedFeatures = parseJsonField<string[]>(row.features, []);
@@ -113,7 +125,7 @@ export function mapRowToProduct(
     models: models.length > 0 ? models : undefined,
     colors: colors.length > 0 ? colors : undefined,
     media: media.length > 0 ? media : undefined,
-    images: galleryImages.length > 0 ? galleryImages : ['https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=800&auto=format&fit=crop'],
+    images: finalImages,
     videos: galleryVideos.length > 0 ? galleryVideos : undefined,
     bulkPricing: bulkPricing.length > 0 ? bulkPricing : undefined,
     reviews: reviews.length > 0 ? reviews : undefined,
@@ -443,9 +455,24 @@ export async function insertProductToDb(
     );
 
     // Insert Media
-    if (Array.isArray(data.images) && data.images.length > 0) {
+    const rawImages = Array.isArray(data.images) && data.images.length > 0
+      ? data.images
+      : Array.isArray(data.media)
+      ? data.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
+      : [];
+
+    const rawVideos = Array.isArray(data.videos) && data.videos.length > 0
+      ? data.videos
+      : Array.isArray(data.media)
+      ? data.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
+      : [];
+
+    const safeImages = await ensureSafeMediaUrls(rawImages, 'products');
+    const safeVideos = await ensureSafeMediaUrls(rawVideos, 'products');
+
+    if (safeImages.length > 0) {
       let sortOrder = 0;
-      for (const imgUrl of data.images) {
+      for (const imgUrl of safeImages) {
         if (!imgUrl || !imgUrl.trim()) continue;
         await conn.execute(
           `INSERT INTO product_media (id, product_id, media_type, url, sort_order)
@@ -456,9 +483,9 @@ export async function insertProductToDb(
       }
     }
 
-    if (Array.isArray(data.videos) && data.videos.length > 0) {
+    if (safeVideos.length > 0) {
       let sortOrder = 100;
-      for (const vidUrl of data.videos) {
+      for (const vidUrl of safeVideos) {
         if (!vidUrl || !vidUrl.trim()) continue;
         await conn.execute(
           `INSERT INTO product_media (id, product_id, media_type, url, sort_order)
@@ -474,6 +501,8 @@ export async function insertProductToDb(
       let sortOrder = 0;
       for (const model of data.models) {
         const modelId = model.id || `mod-${id}-${sortOrder}`;
+        const modelImages = await ensureSafeMediaUrls(Array.isArray(model.images) ? model.images : [], 'products');
+        const modelVideos = await ensureSafeMediaUrls(Array.isArray(model.videos) ? model.videos : [], 'products');
         await conn.execute(
           `INSERT INTO product_models (
             id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, sku, is_active, images, videos, sort_order
@@ -489,8 +518,8 @@ export async function insertProductToDb(
             Number(model.stock) || 0,
             model.sku || null,
             model.isActive !== false ? 1 : 0,
-            model.images ? JSON.stringify(model.images) : null,
-            model.videos ? JSON.stringify(model.videos) : null,
+            modelImages.length > 0 ? JSON.stringify(modelImages) : null,
+            modelVideos.length > 0 ? JSON.stringify(modelVideos) : null,
             sortOrder,
           ]
         );
@@ -604,13 +633,24 @@ export async function updateProductInDb(
     );
 
     // Update media if provided
-    if (updates.images !== undefined || updates.videos !== undefined) {
+    if (updates.images !== undefined || updates.videos !== undefined || updates.media !== undefined) {
       await conn.execute('DELETE FROM product_media WHERE product_id = ?', [id]);
-      const imagesToSave = updates.images !== undefined ? updates.images : existing.images;
-      const videosToSave = updates.videos !== undefined ? updates.videos : (existing.videos || []);
+      const imagesToSave = updates.images !== undefined
+        ? updates.images
+        : Array.isArray(updates.media)
+        ? updates.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
+        : existing.images;
+      const videosToSave = updates.videos !== undefined
+        ? updates.videos
+        : Array.isArray(updates.media)
+        ? updates.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
+        : (existing.videos || []);
+
+      const safeImages = await ensureSafeMediaUrls(imagesToSave, 'products');
+      const safeVideos = await ensureSafeMediaUrls(videosToSave, 'products');
 
       let sortOrder = 0;
-      for (const imgUrl of imagesToSave) {
+      for (const imgUrl of safeImages) {
         if (!imgUrl || !imgUrl.trim()) continue;
         await conn.execute(
           `INSERT INTO product_media (id, product_id, media_type, url, sort_order)
@@ -619,7 +659,7 @@ export async function updateProductInDb(
         );
         sortOrder++;
       }
-      for (const vidUrl of videosToSave) {
+      for (const vidUrl of safeVideos) {
         if (!vidUrl || !vidUrl.trim()) continue;
         await conn.execute(
           `INSERT INTO product_media (id, product_id, media_type, url, sort_order)
@@ -636,6 +676,8 @@ export async function updateProductInDb(
       let sortOrder = 0;
       for (const model of updates.models) {
         const modelId = model.id || `mod-${id}-${sortOrder}`;
+        const modelImages = await ensureSafeMediaUrls(Array.isArray(model.images) ? model.images : [], 'products');
+        const modelVideos = await ensureSafeMediaUrls(Array.isArray(model.videos) ? model.videos : [], 'products');
         await conn.execute(
           `INSERT INTO product_models (
             id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, sku, is_active, images, videos, sort_order
@@ -651,8 +693,8 @@ export async function updateProductInDb(
             Number(model.stock) || 0,
             model.sku || null,
             model.isActive !== false ? 1 : 0,
-            model.images ? JSON.stringify(model.images) : null,
-            model.videos ? JSON.stringify(model.videos) : null,
+            modelImages.length > 0 ? JSON.stringify(modelImages) : null,
+            modelVideos.length > 0 ? JSON.stringify(modelVideos) : null,
             sortOrder,
           ]
         );

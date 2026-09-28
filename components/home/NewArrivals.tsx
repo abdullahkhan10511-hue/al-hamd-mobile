@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product } from '@/types';
 
@@ -26,6 +26,7 @@ export function NewArrivals() {
 
   useEffect(() => {
     loadData();
+    syncProductsFromApi().then(() => loadData()).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);

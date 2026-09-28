@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllBrandsFromDb, insertBrandToDb } from '@/lib/db/repositories/brands';
-import { seedBrands } from '@/lib/db/seed';
 import { getAdminSession } from '@/lib/db/adminAuth';
+import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,19 +17,25 @@ export async function GET(request: NextRequest) {
       } catch (err: any) {
         console.error('MySQL error in /api/brands GET:', err);
         return NextResponse.json(
-          { success: false, error: 'Failed to fetch brands. Please try again later.' },
+          { success: false, error: 'Failed to fetch brands from database.' },
           { status: 500 }
         );
       }
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { getDevBrands } = await import('@/lib/db/serverDevStorage');
+      brands = getDevBrands(activeOnly);
     } else {
-      brands = activeOnly ? seedBrands.filter((b) => b.status === 'active') : seedBrands;
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json(
       { success: true, count: brands.length, brands },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=59',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
         },
       }
     );
@@ -48,20 +54,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isDbConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'Database is not configured.' },
-        { status: 503 }
-      );
-    }
-
     const body = await request.json();
     if (!body.name || !body.name.trim()) {
       return NextResponse.json({ success: false, error: 'Brand name is required.' }, { status: 400 });
     }
 
-    const brand = await insertBrandToDb(body);
-    return NextResponse.json({ success: true, brand }, { status: 201 });
+    if (isDbConfigured()) {
+      const brand = await insertBrandToDb(body);
+      return NextResponse.json({ success: true, brand }, { status: 201 });
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { insertDevBrand } = await import('@/lib/db/serverDevStorage');
+      const brand = await insertDevBrand(body, session.email);
+      return NextResponse.json({ success: true, brand }, { status: 201 });
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
+    }
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to create brand.' },

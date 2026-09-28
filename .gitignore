@@ -41,10 +41,25 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# development, mock & test data files
+data/dev-*.json
+data/test-*.json
+data/mock-*.json
+data/*.local.json
 data/customers.json
 data/staff-users.json
 
+# database dumps & test SQL
+*.sql
+*.dump
+*.sqlite
+
+# test & scratch scripts
+scripts/test-*.js
+scripts/test-*.ts
+
 # persistent uploaded media (keep directories, ignore user uploaded files)
-/public/uploads/*
+/public/uploads/*/*
 !/public/uploads/**/.gitkeep
+
 

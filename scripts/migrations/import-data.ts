@@ -45,6 +45,17 @@ async function main() {
   }
 
   console.log('Connecting to MySQL and executing safe data migration...\n');
+
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    console.error('====================================================');
+    console.error('CRITICAL PRODUCTION DATABASE SAFETY LOCK:');
+    console.error('Data import is strictly PROHIBITED in PRODUCTION mode.');
+    console.error('Hostinger MySQL production database is the ONLY source of truth.');
+    console.error('Existing production records must NEVER be replaced or overwritten.');
+    console.error('====================================================\n');
+    process.exit(1);
+  }
+
   const result = await runProductionMigration();
 
   console.log('====================================================');

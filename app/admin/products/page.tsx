@@ -17,8 +17,8 @@ import {
   Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getProducts, deleteProduct, createProduct } from '@/lib/db/products';
-import { getCategories } from '@/lib/db/categories';
+import { getProducts, deleteProduct, createProduct, syncProductsFromApi } from '@/lib/db/products';
+import { getCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands } from '@/lib/db/brands';
 import { subscribeToKey } from '@/lib/db/storage';
 import { formatPrice } from '@/lib/utils';
@@ -40,10 +40,15 @@ export default function AdminProductsPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const categories = getCategories();
+  const categories = deduplicateCategoriesById(getCategories());
   const brands = getBrands();
 
   useEffect(() => {
+    syncProductsFromApi().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setProducts(fresh);
+      }
+    }).catch(() => {});
     const unsub = subscribeToKey('products', (data: any) => setProducts(data));
     return () => unsub();
   }, []);

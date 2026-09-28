@@ -3,6 +3,8 @@ import { getStoredCollection, persistCollection, getLocal, setLocal } from './st
 import { seedBanners } from './seed';
 import { logActivity } from './activity';
 
+import { allowDevMockFallback } from '../env';
+
 export const BANNERS_STORAGE_KEY = 'homepage_banners';
 const DELETED_BANNERS_KEY = 'deleted_banner_ids';
 
@@ -26,19 +28,36 @@ export function getDeletedBannerIds(): Set<string> {
 
 export function getBanners(): Banner[] {
   const deletedIds = getDeletedBannerIds();
-  let data = getStoredCollection<Banner>(BANNERS_STORAGE_KEY, seedBanners);
+  const fallback = allowDevMockFallback() ? seedBanners : [];
+  let data = getStoredCollection<Banner>(BANNERS_STORAGE_KEY, fallback);
 
-  // Ensure default 3 banners exist if not deleted
-  let hasMissingSeed = false;
-  seedBanners.forEach((seed) => {
-    if (!deletedIds.has(seed.id) && !data.some((b) => b.id === seed.id)) {
-      data.push({ ...seed });
-      hasMissingSeed = true;
+  if (allowDevMockFallback()) {
+    // Ensure default 3 banners exist if not deleted only during local dev
+    let hasMissingSeed = false;
+    seedBanners.forEach((seed) => {
+      if (!deletedIds.has(seed.id) && !data.some((b) => b.id === seed.id)) {
+        data.push({ ...seed });
+        hasMissingSeed = true;
+      }
+    });
+
+    if (hasMissingSeed) {
+      persistCollection(BANNERS_STORAGE_KEY, data);
     }
-  });
-
-  if (hasMissingSeed) {
-    persistCollection(BANNERS_STORAGE_KEY, data);
+  } else {
+    // In production, strictly purge any legacy seed banners
+    const cleanBanners = data.filter(
+      (b) =>
+        b &&
+        b.id !== 'banner-1' &&
+        b.id !== 'banner-2' &&
+        b.id !== 'banner-3' &&
+        !(typeof b.image === 'string' && b.image.includes('photo-1556905055-8f358a7a47b2'))
+    );
+    if (cleanBanners.length !== data.length) {
+      data = cleanBanners;
+      persistCollection(BANNERS_STORAGE_KEY, data);
+    }
   }
 
   // Filter out any permanently deleted banner IDs

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getProductByIdFromDb, updateProductInDb, deleteProductInDb } from '@/lib/db/repositories/products';
+import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(
   request: NextRequest,
@@ -9,11 +10,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    if (!isDbConfigured()) {
-      return NextResponse.json({ success: false, error: 'Database is not configured.' }, { status: 503 });
+    let product: any = null;
+
+    if (isDbConfigured()) {
+      product = await getProductByIdFromDb(id);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { getDevProductById } = await import('@/lib/db/serverDevStorage');
+      product = getDevProductById(id);
+    } else {
+      return NextResponse.json({ success: false, error: 'Database is not configured in production.' }, { status: 503 });
     }
 
-    const product = await getProductByIdFromDb(id);
     if (!product) {
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
     }
@@ -37,20 +44,25 @@ export async function PUT(
       );
     }
 
-    if (!isDbConfigured()) {
+    const { id } = await params;
+    const body = await request.json();
+    let product: any = null;
+
+    if (isDbConfigured()) {
+      product = await updateProductInDb(id, body, session.email);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { updateDevProduct } = await import('@/lib/db/serverDevStorage');
+      product = await updateDevProduct(id, body, session.email);
+    } else {
       return NextResponse.json(
-        { success: false, error: 'Database is not configured. Please define DB credentials in .env.' },
+        { success: false, error: 'Database is not configured in production.' },
         { status: 503 }
       );
     }
 
-    const { id } = await params;
-    const body = await request.json();
-
-    const product = await updateProductInDb(id, body, session.email);
     return NextResponse.json({ success: true, product });
   } catch (err: any) {
-    console.error('Error updating product in MySQL:', err);
+    console.error('Error updating product:', err);
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to update product.' },
       { status: 500 }
@@ -78,22 +90,28 @@ export async function DELETE(
       );
     }
 
-    if (!isDbConfigured()) {
+    const { id } = await params;
+    let ok = false;
+
+    if (isDbConfigured()) {
+      ok = await deleteProductInDb(id, session.email);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { deleteDevProduct } = await import('@/lib/db/serverDevStorage');
+      ok = await deleteDevProduct(id, session.email);
+    } else {
       return NextResponse.json(
-        { success: false, error: 'Database is not configured.' },
+        { success: false, error: 'Database is not configured in production.' },
         { status: 503 }
       );
     }
 
-    const { id } = await params;
-    const ok = await deleteProductInDb(id, session.email);
     if (!ok) {
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, message: 'Product deleted successfully.' });
   } catch (err: any) {
-    console.error('Error deleting product in MySQL:', err);
+    console.error('Error deleting product:', err);
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to delete product.' },
       { status: 500 }

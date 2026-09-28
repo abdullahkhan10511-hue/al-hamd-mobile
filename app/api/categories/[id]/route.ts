@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getCategoryByIdFromDb, updateCategoryInDb, deleteCategoryInDb } from '@/lib/db/repositories/categories';
+import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(
   request: NextRequest,
@@ -9,11 +10,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    if (!isDbConfigured()) {
-      return NextResponse.json({ success: false, error: 'Database is not configured.' }, { status: 503 });
+    let category: any = null;
+
+    if (isDbConfigured()) {
+      category = await getCategoryByIdFromDb(id);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { getDevCategoryById } = await import('@/lib/db/serverDevStorage');
+      category = getDevCategoryById(id);
+    } else {
+      return NextResponse.json({ success: false, error: 'Database is not configured in production.' }, { status: 503 });
     }
 
-    const category = await getCategoryByIdFromDb(id);
     if (!category) {
       return NextResponse.json({ success: false, error: 'Category not found.' }, { status: 404 });
     }
@@ -34,14 +41,19 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!isDbConfigured()) {
-      return NextResponse.json({ success: false, error: 'Database is not configured.' }, { status: 503 });
-    }
-
     const { id } = await params;
     const body = await request.json();
+    let category: any = null;
 
-    const category = await updateCategoryInDb(id, body, session.email);
+    if (isDbConfigured()) {
+      category = await updateCategoryInDb(id, body, session.email);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { updateDevCategory } = await import('@/lib/db/serverDevStorage');
+      category = await updateDevCategory(id, body, session.email);
+    } else {
+      return NextResponse.json({ success: false, error: 'Database is not configured in production.' }, { status: 503 });
+    }
+
     return NextResponse.json({ success: true, category });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
@@ -65,12 +77,18 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!isDbConfigured()) {
-      return NextResponse.json({ success: false, error: 'Database is not configured.' }, { status: 503 });
+    const { id } = await params;
+    let ok = false;
+
+    if (isDbConfigured()) {
+      ok = await deleteCategoryInDb(id, session.email);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { deleteDevCategory } = await import('@/lib/db/serverDevStorage');
+      ok = await deleteDevCategory(id, session.email);
+    } else {
+      return NextResponse.json({ success: false, error: 'Database is not configured in production.' }, { status: 503 });
     }
 
-    const { id } = await params;
-    const ok = await deleteCategoryInDb(id, session.email);
     if (!ok) {
       return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 });
     }

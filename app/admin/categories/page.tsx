@@ -23,8 +23,8 @@ import {
   deleteCategory,
   reorderCategories,
   generateCategorySlug,
+  deduplicateCategoriesById,
 } from '@/lib/db/categories';
-import { uploadMediaFile } from '@/lib/db/media';
 import { subscribeToKey } from '@/lib/db/storage';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { Category } from '@/types';
@@ -53,15 +53,25 @@ export default function AdminCategoriesPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  const loadData = () => {
-    setCategories(getCategories());
+  const loadData = async () => {
+    try {
+      const res = await fetch('/api/categories', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.categories)) {
+          setCategories(deduplicateCategoriesById(data.categories));
+          return;
+        }
+      }
+    } catch {}
+    setCategories(deduplicateCategoriesById(getCategories()));
   };
 
   useEffect(() => {
     loadData();
     const unsub = subscribeToKey('categories', (data: Category[]) => {
       if (Array.isArray(data)) {
-        setCategories(data);
+        setCategories(deduplicateCategoriesById(data));
       }
     });
     return () => unsub();
@@ -122,15 +132,23 @@ export default function AdminCategoriesPage() {
 
     setIsUploading(true);
     try {
-      const res = await uploadMediaFile(file, userEmail);
-      if (res.success && res.item) {
-        setImage(res.item.url);
-      } else {
-        alert(res.error || 'Failed to upload image.');
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/admin/categories/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.url) {
+        throw new Error(data.error || 'Failed to upload category image.');
       }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to upload image. Please try again.');
+
+      setImage(data.url);
+    } catch (err: any) {
+      console.error('Category image upload error:', err);
+      alert(err?.message || 'Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {

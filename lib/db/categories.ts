@@ -4,6 +4,10 @@ import { getStoredCollection, persistCollection, getLocal, setLocal } from './st
 import { logActivity } from './activity';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { allowDevMockFallback } from '../env';
+import { deduplicateCategoriesById } from '@/lib/utils';
+
+export { deduplicateCategoriesById };
 
 const COLLECTION_KEY = 'categories';
 const DELETED_CATEGORY_SLUGS_KEY = 'deleted_category_slugs';
@@ -38,16 +42,24 @@ const LEGACY_UNRELATED_SLUGS = new Set([
 ]);
 
 export function getCategories(): Category[] {
-  let list = getStoredCollection(COLLECTION_KEY, initialCategories);
+  const fallback = allowDevMockFallback() ? initialCategories : [];
+  let list = getStoredCollection(COLLECTION_KEY, fallback);
   let modified = false;
   const deletedSlugs = getDeletedCategorySlugs();
 
   // Filter out legacy non-mobile categories and permanently deleted categories
   const filtered = list.filter(
-    (c) => !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
+    (c) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
   );
   if (filtered.length !== list.length) {
     list = filtered;
+    modified = true;
+  }
+
+  // Deduplicate strictly by unique database category ID
+  const deduplicated = deduplicateCategoriesById(list);
+  if (deduplicated.length !== list.length) {
+    list = deduplicated;
     modified = true;
   }
 
@@ -64,22 +76,34 @@ export function getCategories(): Category[] {
 }
 
 let hasSyncedCategoriesFromApi = false;
-export async function syncCategoriesFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
+let isSyncingCategories = false;
+
+export async function syncCategoriesFromApi(): Promise<Category[]> {
+  if (typeof window === 'undefined') return [];
+  if (isSyncingCategories) return getCategories();
+  isSyncingCategories = true;
   try {
     const res = await fetch('/api/categories', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.categories)) {
-        await persistCollection(COLLECTION_KEY, data.categories);
+        const uniqueCategories = deduplicateCategoriesById<Category>(data.categories);
+        await persistCollection(COLLECTION_KEY, uniqueCategories);
         window.dispatchEvent(
           new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: data.categories },
+            detail: { key: COLLECTION_KEY, value: uniqueCategories },
           })
         );
+        hasSyncedCategoriesFromApi = true;
+        return uniqueCategories;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('API error syncing categories:', err);
+  } finally {
+    isSyncingCategories = false;
+  }
+  return getCategories();
 }
 
 export function isCategoryActive(c: Category): boolean {
@@ -90,7 +114,7 @@ export function isCategoryActive(c: Category): boolean {
 }
 
 export function getActiveCategories(): Category[] {
-  return getCategories().filter(isCategoryActive);
+  return deduplicateCategoriesById(getCategories().filter(isCategoryActive));
 }
 
 export function getCategoryById(id: string): Category | undefined {
@@ -149,16 +173,29 @@ export async function createCategory(
         'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop',
     };
 
-    const updated = [...categories, newCat];
-    await persistCollection(COLLECTION_KEY, updated);
-
     if (typeof window !== 'undefined') {
-      fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCat),
-      }).catch(() => {});
+      try {
+        const res = await fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newCat),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create category in database.');
+        }
+        if (data.category) {
+          newCat.id = data.category.id || newCat.id;
+          newCat.image = data.category.image || newCat.image;
+        }
+      } catch (apiErr: any) {
+        console.error('API create category error:', apiErr);
+        return { success: false, error: apiErr?.message || 'Failed to save category to database.' };
+      }
     }
+
+    const updated = deduplicateCategoriesById([...categories, newCat]);
+    await persistCollection(COLLECTION_KEY, updated);
 
     // Remove from deleted slugs blacklist if previously deleted
     const deletedSlugs = getLocal<string[]>(DELETED_CATEGORY_SLUGS_KEY, []);
@@ -250,25 +287,34 @@ export async function updateCategory(
       sanitizedUpdates.slug = cleanSlug;
     }
 
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/categories/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sanitizedUpdates),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to update category in database.');
+        }
+        if (data.category?.image) {
+          sanitizedUpdates.image = data.category.image;
+        }
+      } catch (err: any) {
+        console.error('API error updating category:', err);
+        return { success: false, error: err?.message || 'Failed to update category in database.' };
+      }
+    }
+
     const updated = {
       ...categories[index],
       ...sanitizedUpdates,
     };
 
     categories[index] = updated;
-    await persistCollection(COLLECTION_KEY, categories);
-
-    if (typeof window !== 'undefined') {
-      try {
-        await fetch(`/api/categories/${encodeURIComponent(id)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sanitizedUpdates),
-        });
-      } catch (err) {
-        console.warn('API error updating category:', err);
-      }
-    }
+    const deduplicated = deduplicateCategoriesById(categories);
+    await persistCollection(COLLECTION_KEY, deduplicated);
 
     await logActivity({
       adminEmail,
@@ -365,7 +411,8 @@ export async function reorderCategories(orderedIds: string[], adminEmail = 'admi
     // Append any remainder
     map.forEach((item) => reordered.push(item));
 
-    await persistCollection(COLLECTION_KEY, reordered);
+    const deduplicated = deduplicateCategoriesById(reordered);
+    await persistCollection(COLLECTION_KEY, deduplicated);
 
     await logActivity({
       adminEmail,

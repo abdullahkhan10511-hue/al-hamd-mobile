@@ -65,6 +65,17 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Critical Production Safety Lock: Data seeding/importing is permanently disabled in production
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Production Safety Lock: Data seeding/importing is permanently disabled in production. Hostinger MySQL is the sole source of truth for persistent business data.',
+        },
+        { status: 403 }
+      );
+    }
+
     const session = getAdminSession(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

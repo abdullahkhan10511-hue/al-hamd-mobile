@@ -1,5 +1,3 @@
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
 
@@ -53,41 +51,42 @@ const defaultMedia: MediaItem[] = [
   },
 ];
 
+import { allowDevMockFallback } from '../env';
+
 export function getMediaItems(): MediaItem[] {
-  return getStoredCollection(COLLECTION_KEY, defaultMedia);
+  const fallback = allowDevMockFallback() ? defaultMedia : [];
+  return getStoredCollection(COLLECTION_KEY, fallback);
 }
 
 export async function uploadMediaFile(
   file: File,
-  adminEmail = 'admin@alhamd.com'
+  targetFolderOrEmail = 'products'
 ): Promise<{ success: boolean; item?: MediaItem; error?: string }> {
   try {
-    let downloadUrl = '';
+    const isCategory = targetFolderOrEmail === 'categories' || targetFolderOrEmail === 'category';
+    const isBrand = targetFolderOrEmail === 'brands' || targetFolderOrEmail === 'brand';
 
-    // Attempt Firebase Storage upload
-    if (storage && typeof storage.app === 'object' && process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-      try {
-        const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, file);
-        downloadUrl = await getDownloadURL(snapshot.ref);
-      } catch (err) {
-        console.warn('Firebase Storage upload failed, falling back to local base64/object URL:', err);
-      }
-    }
+    let uploadEndpoint = '/api/admin/products/upload';
+    if (isCategory) uploadEndpoint = '/api/admin/categories/upload';
+    else if (isBrand) uploadEndpoint = '/api/admin/brands/upload';
 
-    // Fallback if Firebase Storage is in demo mode or restricted
-    if (!downloadUrl) {
-      downloadUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(uploadEndpoint, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.url) {
+      throw new Error(data.error || 'Server failed to save media file.');
     }
 
     const newItem: MediaItem = {
-      id: `med-${Date.now()}`,
+      id: data.items?.[0]?.id || `med-${Date.now()}`,
       name: file.name,
-      url: downloadUrl,
+      url: data.url,
       size: file.size,
       type: file.type,
       createdAt: new Date().toISOString(),
@@ -97,15 +96,10 @@ export async function uploadMediaFile(
     const updated = [newItem, ...current];
     await persistCollection(COLLECTION_KEY, updated);
 
-    await logActivity({
-      adminEmail,
-      action: 'Uploaded Image',
-      target: file.name,
-    });
-
     return { success: true, item: newItem };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Image upload failed.' };
+    console.error('Error in uploadMediaFile:', err);
+    return { success: false, error: err?.message || 'Media upload failed.' };
   }
 }
 

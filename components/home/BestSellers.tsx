@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, ShoppingBag, Check, Loader2, ArrowRight, XCircle } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
+import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { Product } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -31,6 +31,7 @@ export function BestSellers() {
 
   useEffect(() => {
     loadData();
+    syncProductsFromApi().then(() => loadData()).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);

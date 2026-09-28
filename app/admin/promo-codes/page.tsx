@@ -12,7 +12,7 @@ import {
   deletePromoCode,
 } from '@/lib/db/promotions';
 import { getProducts } from '@/lib/db/products';
-import { getCategories } from '@/lib/db/categories';
+import { getCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { subscribeToKey } from '@/lib/db/storage';
 import {
@@ -102,7 +102,7 @@ export default function PromoCodesAdminPage() {
     setPromos(getPromoCodes());
     setUsages(getPromoCodeUsages());
     setProducts(getProducts());
-    setCategories(getCategories());
+    setCategories(deduplicateCategoriesById(getCategories()));
   }, []);
 
   useEffect(() => {

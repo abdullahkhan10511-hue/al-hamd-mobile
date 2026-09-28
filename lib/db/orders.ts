@@ -8,11 +8,13 @@ import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
+import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'orders';
 
 export function getOrders(): Order[] {
-  return getStoredCollection(COLLECTION_KEY, seedOrders);
+  const fallback = allowDevMockFallback() ? seedOrders : [];
+  return getStoredCollection(COLLECTION_KEY, fallback);
 }
 
 export function getOrderById(id: string): Order | undefined {

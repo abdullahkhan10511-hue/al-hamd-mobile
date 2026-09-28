@@ -2,12 +2,18 @@ import { Brand } from '@/types/admin';
 import { seedBrands } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'brands';
 
 let hasSyncedBrandsFromApi = false;
+let isSyncingBrands = false;
+
 export async function syncBrandsFromApi(): Promise<Brand[]> {
-  if (typeof window === 'undefined') return seedBrands;
+  const fallback = allowDevMockFallback() ? seedBrands : [];
+  if (typeof window === 'undefined') return fallback;
+  if (isSyncingBrands) return getBrands();
+  isSyncingBrands = true;
   try {
     const res = await fetch('/api/brands', { cache: 'no-store' });
     if (res.ok) {
@@ -19,21 +25,25 @@ export async function syncBrandsFromApi(): Promise<Brand[]> {
             detail: { key: COLLECTION_KEY, value: data.brands },
           })
         );
+        hasSyncedBrandsFromApi = true;
         return data.brands;
       }
     }
   } catch (err) {
     console.warn('Could not sync brands from API:', err);
+  } finally {
+    isSyncingBrands = false;
   }
-  return getStoredCollection(COLLECTION_KEY, seedBrands);
+  return getStoredCollection(COLLECTION_KEY, fallback);
 }
 
 export function getBrands(): Brand[] {
+  const fallback = allowDevMockFallback() ? seedBrands : [];
   if (typeof window !== 'undefined' && !hasSyncedBrandsFromApi) {
     hasSyncedBrandsFromApi = true;
     syncBrandsFromApi().catch(() => {});
   }
-  return getStoredCollection(COLLECTION_KEY, seedBrands);
+  return getStoredCollection(COLLECTION_KEY, fallback);
 }
 
 export function getActiveBrands(): Brand[] {
@@ -141,8 +151,12 @@ export async function updateBrand(
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Failed to update brand in database.' };
       }
+      if (json.brand?.logo) {
+        updated.logo = json.brand.logo;
+      }
     } catch (err: any) {
       console.warn('API error updating brand:', err);
+      return { success: false, error: err?.message || 'Failed to update brand in database.' };
     }
   }
 

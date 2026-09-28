@@ -4,11 +4,12 @@ import { getAllProductsFromDb } from '@/lib/db/repositories/products';
 import { getAllCategoriesFromDb } from '@/lib/db/repositories/categories';
 import { getAllBrandsFromDb } from '@/lib/db/repositories/brands';
 import { getProducts } from '@/lib/db/products';
-import { getActiveCategories } from '@/lib/db/categories';
+import { getActiveCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands } from '@/lib/db/brands';
 import { getBlogPosts } from '@/lib/db/blog';
 import { Category, Product } from '@/types';
 import { BlogPost, Brand } from '@/types/admin';
+import { allowDevMockFallback } from '@/lib/env';
 
 export const revalidate = 3600;
 
@@ -123,7 +124,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  if (!rawCategories || rawCategories.length === 0) {
+  if ((!rawCategories || rawCategories.length === 0) && allowDevMockFallback()) {
     try {
       rawCategories = getActiveCategories();
     } catch {
@@ -131,11 +132,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  // Deduplicate and filter active categories
+  // Deduplicate and filter active categories by database ID
+  const uniqueRawCategories = deduplicateCategoriesById(rawCategories);
   const categoryMap = new Map<string, Category>();
-  for (const cat of rawCategories) {
+  for (const cat of uniqueRawCategories) {
     if (
       cat &&
+      cat.id &&
       cat.slug &&
       typeof cat.slug === 'string' &&
       cat.status !== 'inactive' &&
@@ -166,7 +169,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  if (!rawBrands || rawBrands.length === 0) {
+  if ((!rawBrands || rawBrands.length === 0) && allowDevMockFallback()) {
     try {
       rawBrands = getBrands().filter((b) => b.status === 'active');
     } catch {
@@ -201,7 +204,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  if (!rawProducts || rawProducts.length === 0) {
+  if ((!rawProducts || rawProducts.length === 0) && allowDevMockFallback()) {
     try {
       rawProducts = getProducts();
     } catch {

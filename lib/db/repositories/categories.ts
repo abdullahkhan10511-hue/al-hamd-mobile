@@ -2,6 +2,8 @@ import { query, execute, isDbConfigured } from '../mysql';
 import { Category } from '@/types';
 import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
+import { deduplicateCategoriesById } from '@/lib/utils';
+import { ensureSafeMediaUrl } from '../serverMedia';
 
 interface CategoryRow extends RowDataPacket {
   id: string;
@@ -41,7 +43,7 @@ export async function getAllCategoriesFromDb(): Promise<Category[]> {
     'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
   );
 
-  return rows.map(mapRowToCategory);
+  return deduplicateCategoriesById(rows.map(mapRowToCategory));
 }
 
 export async function getCategoryByIdFromDb(id: string): Promise<Category | null> {
@@ -79,7 +81,9 @@ export async function insertCategoryToDb(
   const id = data.id || `cat-${Date.now()}`;
   const name = (data.name || '').trim();
   const slug = (data.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).trim();
-  const image = data.image || 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=600&auto=format&fit=crop';
+  const safeImage =
+    (await ensureSafeMediaUrl(data.image, 'categories')) ||
+    'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=600&auto=format&fit=crop';
   const description = data.description || '';
   const status = data.status || 'active';
   const isActive = (data as any).isActive !== false ? 1 : 0;
@@ -88,7 +92,7 @@ export async function insertCategoryToDb(
   await execute(
     `INSERT INTO categories (id, name, slug, image, description, product_count, status, is_active, featured)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, name, slug, image, description, data.productCount || 0, status, isActive, featured]
+    [id, name, slug, safeImage, description, data.productCount || 0, status, isActive, featured]
   );
 
   await logActivity({
@@ -113,7 +117,10 @@ export async function updateCategoryInDb(
 
   const name = updates.name !== undefined ? updates.name.trim() : existing.name;
   const slug = updates.slug !== undefined ? updates.slug.trim().toLowerCase() : existing.slug;
-  const image = updates.image !== undefined ? updates.image : existing.image;
+  const image =
+    updates.image !== undefined
+      ? (await ensureSafeMediaUrl(updates.image, 'categories')) || existing.image
+      : existing.image;
   const description = updates.description !== undefined ? updates.description : existing.description;
   const status = updates.status !== undefined ? updates.status : existing.status;
   const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (existing.isActive ? 1 : 0);
