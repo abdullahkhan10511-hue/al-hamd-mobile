@@ -1,6 +1,7 @@
 import { query, execute, isDbConfigured } from '../mysql';
 import { HomepageVideo } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
+import { ensureSafeMediaUrl } from '../serverMedia';
 
 interface HomepageVideoRow extends RowDataPacket {
   id: string;
@@ -63,8 +64,10 @@ export async function saveHomepageVideoInDb(video: Partial<HomepageVideo>): Prom
 
   const id = video.id || `video-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const title = (video.title || 'Untitled Homepage Video').trim();
-  const url = (video.url || '').trim();
-  const thumbnailUrl = video.thumbnailUrl ? video.thumbnailUrl.trim() : null;
+  const rawUrl = (video.url || '').trim();
+  const url = (await ensureSafeMediaUrl(rawUrl, 'videos')) || rawUrl;
+  const rawThumbnail = video.thumbnailUrl ? video.thumbnailUrl.trim() : null;
+  const thumbnailUrl = rawThumbnail ? ((await ensureSafeMediaUrl(rawThumbnail, 'videos')) || rawThumbnail) : null;
   const active = video.active !== undefined ? (video.active ? 1 : 0) : 1;
   const displayOrder = Number(video.displayOrder) || 1;
   const duration = video.duration !== undefined ? Number(video.duration) : null;

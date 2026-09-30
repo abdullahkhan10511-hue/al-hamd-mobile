@@ -102,7 +102,7 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
         };
       }
 
-      // Check Available Stock (including model-level stock if model selected)
+      // Check Available Shop Stock (including model-level shop stock if model selected)
       const modelObj =
         cartItem.selectedModel && Array.isArray(product.models)
           ? product.models.find(
@@ -113,13 +113,13 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
           : null;
 
       const availableStock = modelObj
-        ? (modelObj.stock !== undefined ? modelObj.stock : product.stock)
-        : product.stock;
+        ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (product.shopStock ?? 0))
+        : (product.shopStock ?? 0);
 
       if (availableStock < cartItem.quantity) {
         return {
           success: false,
-          error: `Only ${availableStock} unit(s) available for "${product.name}${cartItem.selectedModel ? ` (${cartItem.selectedModel})` : ''}". (Requested: ${cartItem.quantity})`,
+          error: `Only ${availableStock} unit(s) available in shop stock for "${product.name}${cartItem.selectedModel ? ` (${cartItem.selectedModel})` : ''}". (Requested: ${cartItem.quantity})`,
         };
       }
 
@@ -235,16 +235,16 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
     const invoiceNumber = generateNextInvoiceNumber(orders);
     const nowIso = new Date().toISOString();
 
-    // Deduct stock and record inventory movement
+    // Deduct shop stock and record inventory movement
     for (const item of validatedItems) {
       const prodIndex = products.findIndex((p) => p.id === item.productId);
       if (prodIndex !== -1) {
         const prod = products[prodIndex];
-        const prevStock = prod.stock;
-        const newStock = Math.max(0, prevStock - item.quantity);
-        prod.stock = newStock;
+        const prevShopStock = prod.shopStock ?? 0;
+        const newShopStock = Math.max(0, prevShopStock - item.quantity);
+        prod.shopStock = newShopStock;
 
-        // Deduct model-specific stock if model was chosen
+        // Deduct model-specific shop stock if model was chosen
         if (item.selectedModel && Array.isArray(prod.models)) {
           const mIdx = prod.models.findIndex(
             (m: any) =>
@@ -252,18 +252,18 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
               m.id === item.selectedModel
           );
           if (mIdx !== -1) {
-            const mPrev = prod.models[mIdx].stock !== undefined ? prod.models[mIdx].stock : prod.stock;
-            prod.models[mIdx].stock = Math.max(0, mPrev - item.quantity);
+            const mPrev = prod.models[mIdx].shopStock !== undefined ? prod.models[mIdx].shopStock : prevShopStock;
+            prod.models[mIdx].shopStock = Math.max(0, mPrev - item.quantity);
           }
         }
 
         await recordInventoryLog({
           productId: prod.id,
-          productName: prod.name,
+          productName: `${prod.name} [Shop Stock]`,
           sku: item.sku || prod.sku || '',
-          previousStock: prevStock,
+          previousStock: prevShopStock,
           changeAmount: -item.quantity,
-          newStock: newStock,
+          newStock: newShopStock,
           reason: `POS Sale #${orderId} (Invoice: ${invoiceNumber})${item.selectedModel ? ` - Model: ${item.selectedModel}` : ''}${item.selectedColor ? ` - Color: ${item.selectedColor}` : ''}`,
           adminEmail: params.cashierEmail || 'pos-counter',
         });
@@ -453,23 +453,35 @@ export async function voidPosSale(
 
     const cleanReason = reason?.trim() || 'Counter return / cashier void';
 
-    // 1. Restore product inventory
+    // 1. Restore product shop inventory
     const products = getProducts();
     for (const item of order.items) {
       const prodIndex = products.findIndex((p) => p.id === item.productId);
       if (prodIndex !== -1) {
         const prod = products[prodIndex];
-        const prevStock = prod.stock;
-        const newStock = prevStock + item.quantity;
-        prod.stock = newStock;
+        const prevShopStock = prod.shopStock ?? 0;
+        const newShopStock = prevShopStock + item.quantity;
+        prod.shopStock = newShopStock;
+
+        if (item.selectedModel && Array.isArray(prod.models)) {
+          const mIdx = prod.models.findIndex(
+            (m: any) =>
+              m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+              m.id === item.selectedModel
+          );
+          if (mIdx !== -1) {
+            const mPrev = prod.models[mIdx].shopStock !== undefined ? prod.models[mIdx].shopStock : prevShopStock;
+            prod.models[mIdx].shopStock = mPrev + item.quantity;
+          }
+        }
 
         await recordInventoryLog({
           productId: prod.id,
-          productName: prod.name,
+          productName: `${prod.name} [Shop Stock]`,
           sku: prod.sku || '',
-          previousStock: prevStock,
+          previousStock: prevShopStock,
           changeAmount: item.quantity,
-          newStock: newStock,
+          newStock: newShopStock,
           reason: `Void POS Sale #${order.id} (Invoice: ${order.invoiceNumber}) - Reason: ${cleanReason}`,
           adminEmail: operatorEmail,
         });

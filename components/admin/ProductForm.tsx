@@ -400,39 +400,70 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     }
   };
 
-  const handleAddMediaUrl = () => {
+  const handleAddMediaUrl = async () => {
     const raw = newMediaUrl.trim();
     if (!raw) return;
 
-    let detectedType: 'image' | 'video' = 'image';
-    if (newMediaType === 'video') {
-      detectedType = 'video';
-    } else if (newMediaType === 'image') {
-      detectedType = 'image';
-    } else {
-      const lower = raw.toLowerCase();
-      if (
-        lower.endsWith('.mp4') ||
-        lower.endsWith('.webm') ||
-        lower.includes('.mp4?') ||
-        lower.includes('.webm?')
-      ) {
-        detectedType = 'video';
-      }
+    // If it is already an internal persistent path, add directly
+    if (raw.startsWith('/uploads/') || raw.startsWith('uploads/')) {
+      const normalizedUrl = raw.startsWith('/') ? raw : `/${raw}`;
+      const isVid = newMediaType === 'video' || normalizedUrl.includes('/videos/') || normalizedUrl.endsWith('.mp4');
+      setMediaList((prev) => [
+        ...prev,
+        {
+          id: `med-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          url: normalizedUrl,
+          type: isVid ? 'video' : 'image',
+          name: normalizedUrl.split('/').pop() || (isVid ? 'Product Video' : 'Product Image'),
+        },
+      ]);
+      setNewMediaUrl('');
+      setNewMediaType('auto');
+      return;
     }
 
-    setMediaList((prev) => [
-      ...prev,
-      {
-        id: `url-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        url: raw,
-        type: detectedType,
-        name: raw.split('/').pop()?.split('?')[0] || (detectedType === 'video' ? 'Product Video' : 'Product Image'),
-      },
-    ]);
-    setNewMediaUrl('');
-    setNewMediaType('auto');
+    // External URL: Download & persist directly into PERSISTENT_UPLOADS_DIR
+    setMediaError('');
+    setIsUploading(true);
+    setUploadProgressText('Importing remote media into persistent storage...');
+
+    try {
+      const res = await fetch('/api/admin/products/import-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: raw,
+          folder: newMediaType === 'video' ? 'videos' : 'products',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.item) {
+        throw new Error(data.error || 'Failed to import remote media.');
+      }
+
+      setMediaList((prev) => [
+        ...prev,
+        {
+          id: data.item.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          url: data.item.url,
+          type: data.item.type === 'video' ? 'video' : 'image',
+          name: data.item.name || (data.item.type === 'video' ? 'Product Video' : 'Product Image'),
+          size: data.item.size,
+        },
+      ]);
+
+      setNewMediaUrl('');
+      setNewMediaType('auto');
+    } catch (err: any) {
+      console.error('Remote media import error:', err);
+      setMediaError(err?.message || 'Failed to import remote media. Please check URL and format.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgressText('');
+    }
   };
+
 
   const handleRemoveMedia = (index: number) => {
     setMediaList((prev) => prev.filter((_, i) => i !== index));
@@ -701,6 +732,21 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     }
   };
 
+  const handleSelectLocation = (loc: 'WAREHOUSE' | 'SHOP') => {
+    setInventoryLocation(loc);
+    if (loc === 'SHOP') {
+      if (stock !== '' && Number(stock) > 0 && (shopStock === '' || Number(shopStock) === 0)) {
+        setShopStock(stock);
+      }
+      setStock(0);
+    } else {
+      if (isNew && (stock === '' || Number(stock) === 0) && shopStock !== '' && Number(shopStock) > 0) {
+        setStock(shopStock);
+        setShopStock(0);
+      }
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       {/* Top Header */}
@@ -764,7 +810,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               {/* SHOP Button */}
               <button
                 type="button"
-                onClick={() => setInventoryLocation('SHOP')}
+                onClick={() => handleSelectLocation('SHOP')}
                 className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer relative ${
                   inventoryLocation === 'SHOP'
                     ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
@@ -792,7 +838,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               {/* WAREHOUSE Button */}
               <button
                 type="button"
-                onClick={() => setInventoryLocation('WAREHOUSE')}
+                onClick={() => handleSelectLocation('WAREHOUSE')}
                 className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer relative ${
                   inventoryLocation === 'WAREHOUSE'
                     ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
@@ -1087,6 +1133,12 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                     type="text"
                     value={newMediaUrl}
                     onChange={(e) => setNewMediaUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isUploading && newMediaUrl.trim()) {
+                        e.preventDefault();
+                        handleAddMediaUrl();
+                      }
+                    }}
                     placeholder="Or paste direct image or video URL (https://... or .mp4)..."
                     className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-[11px] focus:bg-white"
                   />
@@ -1106,10 +1158,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 <button
                   type="button"
                   onClick={handleAddMediaUrl}
-                  disabled={!newMediaUrl.trim()}
+                  disabled={!newMediaUrl.trim() || isUploading}
                   className="px-4 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold cursor-pointer shrink-0 disabled:opacity-40 transition-colors"
                 >
-                  Add URL
+                  {isUploading ? 'Importing...' : 'Add URL'}
                 </button>
               </div>
 

@@ -88,12 +88,23 @@ function LargeBestSellerCard({ product }: { product: Product }) {
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [outOfStockToast, setOutOfStockToast] = useState(false);
+  const [toastText, setToastText] = useState('This product is currently out of stock.');
   const isFavorited = isInWishlist(product.id);
-  const isOutOfStock = (product.shopStock ?? 0) <= 0 || product.isShopActive === false;
+  // Authoritative Rule 8: Public availability is TOTAL AVAILABLE = WAREHOUSE STOCK + SHOP STOCK
+  const totalAvailableStock = (product.stock ?? 0) + (product.shopStock ?? 0);
+  const isOutOfStock = totalAvailableStock <= 0;
+  const isWarehouseAvailable = (product.stock ?? 0) > 0;
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (isOutOfStock) {
+      setToastText('This product is currently out of stock.');
+      setOutOfStockToast(true);
+      setTimeout(() => setOutOfStockToast(false), 2500);
+      return;
+    }
+    if (!isWarehouseAvailable) {
+      setToastText('Available at physical shop. Online delivery requires warehouse stock.');
       setOutOfStockToast(true);
       setTimeout(() => setOutOfStockToast(false), 2500);
       return;
@@ -234,7 +245,7 @@ function LargeBestSellerCard({ product }: { product: Product }) {
             className="absolute inset-x-4 bottom-20 z-30 p-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-xl shadow-xl text-center border border-neutral-800 flex items-center justify-center gap-1.5 pointer-events-none"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            <span>This product is currently out of stock.</span>
+            <span>{toastText}</span>
           </motion.div>
         )}
       </AnimatePresence>

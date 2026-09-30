@@ -178,18 +178,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         : undefined);
     const model = selectedModel;
 
-    // RULE: Online customer availability is strictly driven by SHOP STOCK and must be active in Shop Inventory
-    if (product.isShopActive === false) {
-      return;
-    }
-
-    let maxStock = product.shopStock !== undefined ? Math.max(0, product.shopStock) : 0;
+    // RULE: Online website orders are fulfilled from WAREHOUSE STOCK.
+    // Warehouse stock (product.stock / model.stock) determines online checkout fulfillment availability.
+    let maxStock = product.stock !== undefined ? Math.max(0, product.stock) : 0;
     if (model && product.models && Array.isArray(product.models)) {
       const foundModel = product.models.find(
         (m) => m.name.toLowerCase() === model.toLowerCase() || m.id === model
       );
       if (foundModel) {
-        maxStock = Math.max(0, (foundModel as any).shopStock !== undefined ? (foundModel as any).shopStock : 0);
+        maxStock = Math.max(0, foundModel.stock !== undefined ? foundModel.stock : 0);
       }
     }
 
@@ -247,16 +244,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart((prev) =>
       prev.map((item) => {
         if (item.id === itemId) {
-          let maxStock = item.product.shopStock !== undefined ? Math.max(0, item.product.shopStock) : 0;
-          if (item.product.isShopActive === false) {
-            maxStock = 0;
-          }
+          let maxStock = item.product.stock !== undefined ? Math.max(0, item.product.stock) : 0;
           if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
             const foundModel = item.product.models.find(
               (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
             );
             if (foundModel) {
-              maxStock = Math.max(0, (foundModel as any).shopStock !== undefined ? (foundModel as any).shopStock : 0);
+              maxStock = Math.max(0, foundModel.stock !== undefined ? foundModel.stock : 0);
             }
           }
           return { ...item, quantity: Math.min(maxStock, newQuantity) };

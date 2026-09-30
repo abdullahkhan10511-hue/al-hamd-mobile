@@ -298,17 +298,21 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
 
-  // RULE: Customer-facing availability is driven by SHOP STOCK, not warehouse stock.
-  // Must be in Shop Inventory Active state (isShopActive !== false) to be available online.
-  const isShopActive = product?.isShopActive !== false;
-  const maxStock = isShopActive
-    ? Math.max(
-        0,
-        selectedModelObj
-          ? ((selectedModelObj as any).shopStock !== undefined ? (selectedModelObj as any).shopStock : 0)
-          : (product?.shopStock ?? 0)
-      )
-    : 0;
+  // Authoritative Rule 8 & 9:
+  // Public website total availability = Warehouse Stock + Shop Stock
+  // Online website order fulfillment availability = Warehouse Stock ONLY
+  const maxStock = Math.max(
+    0,
+    selectedModelObj
+      ? (selectedModelObj.stock !== undefined ? selectedModelObj.stock : 0)
+      : (product?.stock ?? 0)
+  );
+  const totalStock = Math.max(
+    0,
+    selectedModelObj
+      ? ((selectedModelObj.stock ?? 0) + ((selectedModelObj as any).shopStock ?? 0))
+      : ((product?.stock ?? 0) + (product?.shopStock ?? 0))
+  );
 
   const updateQuantity = (val: number) => {
     if (!product) return;
@@ -914,18 +918,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             )}
 
             {/* Stock Warning Notice */}
-            {isOutOfStock ? (
+            {totalStock <= 0 ? (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                 <span>
                   {selectedModelObj ? `${selectedModelObj.name} is currently out of stock.` : 'Currently out of stock.'}
                 </span>
               </div>
+            ) : maxStock <= 0 ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>
+                  Available at physical shop. Out of warehouse stock for online delivery.
+                </span>
+              </div>
             ) : maxStock > 0 && maxStock <= 5 ? (
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 <span>
-                  Only {maxStock} left in stock - order soon!
+                  Only {maxStock} left in warehouse stock - order soon!
                 </span>
               </div>
             ) : null}

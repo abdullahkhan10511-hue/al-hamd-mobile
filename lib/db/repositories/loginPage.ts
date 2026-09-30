@@ -1,6 +1,7 @@
 import { query, execute, isDbConfigured } from '../mysql';
 import { LoginPageSettings, LoginPageMediaItem, DEFAULT_LOGIN_PAGE_SETTINGS, DEFAULT_LOGIN_PAGE_MEDIA } from '../loginPage';
 import { RowDataPacket } from 'mysql2/promise';
+import { ensureSafeMediaUrl } from '../serverMedia';
 
 interface LoginPageSettingsRow extends RowDataPacket {
   id: number;
@@ -148,7 +149,8 @@ export async function saveLoginPageMediaInDb(item: Partial<LoginPageMediaItem>):
   const id = item.id || `login-media-${Date.now()}`;
   const title = (item.title || 'Login Media Showcase').trim();
   const type = item.type === 'video' ? 'video' : 'image';
-  const url = (item.url || '').trim();
+  const rawUrl = (item.url || '').trim();
+  const url = (await ensureSafeMediaUrl(rawUrl, type === 'video' ? 'videos' : 'login')) || rawUrl;
   const thumbnailUrl = item.thumbnailUrl ? item.thumbnailUrl.trim() : null;
   const active = item.isActive !== false ? 1 : 0;
   const displayOrder = Number(item.displayOrder) || 1;

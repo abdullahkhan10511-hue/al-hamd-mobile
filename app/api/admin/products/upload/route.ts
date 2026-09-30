@@ -77,6 +77,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const contentType = request.headers.get('content-type') || '';
+
+    // Handle JSON remote URL import payload
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      const rawUrl = (body.url || '').trim();
+      const rawUrls: string[] = Array.isArray(body.urls) ? body.urls : (rawUrl ? [rawUrl] : []);
+
+      if (rawUrls.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'No media URL provided in JSON body.' },
+          { status: 400 }
+        );
+      }
+
+      const { downloadAndPersistRemoteMedia } = await import('@/lib/mediaStorage');
+      const results: UploadedMediaItemResult[] = [];
+      const errors: string[] = [];
+
+      for (const u of rawUrls) {
+        if (!u || !u.trim()) continue;
+        try {
+          const persisted = await downloadAndPersistRemoteMedia({
+            url: u.trim(),
+            folder: body.folder === 'videos' ? 'videos' : 'products',
+          });
+          results.push({
+            id: `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            url: persisted.publicUrl,
+            type: persisted.type,
+            name: persisted.fileName,
+            size: persisted.size,
+          });
+        } catch (downloadErr: any) {
+          errors.push(`Failed to import "${u}": ${downloadErr?.message || downloadErr}`);
+        }
+      }
+
+      if (results.length === 0 && errors.length > 0) {
+        return NextResponse.json({ success: false, error: errors.join('; ') }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        items: results,
+        url: results[0]?.url,
+        type: results[0]?.type,
+        name: results[0]?.name,
+        size: results[0]?.size,
+        warnings: errors.length > 0 ? errors : undefined,
+      });
+    }
+
     const formData = await request.formData();
     // Gather all files from 'files' or 'file'
     const files: File[] = [];
@@ -97,6 +150,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
 
     const results: UploadedMediaItemResult[] = [];
     const errors: string[] = [];

@@ -241,7 +241,10 @@ export default function AdminProductsPage() {
                       <div className="space-y-1 text-xs">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] uppercase font-bold text-neutral-400">WH:</span>
-                          <span className="font-mono font-semibold text-neutral-800">{p.stock}</span>
+                          <span className={`font-mono font-bold ${p.stock > 0 ? 'text-neutral-800' : 'text-rose-600'}`}>{p.stock}</span>
+                          {p.stock <= 0 && (
+                            <span className="text-[9px] bg-rose-100 text-rose-700 font-bold px-1 rounded">Out online</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] uppercase font-bold text-sky-600">Shop:</span>
@@ -249,7 +252,7 @@ export default function AdminProductsPage() {
                             {p.shopStock ?? 0}
                           </span>
                           {(p.shopStock ?? 0) <= 0 && (
-                            <span className="text-[9px] bg-rose-100 text-rose-700 font-bold px-1 rounded">Out online</span>
+                            <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 rounded">Out POS</span>
                           )}
                         </div>
                       </div>

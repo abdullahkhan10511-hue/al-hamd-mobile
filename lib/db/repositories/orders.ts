@@ -282,18 +282,25 @@ export async function createOrderInDb(
     const orderId = orderData.id || (await generateNextOrderIdInDb());
     const invoiceNumber = orderData.invoiceNumber || (await generateNextInvoiceNumberInDb());
 
-    // 2. Validate and adjust SHOP STOCK for each item in the order.
-    // RULE: Online customer orders deduct from shop_stock ONLY.
-    // Warehouse stock (products.stock) is NOT touched by online orders.
+    // 2. Validate and adjust stock for each item in the order according to authoritative rules:
+    // - ONLINE WEBSITE ORDERS deduct from WAREHOUSE STOCK (products.stock / product_models.stock) ONLY. Shop stock is UNCHANGED.
+    // - POS / WALK-IN ORDERS deduct from SHOP STOCK (products.shop_stock / product_models.shop_stock) ONLY. Warehouse stock is UNCHANGED.
+    const isPosOrder = orderData.orderSource === 'POS' || orderData.orderType === 'walk_in';
+
     for (const item of orderData.items) {
       const [pRows] = await conn.query<RowDataPacket[]>(
         'SELECT id, name, sku, stock, shop_stock FROM products WHERE id = ? LIMIT 1 FOR UPDATE',
         [item.productId]
       );
 
-      if (pRows && pRows.length > 0) {
-        const product = pRows[0];
-        // Use shop_stock for availability check (falls back to 0 if column not yet migrated)
+      if (!pRows || pRows.length === 0) {
+        throw new Error(`Product "${item.productName}" (ID: ${item.productId}) was not found.`);
+      }
+
+      const product = pRows[0];
+
+      if (isPosOrder) {
+        // POS SALE -> Deduct from SHOP STOCK ONLY
         let availableShopStock = Number(product.shop_stock || 0);
 
         if (item.selectedModel) {
@@ -303,7 +310,12 @@ export async function createOrderInDb(
           );
           if (mRows && mRows.length > 0) {
             availableShopStock = Number(mRows[0].shop_stock || 0);
-            const newModelShopStock = Math.max(0, availableShopStock - item.quantity);
+            if (availableShopStock < item.quantity) {
+              throw new Error(
+                `Insufficient shop stock for "${product.name} (${item.selectedModel})". Available: ${availableShopStock}, requested: ${item.quantity}.`
+              );
+            }
+            const newModelShopStock = availableShopStock - item.quantity;
             await conn.execute(
               'UPDATE product_models SET shop_stock = ? WHERE id = ?',
               [newModelShopStock, mRows[0].id]
@@ -319,11 +331,11 @@ export async function createOrderInDb(
               [newParentShopStock, item.productId]
             );
 
-            // Inventory log
+            // Inventory log for POS deduction
             await conn.execute(
               `INSERT INTO inventory_logs (
                 id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-              ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+              ) VALUES (?, ?, ?, ?, 'POS_DEDUCT', ?, ?, ?, ?, ?, NOW())`,
               [
                 `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
                 item.productId,
@@ -332,26 +344,31 @@ export async function createOrderInDb(
                 -item.quantity,
                 availableShopStock,
                 newModelShopStock,
-                `Online Order #${orderId}: Shop stock deducted (${item.selectedModel})`,
+                `POS Sale #${orderId}: Shop stock deducted (${item.selectedModel})`,
+                orderData.cashierEmail || 'pos-counter',
               ]
             );
             continue;
           }
         }
 
-        // No model — deduct from product-level shop_stock
-        const newShopStock = Math.max(0, availableShopStock - item.quantity);
+        // Product-level POS deduction
+        if (availableShopStock < item.quantity) {
+          throw new Error(
+            `Insufficient shop stock for "${product.name}". Available: ${availableShopStock}, requested: ${item.quantity}.`
+          );
+        }
+
+        const newShopStock = availableShopStock - item.quantity;
         await conn.execute(
           'UPDATE products SET shop_stock = ? WHERE id = ?',
           [newShopStock, item.productId]
         );
-        // NOTE: products.stock (warehouse) is NOT modified here.
 
-        // Record stock log
         await conn.execute(
           `INSERT INTO inventory_logs (
             id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-          ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+          ) VALUES (?, ?, ?, ?, 'POS_DEDUCT', ?, ?, ?, ?, ?, NOW())`,
           [
             `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             item.productId,
@@ -360,7 +377,88 @@ export async function createOrderInDb(
             -item.quantity,
             availableShopStock,
             newShopStock,
-            `Online Order #${orderId}: Shop stock deducted`,
+            `POS Sale #${orderId}: Shop stock deducted`,
+            orderData.cashierEmail || 'pos-counter',
+          ]
+        );
+      } else {
+        // ONLINE ORDER -> Deduct from WAREHOUSE STOCK ONLY
+        let availableWarehouseStock = Number(product.stock || 0);
+
+        if (item.selectedModel) {
+          const [mRows] = await conn.query<RowDataPacket[]>(
+            'SELECT id, stock, shop_stock FROM product_models WHERE product_id = ? AND (name = ? OR id = ?) LIMIT 1 FOR UPDATE',
+            [item.productId, item.selectedModel, item.selectedModel]
+          );
+          if (mRows && mRows.length > 0) {
+            availableWarehouseStock = Number(mRows[0].stock || 0);
+            if (availableWarehouseStock < item.quantity) {
+              throw new Error(
+                `Insufficient warehouse stock for "${product.name} (${item.selectedModel})". Available: ${availableWarehouseStock}, requested: ${item.quantity}.`
+              );
+            }
+            const newModelStock = availableWarehouseStock - item.quantity;
+            await conn.execute(
+              'UPDATE product_models SET stock = ? WHERE id = ?',
+              [newModelStock, mRows[0].id]
+            );
+            // Recalculate parent product warehouse stock from model totals
+            const [parentStock] = await conn.query<RowDataPacket[]>(
+              'SELECT SUM(stock) as total_stock FROM product_models WHERE product_id = ?',
+              [item.productId]
+            );
+            const newParentStock = parentStock && parentStock.length > 0 ? Number(parentStock[0].total_stock) || 0 : 0;
+            await conn.execute(
+              'UPDATE products SET stock = ? WHERE id = ?',
+              [newParentStock, item.productId]
+            );
+
+            // Inventory log for Online order warehouse deduction
+            await conn.execute(
+              `INSERT INTO inventory_logs (
+                id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+              ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+              [
+                `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                item.productId,
+                `${product.name} (${item.selectedModel}) [Warehouse Stock]`,
+                item.sku || product.sku,
+                -item.quantity,
+                availableWarehouseStock,
+                newModelStock,
+                `Online Order #${orderId}: Warehouse stock deducted (${item.selectedModel})`,
+              ]
+            );
+            continue;
+          }
+        }
+
+        // Product-level Online warehouse deduction
+        if (availableWarehouseStock < item.quantity) {
+          throw new Error(
+            `Insufficient warehouse stock for "${product.name}". Available: ${availableWarehouseStock}, requested: ${item.quantity}.`
+          );
+        }
+
+        const newWarehouseStock = availableWarehouseStock - item.quantity;
+        await conn.execute(
+          'UPDATE products SET stock = ? WHERE id = ?',
+          [newWarehouseStock, item.productId]
+        );
+
+        await conn.execute(
+          `INSERT INTO inventory_logs (
+            id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+          ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+          [
+            `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            item.productId,
+            `${product.name} [Warehouse Stock]`,
+            item.sku || product.sku,
+            -item.quantity,
+            availableWarehouseStock,
+            newWarehouseStock,
+            `Online Order #${orderId}: Warehouse stock deducted`,
           ]
         );
       }
@@ -595,40 +693,96 @@ export async function voidOrderInDb(
       [voidedBy, reason, id]
     );
 
-    // Restock items
-    // RULE: Restore SHOP STOCK when voiding an order (mirrors the deduction logic in createOrderInDb).
-    // Warehouse stock (products.stock) is NOT touched — only shop_stock is restored.
+    // Restock items safely to their original fulfillment inventory:
+    // - POS orders restore SHOP STOCK ONLY (Warehouse stock is untouched)
+    // - ONLINE orders restore WAREHOUSE STOCK ONLY (Shop stock is untouched)
+    const isPosOrder = existing.orderSource === 'POS' || existing.orderType === 'walk_in';
+
     for (const item of existing.items) {
-      await conn.execute(
-        'UPDATE products SET shop_stock = shop_stock + ? WHERE id = ?',
-        [item.quantity, item.productId]
-      );
-      if (item.selectedModel) {
+      if (isPosOrder) {
+        // Restore Shop Stock
         await conn.execute(
-          'UPDATE product_models SET shop_stock = shop_stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
-          [item.quantity, item.productId, item.selectedModel, item.selectedModel]
+          'UPDATE products SET shop_stock = shop_stock + ? WHERE id = ?',
+          [item.quantity, item.productId]
         );
-        // Recalculate parent product shop_stock from model totals
-        const [parentShop] = await conn.query<RowDataPacket[]>(
-          'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
-          [item.productId]
-        );
-        const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+        if (item.selectedModel) {
+          await conn.execute(
+            'UPDATE product_models SET shop_stock = shop_stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
+            [item.quantity, item.productId, item.selectedModel, item.selectedModel]
+          );
+          const [parentShop] = await conn.query<RowDataPacket[]>(
+            'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
+            [item.productId]
+          );
+          const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+          await conn.execute(
+            'UPDATE products SET shop_stock = ? WHERE id = ?',
+            [newParentShopStock, item.productId]
+          );
+        }
+
         await conn.execute(
-          'UPDATE products SET shop_stock = ? WHERE id = ?',
-          [newParentShopStock, item.productId]
+          `INSERT INTO inventory_logs (
+            id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+          ) VALUES (?, ?, ?, ?, 'POS_RESTOCK', ?, 0, 0, ?, ?, NOW())`,
+          [
+            `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            item.productId,
+            `${item.productName}${item.selectedModel ? ` (${item.selectedModel})` : ''} [Shop Stock]`,
+            item.sku,
+            item.quantity,
+            `Void POS Sale #${id}: Restored ${item.quantity} unit(s) to shop stock. Reason: ${reason}`,
+            voidedBy,
+          ]
+        );
+      } else {
+        // Restore Warehouse Stock
+        await conn.execute(
+          'UPDATE products SET stock = stock + ? WHERE id = ?',
+          [item.quantity, item.productId]
+        );
+        if (item.selectedModel) {
+          await conn.execute(
+            'UPDATE product_models SET stock = stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
+            [item.quantity, item.productId, item.selectedModel, item.selectedModel]
+          );
+          const [parentStock] = await conn.query<RowDataPacket[]>(
+            'SELECT SUM(stock) as total_stock FROM product_models WHERE product_id = ?',
+            [item.productId]
+          );
+          const newParentStock = parentStock && parentStock.length > 0 ? Number(parentStock[0].total_stock) || 0 : 0;
+          await conn.execute(
+            'UPDATE products SET stock = ? WHERE id = ?',
+            [newParentStock, item.productId]
+          );
+        }
+
+        await conn.execute(
+          `INSERT INTO inventory_logs (
+            id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+          ) VALUES (?, ?, ?, ?, 'RESTOCK', ?, 0, 0, ?, ?, NOW())`,
+          [
+            `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            item.productId,
+            `${item.productName}${item.selectedModel ? ` (${item.selectedModel})` : ''} [Warehouse Stock]`,
+            item.sku,
+            item.quantity,
+            `Void Online Order #${id}: Restored ${item.quantity} unit(s) to warehouse stock. Reason: ${reason}`,
+            voidedBy,
+          ]
         );
       }
     }
 
     await conn.execute(
       `INSERT INTO activity_logs (id, admin_email, action, target, details, timestamp)
-       VALUES (?, ?, 'Voided POS Sale', ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, NOW())`,
       [
         `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         voidedBy,
+        isPosOrder ? 'Voided POS Sale' : 'Voided Online Order',
         id,
-        `Void Reason: ${reason}. Restocked ${existing.items.length} line items.`,
+        `Void Reason: ${reason}. Restocked ${existing.items.length} line items to ${isPosOrder ? 'Shop' : 'Warehouse'} inventory.`,
       ]
     );
 

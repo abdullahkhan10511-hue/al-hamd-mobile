@@ -9,7 +9,7 @@ import path from 'path';
  * represented as a permanent web-accessible URL (/uploads/[folder]/[filename]).
  */
 
-import { saveMediaBuffer, UploadFolder } from '../mediaStorage';
+import { saveMediaBuffer, downloadAndPersistRemoteMedia, UploadFolder } from '../mediaStorage';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -59,29 +59,52 @@ export async function saveBase64MediaToFile(
 
 /**
  * Validates and ensures an image or media URL is safe for database persistence.
- * Prevents giant Base64 strings from failing in MySQL VARCHAR columns.
+ * 1. Base64 data URLs -> saved to physical file in PERSISTENT_UPLOADS_DIR.
+ * 2. External HTTP/HTTPS URLs -> downloaded and persisted to PERSISTENT_UPLOADS_DIR.
+ * 3. Existing /uploads/... paths -> preserved intact.
  */
 export async function ensureSafeMediaUrl(
   url: string | null | undefined,
-  folder: 'categories' | 'brands' | 'products' | 'branding' | 'general'
+  folder: UploadFolder = 'general'
 ): Promise<string | null> {
   if (!url) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
 
+  // 1. Already an internal relative persistent path
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('uploads/')) {
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  }
+
+  // 2. Base64 Data URL -> convert to file
   if (trimmed.startsWith('data:')) {
     return saveBase64MediaToFile(trimmed, folder);
+  }
+
+  // 3. External HTTP/HTTPS URL -> Download and store permanently in persistent storage
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const persisted = await downloadAndPersistRemoteMedia({
+        url: trimmed,
+        folder,
+      });
+      return persisted.publicUrl;
+    } catch (err: any) {
+      console.warn(`[MediaPersistence] Failed to download remote media from "${trimmed}":`, err?.message || err);
+      // Return original URL if remote download fails so data is not discarded
+      return trimmed;
+    }
   }
 
   return trimmed;
 }
 
 /**
- * Batch-converts an array of media URLs, converting any Base64 strings to permanent file URLs.
+ * Batch-converts an array of media URLs, converting Base64 and remote URLs to permanent file URLs.
  */
 export async function ensureSafeMediaUrls(
   urls: string[],
-  folder: 'categories' | 'brands' | 'products' | 'branding' | 'general'
+  folder: UploadFolder = 'general'
 ): Promise<string[]> {
   if (!Array.isArray(urls) || urls.length === 0) return [];
   const safe: string[] = [];

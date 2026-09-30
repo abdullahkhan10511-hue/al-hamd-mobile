@@ -21,10 +21,20 @@ function WishlistItemCard({
   onAddToCart: () => void;
 }) {
   const [outOfStockToast, setOutOfStockToast] = useState(false);
-  const isOutOfStock = (product.shopStock ?? 0) <= 0 || product.isShopActive === false;
+  const [toastText, setToastText] = useState('This product is currently out of stock.');
+  const totalAvailableStock = (product.stock ?? 0) + (product.shopStock ?? 0);
+  const isOutOfStock = totalAvailableStock <= 0;
+  const isWarehouseAvailable = (product.stock ?? 0) > 0;
 
   const handleAction = () => {
     if (isOutOfStock) {
+      setToastText('This product is currently out of stock.');
+      setOutOfStockToast(true);
+      setTimeout(() => setOutOfStockToast(false), 2500);
+      return;
+    }
+    if (!isWarehouseAvailable) {
+      setToastText('Available at physical shop. Online delivery requires warehouse stock.');
       setOutOfStockToast(true);
       setTimeout(() => setOutOfStockToast(false), 2500);
       return;
@@ -103,7 +113,7 @@ function WishlistItemCard({
             className="absolute inset-x-3 bottom-14 z-30 p-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-xl shadow-xl text-center border border-neutral-800 flex items-center justify-center gap-1.5 pointer-events-none"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            <span>This product is currently out of stock.</span>
+            <span>{toastText}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -116,7 +126,7 @@ export default function WishlistPage() {
   const { addToCart } = useCart();
 
   const handleAddAll = () => {
-    wishlistProducts.filter((p) => (p.shopStock ?? 0) > 0).forEach((p) => addToCart(p, 1));
+    wishlistProducts.filter((p) => (p.stock ?? 0) > 0).forEach((p) => addToCart(p, 1));
   };
 
   return (
