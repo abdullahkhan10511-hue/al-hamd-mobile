@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+  turbopack: {},
   async redirects() {
     return [
       {

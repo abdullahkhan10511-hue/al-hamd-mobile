@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
+import { saveMediaBuffer, deleteMediaFile } from '@/lib/mediaStorage';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -87,27 +87,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'videos');
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
     const safeBaseName = path
       .basename(originalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 50);
     const uniqueFileName = `${Date.now()}_${safeBaseName}${ext}`;
-    const destinationPath = path.join(uploadsDir, uniqueFileName);
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.promises.writeFile(destinationPath, buffer);
-
-    const publicUrl = `/uploads/videos/${uniqueFileName}`;
+    const saved = await saveMediaBuffer('videos', uniqueFileName, buffer);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: saved.publicUrl,
       name: originalName,
-      size: file.size,
+      size: saved.size,
       mimeType: mimeType || 'video/mp4',
       fileName: uniqueFileName,
     });
@@ -137,11 +131,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const fileName = path.basename(url);
-    const filePath = path.join(process.cwd(), 'public', 'uploads', 'videos', fileName);
-
-    if (fs.existsSync(filePath)) {
-      await fs.promises.unlink(filePath);
-    }
+    await deleteMediaFile('videos', fileName);
 
     return NextResponse.json({ success: true, message: 'File deleted' });
   } catch (err: any) {

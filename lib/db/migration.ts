@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { query, execute, isDbConfigured, withTransaction } from './mysql';
+import { query, execute, isDbConfigured } from './mysql';
 import { categories as initialCategories } from '@/data/categories';
 import { seedProducts, seedBrands, seedStoreSettings, seedAdmins } from './seed';
 import { seedPages } from './pages';

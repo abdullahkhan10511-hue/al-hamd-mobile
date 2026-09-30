@@ -9,6 +9,8 @@ import path from 'path';
  * represented as a permanent web-accessible URL (/uploads/[folder]/[filename]).
  */
 
+import { saveMediaBuffer, UploadFolder } from '../mediaStorage';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
   'image/jpg': '.jpg',
@@ -27,7 +29,7 @@ const EXT_BY_MIME: Record<string, string> = {
  */
 export async function saveBase64MediaToFile(
   dataUrl: string,
-  folder: 'categories' | 'brands' | 'products' | 'branding' | 'general' = 'general'
+  folder: UploadFolder = 'general'
 ): Promise<string> {
   if (!dataUrl || typeof dataUrl !== 'string') {
     return dataUrl;
@@ -47,18 +49,12 @@ export async function saveBase64MediaToFile(
   const base64Data = match[2];
 
   const ext = EXT_BY_MIME[mimeType] || '.png';
-  const targetDir = path.join(process.cwd(), 'public', 'uploads', folder);
-
-  await fs.promises.mkdir(targetDir, { recursive: true });
-
   const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const fileName = `upload_${uniqueSuffix}${ext}`;
-  const filePath = path.join(targetDir, fileName);
-
   const buffer = Buffer.from(base64Data, 'base64');
-  await fs.promises.writeFile(filePath, buffer);
 
-  return `/uploads/${folder}/${fileName}`;
+  const saved = await saveMediaBuffer(folder, fileName, buffer);
+  return saved.publicUrl;
 }
 
 /**

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Product, Category, ProductMediaItem, ProductModelVariant } from '@/types';
-import { Brand } from '@/types/admin';
+import { Brand, ShopBill, ShopBillItem } from '@/types/admin';
 import { seedProducts, seedBrands } from './seed';
 import { categories as initialCategories } from '@/data/categories';
 import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
@@ -215,7 +215,7 @@ export async function insertDevProduct(
   ];
 
   // Handle models safely
-  let models: ProductModelVariant[] = [];
+  const models: ProductModelVariant[] = [];
   if (Array.isArray(data.models)) {
     for (let i = 0; i < data.models.length; i++) {
       const m = data.models[i];
@@ -227,6 +227,7 @@ export async function insertDevProduct(
         name: (m.name || '').trim(),
         price: Number(m.price) || 0,
         stock: Number(m.stock) || 0,
+        shopStock: Number(m.shopStock) || 0,
         sku: m.sku || undefined,
         isActive: m.isActive !== false,
         images: mImgs,
@@ -246,6 +247,7 @@ export async function insertDevProduct(
     wholesalePrice: data.wholesalePrice !== undefined ? Number(data.wholesalePrice) : undefined,
     superWholesalePrice: data.superWholesalePrice !== undefined ? Number(data.superWholesalePrice) : undefined,
     stock: Number(data.stock) || 0,
+    shopStock: Number(data.shopStock) || 0,
     lowStockThreshold: Number(data.lowStockThreshold) || 5,
     images: safeImages,
     videos: safeVideos,
@@ -313,6 +315,7 @@ export async function updateDevProduct(
       models.push({
         ...m,
         id: m.id || `mod-${id}-${i}`,
+        shopStock: m.shopStock !== undefined ? Number(m.shopStock) : (existing.models?.find((em: any) => em.id === m.id)?.shopStock ?? 0),
         images: mImgs,
         videos: mVids,
       });
@@ -322,6 +325,10 @@ export async function updateDevProduct(
   const updatedProd = {
     ...existing,
     ...updates,
+    shopStock: updates.shopStock !== undefined ? Number(updates.shopStock) : (existing.shopStock ?? 0),
+    isShopActive: updates.isShopActive !== undefined ? Boolean(updates.isShopActive) : (existing.isShopActive !== undefined ? existing.isShopActive : true),
+    shopLowStockThreshold: updates.shopLowStockThreshold !== undefined ? Number(updates.shopLowStockThreshold) : (existing.shopLowStockThreshold ?? 5),
+    inShopInventory: updates.inShopInventory !== undefined ? Boolean(updates.inShopInventory) : (existing.inShopInventory !== undefined ? existing.inShopInventory : true),
     images: safeImages,
     videos: safeVideos,
     media: [
@@ -464,4 +471,287 @@ export async function deleteDevBrand(id: string, adminEmail = 'admin@alhamd.com'
   }).catch(() => {});
 
   return true;
+}
+
+// ==========================================
+// SHOP BILLS DEV STORAGE (Local Dev Offline)
+// ==========================================
+
+const DEV_SHOP_BILLS_FILE = path.join(DATA_DIR, 'dev-shop-bills.json');
+
+export function getDevShopBills(limit = 100): ShopBill[] {
+  assertDevOnly('getDevShopBills');
+  const bills = readJsonFile<ShopBill[]>(DEV_SHOP_BILLS_FILE, []);
+  return bills
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, limit);
+}
+
+export function getDevShopBillById(id: string): ShopBill | null {
+  assertDevOnly('getDevShopBillById');
+  const bills = readJsonFile<ShopBill[]>(DEV_SHOP_BILLS_FILE, []);
+  return bills.find((b) => b.id === id || b.billNumber === id) || null;
+}
+
+export async function createDevShopBill(params: {
+  items: Array<{
+    productId: string;
+    productName: string;
+    sku?: string;
+    modelId?: string;
+    modelName?: string;
+    transferQuantity: number;
+  }>;
+  notes?: string;
+  createdBy: string;
+}): Promise<ShopBill> {
+  assertDevOnly('createDevShopBill');
+  const bills = readJsonFile<ShopBill[]>(DEV_SHOP_BILLS_FILE, []);
+  const year = new Date().getFullYear();
+
+  let maxSeq = 0;
+  for (const b of bills) {
+    if (b.billNumber && b.billNumber.startsWith(`SB-${year}-`)) {
+      const parts = b.billNumber.split('-');
+      const num = parseInt(parts[2], 10);
+      if (!isNaN(num) && num > maxSeq) maxSeq = num;
+    }
+  }
+  const billNumber = `SB-${year}-${(maxSeq + 1).toString().padStart(5, '0')}`;
+  const billId = `sb-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const newBill: ShopBill = {
+    id: billId,
+    billNumber,
+    status: 'draft',
+    notes: params.notes || undefined,
+    items: params.items.map((it, idx) => ({
+      id: idx + 1,
+      shopBillId: billId,
+      productId: it.productId,
+      productName: it.productName,
+      sku: it.sku,
+      modelId: it.modelId,
+      modelName: it.modelName,
+      transferQuantity: Number(it.transferQuantity),
+      warehouseStockBefore: 0,
+      warehouseStockAfter: 0,
+      shopStockBefore: 0,
+      shopStockAfter: 0,
+    })),
+    createdBy: params.createdBy,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const updatedBills = [newBill, ...bills];
+  writeJsonFile(DEV_SHOP_BILLS_FILE, updatedBills);
+
+  await logActivity({
+    adminEmail: params.createdBy,
+    action: 'Created Shop Bill (Local Dev)',
+    target: billNumber,
+    details: `Draft Shop Bill with ${params.items.length} item(s)`,
+  }).catch(() => {});
+
+  return newBill;
+}
+
+export async function finalizeDevShopBill(
+  billId: string,
+  finalizedBy: string
+): Promise<ShopBill> {
+  assertDevOnly('finalizeDevShopBill');
+  const bills = readJsonFile<ShopBill[]>(DEV_SHOP_BILLS_FILE, []);
+  const billIndex = bills.findIndex((b) => b.id === billId || b.billNumber === billId);
+  if (billIndex === -1) {
+    throw new Error('Shop Bill not found.');
+  }
+
+  const bill = bills[billIndex];
+  if (bill.status !== 'draft') {
+    throw new Error(`Shop Bill is already ${bill.status}. Only draft bills can be finalized.`);
+  }
+
+  if (!bill.items || bill.items.length === 0) {
+    throw new Error('Shop Bill has no items.');
+  }
+
+  const products = getDevProducts();
+
+  // ATOMIC VALIDATION PASS:
+  // Validate warehouse stock for ALL items before making any modifications.
+  // If ANY item has insufficient warehouse stock, throw an error immediately
+  // and do NOT mutate or save anything (ensures zero partial transfer).
+  for (const item of bill.items) {
+    const qty = Number(item.transferQuantity);
+    if (qty <= 0) {
+      throw new Error(`Transfer quantity for "${item.productName}" must be greater than 0.`);
+    }
+
+    const prod = products.find((p) => p.id === item.productId);
+    if (!prod) {
+      throw new Error(`Product "${item.productName}" (ID: ${item.productId}) was not found.`);
+    }
+
+    if (item.modelId) {
+      const model = prod.models?.find((m: any) => m.id === item.modelId);
+      if (!model) {
+        throw new Error(`Model "${item.modelName || item.modelId}" for "${item.productName}" was not found.`);
+      }
+      const warehouseStock = Number(model.stock ?? 0);
+      if (warehouseStock < qty) {
+        throw new Error(
+          `Insufficient warehouse stock for "${item.productName} (${item.modelName || model.name})". Warehouse: ${warehouseStock}, Requested transfer: ${qty}.`
+        );
+      }
+    } else {
+      const warehouseStock = Number(prod.stock ?? 0);
+      if (warehouseStock < qty) {
+        throw new Error(
+          `Insufficient warehouse stock for "${item.productName}". Warehouse: ${warehouseStock}, Requested transfer: ${qty}.`
+        );
+      }
+    }
+  }
+
+  // UPDATE PASS: Apply warehouse deduction and shop addition
+  for (const item of bill.items) {
+    const qty = Number(item.transferQuantity);
+    const prod = products.find((p) => p.id === item.productId)!;
+
+    if (item.modelId) {
+      const model = prod.models!.find((m: any) => m.id === item.modelId)!;
+      const whBefore = Number(model.stock ?? 0);
+      const shopBefore = Number(model.shopStock ?? 0);
+      const whAfter = whBefore - qty;
+      const shopAfter = shopBefore + qty;
+
+      model.stock = whAfter;
+      model.shopStock = shopAfter;
+
+      prod.stock = prod.models!.reduce((sum: number, m: any) => sum + (m.stock ?? 0), 0);
+      prod.shopStock = prod.models!.reduce((sum: number, m: any) => sum + (m.shopStock ?? 0), 0);
+      prod.inShopInventory = true;
+      prod.isShopActive = true;
+
+      item.warehouseStockBefore = whBefore;
+      item.warehouseStockAfter = whAfter;
+      item.shopStockBefore = shopBefore;
+      item.shopStockAfter = shopAfter;
+    } else {
+      const whBefore = Number(prod.stock ?? 0);
+      const shopBefore = Number(prod.shopStock ?? 0);
+      const whAfter = whBefore - qty;
+      const shopAfter = shopBefore + qty;
+
+      prod.stock = whAfter;
+      prod.shopStock = shopAfter;
+      prod.inShopInventory = true;
+      prod.isShopActive = true;
+
+      item.warehouseStockBefore = whBefore;
+      item.warehouseStockAfter = whAfter;
+      item.shopStockBefore = shopBefore;
+      item.shopStockAfter = shopAfter;
+    }
+  }
+
+  bill.status = 'finalized';
+  bill.finalizedBy = finalizedBy;
+  bill.updatedAt = new Date().toISOString();
+
+  writeJsonFile(DEV_PRODUCTS_FILE, products);
+  writeJsonFile(DEV_SHOP_BILLS_FILE, bills);
+
+  await logActivity({
+    adminEmail: finalizedBy,
+    action: 'Finalized Shop Bill (Local Dev)',
+    target: bill.billNumber,
+    details: `Transferred stock for ${bill.items.length} product(s) from warehouse to shop.`,
+  }).catch(() => {});
+
+  return bill;
+}
+
+export async function voidDevShopBill(
+  billId: string,
+  voidedBy: string,
+  voidReason: string
+): Promise<ShopBill> {
+  assertDevOnly('voidDevShopBill');
+  const bills = readJsonFile<ShopBill[]>(DEV_SHOP_BILLS_FILE, []);
+  const billIndex = bills.findIndex((b) => b.id === billId || b.billNumber === billId);
+  if (billIndex === -1) {
+    throw new Error('Shop Bill not found.');
+  }
+
+  const bill = bills[billIndex];
+  if (bill.status !== 'finalized') {
+    throw new Error(`Only finalized bills can be voided. Current status is ${bill.status}.`);
+  }
+
+  const products = getDevProducts();
+
+  // Validate shop stock is available to reverse
+  for (const item of bill.items) {
+    const qty = Number(item.transferQuantity);
+    const prod = products.find((p) => p.id === item.productId);
+    if (!prod) continue;
+
+    if (item.modelId) {
+      const model = prod.models?.find((m: any) => m.id === item.modelId);
+      if (model && (model.shopStock ?? 0) < qty) {
+        throw new Error(
+          `Cannot void bill: Shop stock for "${item.productName} (${item.modelName || model.name})" is lower than transfer quantity.`
+        );
+      }
+    } else {
+      if ((prod.shopStock ?? 0) < qty) {
+        throw new Error(
+          `Cannot void bill: Shop stock for "${item.productName}" is lower than transfer quantity.`
+        );
+      }
+    }
+  }
+
+  // Reverse stock transfer
+  for (const item of bill.items) {
+    const qty = Number(item.transferQuantity);
+    const prod = products.find((p) => p.id === item.productId);
+    if (!prod) continue;
+
+    if (item.modelId) {
+      const model = prod.models?.find((m: any) => m.id === item.modelId);
+      if (model) {
+        model.stock = (model.stock ?? 0) + qty;
+        model.shopStock = Math.max(0, (model.shopStock ?? 0) - qty);
+        prod.stock = prod.models!.reduce((sum: number, m: any) => sum + (m.stock ?? 0), 0);
+        prod.shopStock = prod.models!.reduce((sum: number, m: any) => sum + (m.shopStock ?? 0), 0);
+      }
+    } else {
+      prod.stock = (prod.stock ?? 0) + qty;
+      prod.shopStock = Math.max(0, (prod.shopStock ?? 0) - qty);
+    }
+  }
+
+  bill.status = 'voided';
+  bill.voidedBy = voidedBy;
+  bill.voidedAt = new Date().toISOString();
+  bill.voidReason = voidReason;
+  bill.updatedAt = new Date().toISOString();
+
+  writeJsonFile(DEV_PRODUCTS_FILE, products);
+  writeJsonFile(DEV_SHOP_BILLS_FILE, bills);
+
+  await logActivity({
+    adminEmail: voidedBy,
+    action: 'Voided Shop Bill (Local Dev)',
+    target: bill.billNumber,
+    details: `Void reason: ${voidReason}`,
+  }).catch(() => {});
+
+  return bill;
 }

@@ -2,7 +2,6 @@ import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, CustomerType } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
-import { recordInventoryLog } from '@/lib/db/repositories/inventory';
 import { recordPromoUsageInDb } from '@/lib/db/repositories/promotions';
 
 interface OrderRow extends RowDataPacket {
@@ -283,37 +282,70 @@ export async function createOrderInDb(
     const orderId = orderData.id || (await generateNextOrderIdInDb());
     const invoiceNumber = orderData.invoiceNumber || (await generateNextInvoiceNumberInDb());
 
-    // 2. Validate and adjust stock for each item in the order
+    // 2. Validate and adjust SHOP STOCK for each item in the order.
+    // RULE: Online customer orders deduct from shop_stock ONLY.
+    // Warehouse stock (products.stock) is NOT touched by online orders.
     for (const item of orderData.items) {
       const [pRows] = await conn.query<RowDataPacket[]>(
-        'SELECT id, name, sku, stock FROM products WHERE id = ? LIMIT 1 FOR UPDATE',
+        'SELECT id, name, sku, stock, shop_stock FROM products WHERE id = ? LIMIT 1 FOR UPDATE',
         [item.productId]
       );
 
       if (pRows && pRows.length > 0) {
         const product = pRows[0];
-        let availableStock = Number(product.stock);
+        // Use shop_stock for availability check (falls back to 0 if column not yet migrated)
+        let availableShopStock = Number(product.shop_stock || 0);
 
         if (item.selectedModel) {
           const [mRows] = await conn.query<RowDataPacket[]>(
-            'SELECT id, stock FROM product_models WHERE product_id = ? AND (name = ? OR id = ?) LIMIT 1 FOR UPDATE',
+            'SELECT id, stock, shop_stock FROM product_models WHERE product_id = ? AND (name = ? OR id = ?) LIMIT 1 FOR UPDATE',
             [item.productId, item.selectedModel, item.selectedModel]
           );
           if (mRows && mRows.length > 0) {
-            availableStock = Number(mRows[0].stock);
-            const newModelStock = Math.max(0, availableStock - item.quantity);
+            availableShopStock = Number(mRows[0].shop_stock || 0);
+            const newModelShopStock = Math.max(0, availableShopStock - item.quantity);
             await conn.execute(
-              'UPDATE product_models SET stock = ? WHERE id = ?',
-              [newModelStock, mRows[0].id]
+              'UPDATE product_models SET shop_stock = ? WHERE id = ?',
+              [newModelShopStock, mRows[0].id]
             );
+            // Recalculate parent product shop_stock from model totals
+            const [parentShop] = await conn.query<RowDataPacket[]>(
+              'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
+              [item.productId]
+            );
+            const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+            await conn.execute(
+              'UPDATE products SET shop_stock = ? WHERE id = ?',
+              [newParentShopStock, item.productId]
+            );
+
+            // Inventory log
+            await conn.execute(
+              `INSERT INTO inventory_logs (
+                id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+              ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+              [
+                `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                item.productId,
+                `${product.name} (${item.selectedModel}) [Shop Stock]`,
+                item.sku || product.sku,
+                -item.quantity,
+                availableShopStock,
+                newModelShopStock,
+                `Online Order #${orderId}: Shop stock deducted (${item.selectedModel})`,
+              ]
+            );
+            continue;
           }
         }
 
-        const newProdStock = Math.max(0, Number(product.stock) - item.quantity);
+        // No model — deduct from product-level shop_stock
+        const newShopStock = Math.max(0, availableShopStock - item.quantity);
         await conn.execute(
-          'UPDATE products SET stock = ? WHERE id = ?',
-          [newProdStock, item.productId]
+          'UPDATE products SET shop_stock = ? WHERE id = ?',
+          [newShopStock, item.productId]
         );
+        // NOTE: products.stock (warehouse) is NOT modified here.
 
         // Record stock log
         await conn.execute(
@@ -323,12 +355,12 @@ export async function createOrderInDb(
           [
             `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             item.productId,
-            product.name,
+            `${product.name} [Shop Stock]`,
             item.sku || product.sku,
             -item.quantity,
-            availableStock,
-            newProdStock,
-            `Order #${orderId} (${item.selectedModel || 'Standard'})`,
+            availableShopStock,
+            newShopStock,
+            `Online Order #${orderId}: Shop stock deducted`,
           ]
         );
       }
@@ -564,15 +596,27 @@ export async function voidOrderInDb(
     );
 
     // Restock items
+    // RULE: Restore SHOP STOCK when voiding an order (mirrors the deduction logic in createOrderInDb).
+    // Warehouse stock (products.stock) is NOT touched — only shop_stock is restored.
     for (const item of existing.items) {
       await conn.execute(
-        'UPDATE products SET stock = stock + ? WHERE id = ?',
+        'UPDATE products SET shop_stock = shop_stock + ? WHERE id = ?',
         [item.quantity, item.productId]
       );
       if (item.selectedModel) {
         await conn.execute(
-          'UPDATE product_models SET stock = stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
+          'UPDATE product_models SET shop_stock = shop_stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
           [item.quantity, item.productId, item.selectedModel, item.selectedModel]
+        );
+        // Recalculate parent product shop_stock from model totals
+        const [parentShop] = await conn.query<RowDataPacket[]>(
+          'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
+          [item.productId]
+        );
+        const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+        await conn.execute(
+          'UPDATE products SET shop_stock = ? WHERE id = ?',
+          [newParentShopStock, item.productId]
         );
       }
     }

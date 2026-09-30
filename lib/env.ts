@@ -20,12 +20,8 @@ export function allowDevMockFallback(): boolean {
   }
   // If running on server with DB configured, do not use mock fallback
   if (typeof window === 'undefined') {
-    const hasDb = Boolean(
-      process.env.DB_HOST &&
-      process.env.DB_USER &&
-      process.env.DB_NAME
-    );
-    if (hasDb) return false;
+    const { isDbConfigured } = require('./db/mysql');
+    if (isDbConfigured()) return false;
   }
   return true;
 }

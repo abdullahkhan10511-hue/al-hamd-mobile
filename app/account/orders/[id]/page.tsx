@@ -11,10 +11,7 @@ import {
   CreditCard,
   Truck,
   MapPin,
-  CheckCircle2,
-  Clock,
   AlertCircle,
-  ShieldCheck,
   Star,
 } from 'lucide-react';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';

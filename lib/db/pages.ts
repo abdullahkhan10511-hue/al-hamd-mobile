@@ -1,4 +1,4 @@
-import { CustomPage, PageBlock, PageStatus, PageContent } from '@/types/admin';
+import { CustomPage, PageBlock, PageStatus } from '@/types/admin';
 import { getStoredData, setStoredData } from './storage';
 import { logActivity } from './activity';
 

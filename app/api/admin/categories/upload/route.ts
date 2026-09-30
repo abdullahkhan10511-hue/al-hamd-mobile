@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
 import { getAdminSession } from '@/lib/db/adminAuth';
+import { saveMediaBuffer } from '@/lib/mediaStorage';
 
 const ALLOWED_IMAGE_MIMES = new Set([
   'image/jpeg',
@@ -69,28 +69,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'categories');
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
     const safeBaseName = path
       .basename(originalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 40);
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${ext || '.jpg'}`;
-    const destinationPath = path.join(uploadsDir, uniqueFileName);
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.promises.writeFile(destinationPath, buffer);
-
-    const publicUrl = `/uploads/categories/${uniqueFileName}`;
+    const saved = await saveMediaBuffer('categories', uniqueFileName, buffer);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: saved.publicUrl,
       fileName: uniqueFileName,
-      size: file.size,
+      size: saved.size,
       mimeType: file.type || 'image/jpeg',
     });
   } catch (error: any) {

@@ -42,6 +42,9 @@ export interface ProductModelVariant {
   wholesalePrice?: number;
   superWholesalePrice?: number;
   stock?: number;
+  shopStock?: number;
+  isShopActive?: boolean;
+  shopLowStockThreshold?: number;
   sku?: string;
   isActive: boolean;
   images?: string[];
@@ -77,7 +80,18 @@ export interface Product {
   brandSlug?: string;
   rating: number;
   reviewCount: number;
+  /** Warehouse Stock Quantity — physical units in the warehouse. NOT customer-facing. */
   stock: number;
+  /** Shop Stock Quantity — units available at the retail shop. Used for customer-facing availability. */
+  shopStock?: number;
+  /** Shop Inventory Active Status — specifically controls visibility/availability for Shop Inventory & online store */
+  isShopActive?: boolean;
+  /** Shop Stock Warning Threshold — threshold below which shop stock triggers Low Stock warning */
+  shopLowStockThreshold?: number;
+  /** Shop Inventory presence flag — false when removed from shop inventory without deleting catalog product */
+  inShopInventory?: boolean;
+  /** Explicit inventory source / location where product was created: 'WAREHOUSE' | 'SHOP' */
+  inventoryLocation?: 'WAREHOUSE' | 'SHOP';
   sku?: string;
   lowStockThreshold?: number;
   /** @deprecated Legacy bulk pricing field - no longer used for pricing or orders */

@@ -3,18 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Layers,
   Plus,
-  Edit2,
   Trash2,
   Check,
   X,
   Upload,
-  Image as ImageIcon,
   ArrowUp,
   ArrowDown,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react';
 import {
   getCategories,

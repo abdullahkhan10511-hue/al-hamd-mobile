@@ -102,7 +102,7 @@ export default function BrandPage() {
     let list = brandProducts.filter((p) => p.price <= maxPrice);
 
     if (inStockOnly) {
-      list = list.filter((p) => p.stock > 0);
+      list = list.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
     }
 
     switch (sortBy) {

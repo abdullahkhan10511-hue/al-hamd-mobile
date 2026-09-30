@@ -12,7 +12,6 @@ import {
   Trash2,
   ExternalLink,
   Search,
-  TrendingUp,
   Image as ImageIcon,
 } from 'lucide-react';
 import { getProducts, updateProduct } from '@/lib/db/products';

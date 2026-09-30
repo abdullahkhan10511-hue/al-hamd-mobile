@@ -21,7 +21,7 @@ function WishlistItemCard({
   onAddToCart: () => void;
 }) {
   const [outOfStockToast, setOutOfStockToast] = useState(false);
-  const isOutOfStock = product.stock <= 0;
+  const isOutOfStock = (product.shopStock ?? 0) <= 0 || product.isShopActive === false;
 
   const handleAction = () => {
     if (isOutOfStock) {
@@ -116,7 +116,7 @@ export default function WishlistPage() {
   const { addToCart } = useCart();
 
   const handleAddAll = () => {
-    wishlistProducts.filter((p) => p.stock > 0).forEach((p) => addToCart(p, 1));
+    wishlistProducts.filter((p) => (p.shopStock ?? 0) > 0).forEach((p) => addToCart(p, 1));
   };
 
   return (

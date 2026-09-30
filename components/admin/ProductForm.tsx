@@ -12,8 +12,6 @@ import {
   Plus,
   Trash2,
   AlertCircle,
-  Image as ImageIcon,
-  Layers,
   Play,
   Video,
   ChevronLeft,
@@ -27,12 +25,13 @@ import {
   GripVertical,
   Smartphone,
   Palette,
+  Warehouse,
+  Store,
 } from 'lucide-react';
 import { getCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands, getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { createProduct, updateProduct } from '@/lib/db/products';
-import { uploadMediaFile } from '@/lib/db/media';
-import { Product, ProductMediaItem, ProductModelVariant, ProductColorVariant } from '@/types';
+import { ProductMediaItem, ProductModelVariant, ProductColorVariant } from '@/types';
 import { Brand } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
@@ -67,7 +66,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     };
     loadBrands();
 
-    const handleDataUpdated = () => {
+    const handleBrandUpdate = () => {
       setBrandsList(getActiveBrands());
     };
     window.addEventListener('alhamd:data-updated', handleBrandUpdate);
@@ -128,6 +127,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   }, [selectableBrands, brand]);
 
   const [categorySlug, setCategorySlug] = useState(initialProduct?.categorySlug || '');
+  const [inventoryLocation, setInventoryLocation] = useState<'WAREHOUSE' | 'SHOP'>(
+    initialProduct?.inventoryLocation === 'SHOP' ? 'SHOP' : 'WAREHOUSE'
+  );
   const [price, setPrice] = useState<number | ''>(
     initialProduct?.price !== undefined ? initialProduct.price : ''
   );
@@ -142,6 +144,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   );
   const [stock, setStock] = useState<number | ''>(
     initialProduct?.stock !== undefined ? initialProduct.stock : ''
+  );
+  const [shopStock, setShopStock] = useState<number | ''>(
+    initialProduct?.shopStock !== undefined ? initialProduct.shopStock : ''
   );
   const [lowStockThreshold, setLowStockThreshold] = useState<number | ''>(
     initialProduct?.lowStockThreshold !== undefined ? initialProduct.lowStockThreshold : ''
@@ -254,6 +259,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       wholesalePrice: wholesalePrice === '' ? undefined : Number(wholesalePrice),
       superWholesalePrice: superWholesalePrice === '' ? undefined : Number(superWholesalePrice),
       stock: stock === '' ? 0 : Number(stock),
+      shopStock: shopStock === '' ? 0 : Number(shopStock),
       sku: '',
       isActive: true,
       images: [],
@@ -530,7 +536,15 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const numStock = stock === '' || stock === undefined || stock === null ? 0 : Number(stock);
+    const isShopLoc = inventoryLocation === 'SHOP';
+    const rawStock = stock === '' || stock === undefined || stock === null ? 0 : Number(stock);
+    const rawShopStock = shopStock === '' || shopStock === undefined || shopStock === null ? 0 : Number(shopStock);
+
+    const numStock = isShopLoc ? 0 : rawStock;
+    const numShopStock = isShopLoc
+      ? (rawShopStock > 0 ? rawShopStock : rawStock)
+      : (isNew ? 0 : rawShopStock);
+
     const numLowStock =
       lowStockThreshold === '' || lowStockThreshold === undefined || lowStockThreshold === null
         ? 0
@@ -575,6 +589,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       brandSlug: selectedBrand?.slug || (initialProduct as any)?.brandSlug,
       category: categoryName,
       categorySlug: categorySlug || '',
+      inventoryLocation,
       price: numPrice,
       compareAtPrice: numCompareAtPrice,
       wholesalePrice: numWholesalePrice,
@@ -584,6 +599,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           ? Math.round(((numCompareAtPrice - numPrice) / numCompareAtPrice) * 100)
           : undefined,
       stock: numStock,
+      shopStock: numShopStock,
       lowStockThreshold: numLowStock,
 
       description: description.trim(),
@@ -601,19 +617,26 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       models: enableModelSelection
         ? models
             .filter((m) => m.name && m.name.trim() !== '')
-            .map((m) => ({
-              ...m,
-              name: m.name.trim(),
-              sku: m.sku ? m.sku.trim().toUpperCase() : undefined,
-              price: Number(m.price) || 0,
-              compareAtPrice: m.compareAtPrice ? Number(m.compareAtPrice) : undefined,
-              wholesalePrice: m.wholesalePrice ? Number(m.wholesalePrice) : undefined,
-              superWholesalePrice: m.superWholesalePrice ? Number(m.superWholesalePrice) : undefined,
-              stock: m.stock !== undefined ? Number(m.stock) : 0,
-              isActive: m.isActive !== false,
-              images: Array.isArray(m.images) ? m.images.filter(Boolean) : [],
-              videos: Array.isArray(m.videos) ? m.videos.filter(Boolean) : [],
-            }))
+            .map((m) => {
+              const mRawStock = m.stock !== undefined ? Number(m.stock) : 0;
+              const mRawShopStock = m.shopStock !== undefined ? Number(m.shopStock) : 0;
+              return {
+                ...m,
+                name: m.name.trim(),
+                sku: m.sku ? m.sku.trim().toUpperCase() : undefined,
+                price: Number(m.price) || 0,
+                compareAtPrice: m.compareAtPrice ? Number(m.compareAtPrice) : undefined,
+                wholesalePrice: m.wholesalePrice ? Number(m.wholesalePrice) : undefined,
+                superWholesalePrice: m.superWholesalePrice ? Number(m.superWholesalePrice) : undefined,
+                stock: isShopLoc ? 0 : mRawStock,
+                shopStock: isShopLoc
+                  ? (mRawShopStock > 0 ? mRawShopStock : mRawStock)
+                  : (isNew ? 0 : mRawShopStock),
+                isActive: m.isActive !== false,
+                images: Array.isArray(m.images) ? m.images.filter(Boolean) : [],
+                videos: Array.isArray(m.videos) ? m.videos.filter(Boolean) : [],
+              };
+            })
         : [],
       enableColorSelection,
       colors: enableColorSelection
@@ -718,6 +741,84 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Form: Details, Descriptions & Specs (8 cols) */}
         <div className="lg:col-span-8 space-y-6">
+          {/* Inventory Location Selection */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight flex items-center gap-2">
+                  <Store className="w-4 h-4 text-neutral-800" />
+                  <span>Inventory Location</span>
+                </h2>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Select where this product belongs. Shop products are kept strictly separate from Warehouse Inventory.
+                </p>
+              </div>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${
+                inventoryLocation === 'SHOP' ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-blue-100 text-blue-900 border border-blue-200'
+              }`}>
+                Active: {inventoryLocation}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* SHOP Button */}
+              <button
+                type="button"
+                onClick={() => setInventoryLocation('SHOP')}
+                className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer relative ${
+                  inventoryLocation === 'SHOP'
+                    ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
+                    : 'border-neutral-200 bg-neutral-50 hover:bg-white hover:border-neutral-300 text-neutral-900'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  inventoryLocation === 'SHOP' ? 'bg-white/15 text-white' : 'bg-neutral-200 text-neutral-700'
+                }`}>
+                  <Store className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-sm tracking-wider uppercase">SHOP</span>
+                    {inventoryLocation === 'SHOP' && (
+                      <span className="w-5 h-5 rounded-full bg-white text-neutral-950 flex items-center justify-center text-xs font-bold shadow-xs">✓</span>
+                    )}
+                  </div>
+                  <p className={`text-xs mt-1 leading-relaxed ${inventoryLocation === 'SHOP' ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    Created exclusively for retail shop. Does NOT appear in Warehouse Inventory.
+                  </p>
+                </div>
+              </button>
+
+              {/* WAREHOUSE Button */}
+              <button
+                type="button"
+                onClick={() => setInventoryLocation('WAREHOUSE')}
+                className={`p-5 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer relative ${
+                  inventoryLocation === 'WAREHOUSE'
+                    ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
+                    : 'border-neutral-200 bg-neutral-50 hover:bg-white hover:border-neutral-300 text-neutral-900'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  inventoryLocation === 'WAREHOUSE' ? 'bg-white/15 text-white' : 'bg-neutral-200 text-neutral-700'
+                }`}>
+                  <Warehouse className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-sm tracking-wider uppercase">WAREHOUSE</span>
+                    {inventoryLocation === 'WAREHOUSE' && (
+                      <span className="w-5 h-5 rounded-full bg-white text-neutral-950 flex items-center justify-center text-xs font-bold shadow-xs">✓</span>
+                    )}
+                  </div>
+                  <p className={`text-xs mt-1 leading-relaxed ${inventoryLocation === 'WAREHOUSE' ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                    Standard warehouse product. Transferred to shop stock only through Shop Bill.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* General Info */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
             <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight border-b border-neutral-100 pb-3">
@@ -839,6 +940,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                   draggable={true}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={(e) => handleDragOver(e, idx)}
+                  onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, idx)}
                   onDragEnd={handleDragEnd}
                   className={`relative aspect-square rounded-2xl overflow-hidden bg-neutral-100 border transition-all group shadow-xs cursor-grab active:cursor-grabbing select-none ${
@@ -1187,22 +1289,43 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                             />
                           </div>
 
-                          <div>
-                            <label className="font-semibold text-neutral-700 block mb-1">
-                              Stock Quantity
-                            </label>
-                            <input
-                              type="number"
-                              value={mod.stock ?? ''}
-                              onChange={(e) =>
-                                handleUpdateModel(idx, {
-                                  stock: e.target.value === '' ? 0 : Number(e.target.value),
-                                })
-                              }
-                              placeholder="e.g. 15"
-                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
-                            />
-                          </div>
+                          {inventoryLocation === 'SHOP' ? (
+                            <div>
+                              <label className="font-semibold text-amber-900 block mb-1">
+                                Shop Stock
+                              </label>
+                              <input
+                                type="number"
+                                value={mod.shopStock ?? mod.stock ?? ''}
+                                onChange={(e) =>
+                                  handleUpdateModel(idx, {
+                                    shopStock: e.target.value === '' ? 0 : Number(e.target.value),
+                                    stock: 0,
+                                  })
+                                }
+                                placeholder="e.g. 10"
+                                className="w-full p-2 rounded-xl border border-amber-300 bg-amber-50/40 font-mono font-bold"
+                              />
+                            </div>
+                          ) : (
+                            <div>
+                              <label className="font-semibold text-neutral-700 block mb-1">
+                                Warehouse Stock
+                              </label>
+                              <input
+                                type="number"
+                                value={mod.stock ?? ''}
+                                onChange={(e) =>
+                                  handleUpdateModel(idx, {
+                                    stock: e.target.value === '' ? 0 : Number(e.target.value),
+                                    shopStock: 0,
+                                  })
+                                }
+                                placeholder="e.g. 15"
+                                className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                              />
+                            </div>
+                          )}
 
                           <div>
                             <label className="font-semibold text-neutral-700 block mb-1">
@@ -1613,19 +1736,42 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               </span>
             </div>
 
-            <div>
-              <label className="font-semibold text-neutral-700 block mb-1">Current Stock Quantity</label>
-              <input
-                type="number"
-                value={stock}
-                onChange={(e) => setStock(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="e.g. 25 (optional)"
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
-              />
-              <span className="text-[10px] text-neutral-400 mt-1 block">
-                Setting to 0 will automatically display &ldquo;Out of Stock&rdquo; on storefront.
-              </span>
-            </div>
+            {inventoryLocation === 'SHOP' ? (
+              <div>
+                <label className="font-semibold text-neutral-900 block mb-1">
+                  Shop Quantity
+                </label>
+                <input
+                  type="number"
+                  value={shopStock !== '' ? shopStock : stock}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : Number(e.target.value);
+                    setShopStock(val);
+                  }}
+                  placeholder="e.g. 10 (Shop Stock)"
+                  className="w-full p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-mono font-bold text-sm text-neutral-950 focus:bg-white focus:border-amber-500"
+                />
+                <span className="text-[10px] text-amber-700 font-medium mt-1 block">
+                  Physical units stored at the retail shop. This product will NOT receive warehouse stock.
+                </span>
+              </div>
+            ) : (
+              <div>
+                <label className="font-semibold text-neutral-700 block mb-1">
+                  Warehouse Quantity
+                </label>
+                <input
+                  type="number"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 50 (Warehouse Stock)"
+                  className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
+                />
+                <span className="text-[10px] text-neutral-400 mt-1 block">
+                  Physical units stored in warehouse. Transferred to shop only via Shop Bills.
+                </span>
+              </div>
+            )}
 
             <div>
               <label className="font-semibold text-neutral-700 block mb-1">Stock Warning</label>
@@ -1968,6 +2114,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                     draggable={true}
                     onDragStart={(e) => handleDragStart(e, idx)}
                     onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, idx)}
                     onDragEnd={handleDragEnd}
                     className={`relative rounded-2xl overflow-hidden bg-white border-2 p-2.5 flex flex-col gap-2 transition-all cursor-grab active:cursor-grabbing shadow-xs group select-none ${

@@ -56,3 +56,48 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
 
   return null;
 }
+
+export function isAuthorizedForShopBill(session: AdminSession | null, writeOperation: boolean = false): boolean {
+  if (!session || !session.email) return false;
+  if (session.status === 'inactive') return false;
+
+  const role = (session.role || '').toLowerCase();
+  if (
+    session.isOwner ||
+    role === 'admin' ||
+    role === 'super_admin' ||
+    role === 'owner' ||
+    session.email.toLowerCase().includes('admin')
+  ) {
+    return true;
+  }
+
+  const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
+  if (writeOperation) {
+    return perms.includes('inventory.shop_bill');
+  }
+  return (
+    perms.includes('inventory.shop_bill') ||
+    perms.includes('inventory.view_shop') ||
+    perms.includes('inventory.view')
+  );
+}
+
+export function isAuthorizedForVoidBill(session: AdminSession | null): boolean {
+  if (!session || !session.email) return false;
+  if (session.status === 'inactive') return false;
+
+  const role = (session.role || '').toLowerCase();
+  if (
+    session.isOwner ||
+    role === 'admin' ||
+    role === 'super_admin' ||
+    role === 'owner' ||
+    session.email.toLowerCase().includes('admin')
+  ) {
+    return true;
+  }
+
+  const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
+  return perms.includes('inventory.void_shop_bill') || perms.includes('inventory.shop_bill');
+}

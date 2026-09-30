@@ -1,5 +1,5 @@
 import { Product, ProductModelVariant } from '@/types';
-import { Customer, CustomerType } from '@/types/admin';
+import { CustomerType } from '@/types/admin';
 
 /**
  * Determines whether a given customer record or session object has active WHOLESALE authorization.

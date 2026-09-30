@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Check, Loader2, ArrowRight, XCircle } from 'lucide-react';
+import { Heart, ShoppingBag, Check, Loader2, ArrowRight } from 'lucide-react';
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { Product } from '@/types';
 import { useCart } from '@/context/CartContext';
@@ -89,7 +89,7 @@ function LargeBestSellerCard({ product }: { product: Product }) {
   const [justAdded, setJustAdded] = useState(false);
   const [outOfStockToast, setOutOfStockToast] = useState(false);
   const isFavorited = isInWishlist(product.id);
-  const isOutOfStock = product.stock <= 0;
+  const isOutOfStock = (product.shopStock ?? 0) <= 0 || product.isShopActive === false;
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();

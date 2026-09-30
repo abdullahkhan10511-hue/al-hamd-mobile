@@ -189,7 +189,7 @@ export default function AdminProductsPage() {
                 <th className="p-4">Category</th>
                 <th className="p-4">Brand</th>
                 <th className="p-4">Price</th>
-                <th className="p-4">Stock</th>
+                <th className="p-4">Stock (WH / Shop)</th>
                 <th className="p-4">Badges</th>
                 <th className="p-4 pr-6 text-right">Actions</th>
               </tr>
@@ -238,17 +238,21 @@ export default function AdminProductsPage() {
                     </td>
 
                     <td className="p-4">
-                      {p.stock <= 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
-                          <XCircle className="w-3 h-3" /> Out of stock
-                        </span>
-                      ) : p.stock <= (p.lowStockThreshold || 5) ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                          <AlertTriangle className="w-3 h-3" /> {p.stock} left (Low)
-                        </span>
-                      ) : (
-                        <span className="font-mono font-semibold text-neutral-900">{p.stock} units</span>
-                      )}
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] uppercase font-bold text-neutral-400">WH:</span>
+                          <span className="font-mono font-semibold text-neutral-800">{p.stock}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] uppercase font-bold text-sky-600">Shop:</span>
+                          <span className={`font-mono font-bold ${(p.shopStock ?? 0) > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {p.shopStock ?? 0}
+                          </span>
+                          {(p.shopStock ?? 0) <= 0 && (
+                            <span className="text-[9px] bg-rose-100 text-rose-700 font-bold px-1 rounded">Out online</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     <td className="p-4">

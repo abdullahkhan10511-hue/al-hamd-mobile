@@ -298,12 +298,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
 
-  const maxStock = Math.max(
-    0,
-    selectedModelObj
-      ? (selectedModelObj.stock !== undefined ? selectedModelObj.stock : (product?.stock ?? 0))
-      : (product?.stock ?? 0)
-  );
+  // RULE: Customer-facing availability is driven by SHOP STOCK, not warehouse stock.
+  // Must be in Shop Inventory Active state (isShopActive !== false) to be available online.
+  const isShopActive = product?.isShopActive !== false;
+  const maxStock = isShopActive
+    ? Math.max(
+        0,
+        selectedModelObj
+          ? ((selectedModelObj as any).shopStock !== undefined ? (selectedModelObj as any).shopStock : 0)
+          : (product?.shopStock ?? 0)
+      )
+    : 0;
 
   const updateQuantity = (val: number) => {
     if (!product) return;
@@ -804,7 +809,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 <div className="flex flex-wrap gap-2">
                   {activeModels.map((m: any) => {
                     const isSelected = selectedModel === m.name;
-                    const isModelOut = m.stock !== undefined && m.stock <= 0;
+                    // Use shopStock for customer-facing availability check
+                    const isModelOut = ((m as any).shopStock ?? 0) <= 0;
                     const modelPrice = getModelEffectivePrice(product, m, customerTier);
                     return (
                       <button

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
+import { saveMediaBuffer } from '@/lib/mediaStorage';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -115,31 +115,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure upload directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'login');
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
     // Clean filename
     const safeBaseName = path
       .basename(originalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 50);
     const uniqueFileName = `${Date.now()}_${safeBaseName}${ext}`;
-    const destinationPath = path.join(uploadsDir, uniqueFileName);
 
-    // Write file
+    // Write file via persistent storage manager
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.promises.writeFile(destinationPath, buffer);
-
-    const publicUrl = `/uploads/login/${uniqueFileName}`;
+    const saved = await saveMediaBuffer('login', uniqueFileName, buffer);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: saved.publicUrl,
       type: isVideo ? 'video' : 'image',
       name: originalName,
-      size: file.size,
+      size: saved.size,
       mimeType,
       fileName: uniqueFileName,
     });

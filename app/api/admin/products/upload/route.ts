@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { saveMediaBuffer } from '@/lib/mediaStorage';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -97,10 +98,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure upload directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'products');
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
     const results: UploadedMediaItemResult[] = [];
     const errors: string[] = [];
 
@@ -147,22 +144,20 @@ export async function POST(request: NextRequest) {
         .substring(0, 40);
       const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${ext}`;
-      const destinationPath = path.join(uploadsDir, uniqueFileName);
 
-      // Write file
+      // Write file via persistent storage manager
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      await fs.promises.writeFile(destinationPath, buffer);
+      const saved = await saveMediaBuffer('products', uniqueFileName, buffer);
 
-      const publicUrl = `/uploads/products/${uniqueFileName}`;
       const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
 
       results.push({
         id: `media-${uniqueSuffix}`,
-        url: publicUrl,
+        url: saved.publicUrl,
         type: mediaType,
         name: originalName,
-        size: file.size,
+        size: saved.size,
       });
     }
 

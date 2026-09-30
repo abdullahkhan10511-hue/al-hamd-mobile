@@ -8,13 +8,7 @@ import {
   FileText,
   X,
   RotateCcw,
-  Store,
-  Phone,
-  Mail,
-  MapPin,
-  Tag,
 } from 'lucide-react';
-import { formatPrice } from '@/lib/utils';
 import { getBillSettings } from '@/lib/db/billSettings';
 
 interface PosReceiptModalProps {

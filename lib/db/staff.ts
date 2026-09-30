@@ -1,9 +1,8 @@
 import { StaffUser, StaffRole, AdminRole } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { generateSalt, hashPassword, verifyPassword } from '../crypto';
+import { generateSalt, hashPassword } from '../crypto';
 import {
-  ALL_PERMISSIONS,
   ALL_PERMISSION_KEYS,
   ROLE_DEFAULT_PERMISSIONS,
   PREDEFINED_ROLES,
@@ -50,8 +49,6 @@ export function getAdminAuthHeaders(operatorEmail?: string): HeadersInit {
 const SEED_SALT = '1214d0aabfa8b4b1bab97d223ee04b6f';
 // Salted SHA-256 Web Crypto hash for AlHamd@Admin2026!
 const SEED_HASH = 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e';
-// Legacy seed hash for backward compatibility migration
-const OLD_SEED_HASH = '47b3112be3f48a1ca9574cf9758ff5c276a0ec12fc221c97a2961d15db1887e3';
 
 export const INITIAL_SYSTEM_ROLES: StaffRole[] = [
   {
@@ -241,7 +238,7 @@ export function getStaffUsers(): StaffUser[] {
   let modified = false;
 
   const migrated = users.map((u) => {
-    let userCopy = { ...u };
+    const userCopy = { ...u };
 
     // Standardize primary Admin account (migrate existing admin@alhamd.com or staff-owner-1 in place without duplicating)
     if (

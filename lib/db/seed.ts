@@ -1,4 +1,4 @@
-import { Product, Category, BlogPost } from '@/types';
+import { Product } from '@/types';
 import {
   Brand,
   Order,
@@ -13,8 +13,6 @@ import {
   AdminUser,
 } from '@/types/admin';
 import { products as initialProducts } from '@/data/products';
-import { categories as initialCategories } from '@/data/categories';
-import { blogPosts as initialBlogPosts } from '@/data/blog';
 
 export const seedBrands: Brand[] = [
   { id: 'brand-1', name: 'Apple', slug: 'apple', status: 'active', description: 'Genuine MagSafe accessories, AirPods audio, and premium cases' },

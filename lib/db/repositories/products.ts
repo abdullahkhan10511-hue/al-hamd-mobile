@@ -3,7 +3,7 @@ import { Product, ProductModelVariant, ProductColorVariant, ProductMediaItem, Bu
 import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
 import { recordInventoryLog } from '@/lib/db/repositories/inventory';
-import { ensureSafeMediaUrl, ensureSafeMediaUrls } from '../serverMedia';
+import { ensureSafeMediaUrls } from '../serverMedia';
 
 interface ProductRow extends RowDataPacket {
   id: string;
@@ -23,6 +23,7 @@ interface ProductRow extends RowDataPacket {
   origin: string | null;
   sku: string | null;
   stock: number;
+  shop_stock: number;
   low_stock_threshold: number;
   rating: number | string;
   review_count: number;
@@ -83,10 +84,27 @@ export function mapRowToProduct(
     ? modelImages
     : [];
 
-  const parsedSpecs = parseJsonField<Record<string, string>>(row.specifications, {});
+  const parsedSpecs = parseJsonField<Record<string, any>>(row.specifications, {});
   const parsedFeatures = parseJsonField<string[]>(row.features, []);
   const parsedTags = parseJsonField<string[]>(row.tags, []);
   const parsedVariants = parseJsonField<any>(row.variants, undefined);
+
+  const isShopActive = (row as any).is_shop_active !== undefined && (row as any).is_shop_active !== null
+    ? Boolean((row as any).is_shop_active)
+    : (parsedSpecs.isShopActive !== undefined ? Boolean(parsedSpecs.isShopActive) : true);
+
+  const shopLowStockThreshold = (row as any).shop_low_stock_threshold !== undefined && (row as any).shop_low_stock_threshold !== null
+    ? Number((row as any).shop_low_stock_threshold)
+    : (parsedSpecs.shopLowStockThreshold !== undefined ? Number(parsedSpecs.shopLowStockThreshold) : 5);
+
+  const inShopInventory = (row as any).in_shop_inventory !== undefined && (row as any).in_shop_inventory !== null
+    ? Boolean((row as any).in_shop_inventory)
+    : (parsedSpecs.inShopInventory !== undefined ? Boolean(parsedSpecs.inShopInventory) : true);
+
+  const inventoryLocation: 'WAREHOUSE' | 'SHOP' =
+    (row as any).inventory_location === 'SHOP' || parsedSpecs.inventoryLocation === 'SHOP'
+      ? 'SHOP'
+      : 'WAREHOUSE';
 
   return {
     id: row.id,
@@ -109,6 +127,11 @@ export function mapRowToProduct(
       (row.brand ? row.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ''),
     sku: row.sku || `ALH-${row.id}`,
     stock: Number(row.stock),
+    shopStock: row.shop_stock !== undefined && row.shop_stock !== null ? Number(row.shop_stock) : 0,
+    isShopActive,
+    shopLowStockThreshold,
+    inShopInventory,
+    inventoryLocation,
     lowStockThreshold: Number(row.low_stock_threshold),
     rating: Number(row.rating),
     reviewCount: Number(row.review_count),
@@ -191,11 +214,12 @@ export async function getAllProductsFromDb(): Promise<(Product & { sku: string; 
       wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
       superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
       stock: Number(m.stock),
+      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
       sku: m.sku || undefined,
       isActive: Boolean(m.is_active),
       images: parseJsonField<string[]>(m.images, []),
       videos: parseJsonField<string[]>(m.videos, []),
-    });
+    } as any);
     modelsByProd.set(m.product_id, list);
   }
 
@@ -309,11 +333,12 @@ export async function getProductByIdFromDb(id: string): Promise<(Product & { sku
       wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
       superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
       stock: Number(m.stock),
+      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
       sku: m.sku || undefined,
       isActive: Boolean(m.is_active),
       images: parseJsonField<string[]>(m.images, []),
       videos: parseJsonField<string[]>(m.videos, []),
-    })),
+    } as any)),
     colors.map((c) => ({
       id: c.id,
       name: c.name,
@@ -370,17 +395,30 @@ export async function insertProductToDb(
     const name = (data.name || 'Untitled Product').trim();
     const sku = data.sku ? data.sku.trim().toUpperCase() : `ALH-${id}`;
 
+    const inventoryLocation: 'WAREHOUSE' | 'SHOP' =
+      data.inventoryLocation === 'SHOP' ? 'SHOP' : 'WAREHOUSE';
+
     // Calculate default price and stock if model selection is ON
     let finalPrice = data.price !== undefined && data.price !== null ? Number(data.price) : 0;
-    let finalStock = data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0;
+    let finalStock = inventoryLocation === 'SHOP' ? 0 : (data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0);
+    let finalShopStock = data.shopStock !== undefined && data.shopStock !== null ? Number(data.shopStock) : 0;
+
     if (data.enableModelSelection && Array.isArray(data.models) && data.models.length > 0) {
       const activeModels = data.models.filter((m) => m.isActive !== false);
       if (activeModels.length > 0 && (!finalPrice || finalPrice <= 0)) {
         finalPrice = activeModels[0].price;
       }
-      const totalModelStock = activeModels.reduce((acc, m) => acc + (m.stock ?? 0), 0);
-      if (totalModelStock > 0 && (!finalStock || finalStock <= 0)) {
-        finalStock = totalModelStock;
+      if (inventoryLocation === 'SHOP') {
+        finalStock = 0;
+        const totalShopModelStock = activeModels.reduce((acc, m) => acc + (m.shopStock ?? 0), 0);
+        if (totalShopModelStock > 0 && (!finalShopStock || finalShopStock <= 0)) {
+          finalShopStock = totalShopModelStock;
+        }
+      } else {
+        const totalModelStock = activeModels.reduce((acc, m) => acc + (m.stock ?? 0), 0);
+        if (totalModelStock > 0 && (!finalStock || finalStock <= 0)) {
+          finalStock = totalModelStock;
+        }
       }
     }
 
@@ -400,7 +438,7 @@ export async function insertProductToDb(
       `INSERT INTO products (
         id, slug, name, tagline, description, long_description,
         price, compare_at_price, wholesale_price, super_wholesale_price, discount_percentage,
-        category, category_slug, brand, origin, sku, stock, low_stock_threshold,
+        category, category_slug, brand, origin, sku, stock, shop_stock, low_stock_threshold,
         rating, review_count, status, is_active, is_new, is_new_arrival,
         is_best_seller, is_sale, featured, trending,
         enable_model_selection, enable_color_selection,
@@ -408,7 +446,7 @@ export async function insertProductToDb(
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
@@ -432,6 +470,7 @@ export async function insertProductToDb(
         (data as any).origin || 'Pakistan',
         sku,
         finalStock,
+        finalShopStock,
         lowStockThreshold,
         data.rating || 5.0,
         data.reviewCount || 0,
@@ -445,7 +484,7 @@ export async function insertProductToDb(
         data.trending ? 1 : 0,
         data.enableModelSelection ? 1 : 0,
         data.enableColorSelection ? 1 : 0,
-        data.specifications ? JSON.stringify(data.specifications) : null,
+        JSON.stringify({ ...(data.specifications || {}), inventoryLocation }),
         data.features ? JSON.stringify(data.features) : null,
         data.tags ? JSON.stringify(data.tags) : null,
         data.variants ? JSON.stringify(data.variants) : null,
@@ -505,8 +544,8 @@ export async function insertProductToDb(
         const modelVideos = await ensureSafeMediaUrls(Array.isArray(model.videos) ? model.videos : [], 'products');
         await conn.execute(
           `INSERT INTO product_models (
-            id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, sku, is_active, images, videos, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, shop_stock, sku, is_active, images, videos, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             modelId,
             id,
@@ -516,6 +555,7 @@ export async function insertProductToDb(
             model.wholesalePrice !== undefined ? Number(model.wholesalePrice) : null,
             model.superWholesalePrice !== undefined ? Number(model.superWholesalePrice) : null,
             Number(model.stock) || 0,
+            Number((model as any).shopStock) || 0,
             model.sku || null,
             model.isActive !== false ? 1 : 0,
             modelImages.length > 0 ? JSON.stringify(modelImages) : null,
@@ -580,15 +620,28 @@ export async function updateProductInDb(
     const superWholesalePrice = updates.superWholesalePrice !== undefined ? (updates.superWholesalePrice !== null && Number(updates.superWholesalePrice) > 0 ? Number(updates.superWholesalePrice) : null) : (existing.superWholesalePrice || null);
     const discountPercentage = updates.discountPercentage !== undefined ? (updates.discountPercentage !== null ? Number(updates.discountPercentage) : null) : (existing.discountPercentage || null);
     const finalStock = updates.stock !== undefined ? Number(updates.stock) : existing.stock;
+    // shop_stock can be independently set; default to existing value if not updated
+    const finalShopStock = updates.shopStock !== undefined ? Number(updates.shopStock) : (existing.shopStock ?? 0);
     const lowStockThreshold = updates.lowStockThreshold !== undefined ? Number(updates.lowStockThreshold) : existing.lowStockThreshold;
     const status = updates.status !== undefined ? updates.status : existing.status;
     const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (existing.isActive ? 1 : 0);
+
+    // Merge shop settings into specifications so it persists safely even without custom columns
+    const baseSpecs: Record<string, any> = typeof existing.specifications === 'object' && existing.specifications !== null ? { ...existing.specifications } : {};
+    if ((updates as any).isShopActive !== undefined) baseSpecs.isShopActive = (updates as any).isShopActive;
+    if ((updates as any).shopLowStockThreshold !== undefined) baseSpecs.shopLowStockThreshold = (updates as any).shopLowStockThreshold;
+    if ((updates as any).inShopInventory !== undefined) baseSpecs.inShopInventory = (updates as any).inShopInventory;
+    if ((updates as any).inventoryLocation !== undefined) baseSpecs.inventoryLocation = (updates as any).inventoryLocation;
+
+    const mergedSpecs = updates.specifications !== undefined
+      ? { ...baseSpecs, ...updates.specifications }
+      : (Object.keys(baseSpecs).length > 0 ? baseSpecs : null);
 
     await conn.execute(
       `UPDATE products SET
         slug = ?, name = ?, tagline = ?, description = ?, long_description = ?,
         price = ?, compare_at_price = ?, wholesale_price = ?, super_wholesale_price = ?, discount_percentage = ?,
-        category = ?, category_slug = ?, brand = ?, origin = ?, sku = ?, stock = ?, low_stock_threshold = ?,
+        category = ?, category_slug = ?, brand = ?, origin = ?, sku = ?, stock = ?, shop_stock = ?, low_stock_threshold = ?,
         status = ?, is_active = ?, is_new = ?, is_new_arrival = ?,
         is_best_seller = ?, is_sale = ?, featured = ?, trending = ?,
         enable_model_selection = ?, enable_color_selection = ?,
@@ -611,6 +664,7 @@ export async function updateProductInDb(
         (updates as any).origin !== undefined ? (updates as any).origin : ((existing as any).origin || 'Pakistan'),
         sku,
         finalStock,
+        finalShopStock,
         lowStockThreshold,
         status,
         isActive,
@@ -622,7 +676,7 @@ export async function updateProductInDb(
         (updates.trending !== undefined ? updates.trending : existing.trending) ? 1 : 0,
         (updates.enableModelSelection !== undefined ? updates.enableModelSelection : existing.enableModelSelection) ? 1 : 0,
         (updates.enableColorSelection !== undefined ? updates.enableColorSelection : existing.enableColorSelection) ? 1 : 0,
-        updates.specifications !== undefined ? JSON.stringify(updates.specifications) : (existing.specifications ? JSON.stringify(existing.specifications) : null),
+        mergedSpecs ? JSON.stringify(mergedSpecs) : null,
         updates.features !== undefined ? JSON.stringify(updates.features) : (existing.features ? JSON.stringify(existing.features) : null),
         updates.tags !== undefined ? JSON.stringify(updates.tags) : (existing.tags ? JSON.stringify(existing.tags) : null),
         updates.variants !== undefined ? JSON.stringify(updates.variants) : (existing.variants ? JSON.stringify(existing.variants) : null),
@@ -680,8 +734,8 @@ export async function updateProductInDb(
         const modelVideos = await ensureSafeMediaUrls(Array.isArray(model.videos) ? model.videos : [], 'products');
         await conn.execute(
           `INSERT INTO product_models (
-            id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, sku, is_active, images, videos, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, product_id, name, price, compare_at_price, wholesale_price, super_wholesale_price, stock, shop_stock, sku, is_active, images, videos, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             modelId,
             id,
@@ -691,6 +745,7 @@ export async function updateProductInDb(
             model.wholesalePrice !== undefined ? Number(model.wholesalePrice) : null,
             model.superWholesalePrice !== undefined ? Number(model.superWholesalePrice) : null,
             Number(model.stock) || 0,
+            Number((model as any).shopStock) || 0,
             model.sku || null,
             model.isActive !== false ? 1 : 0,
             modelImages.length > 0 ? JSON.stringify(modelImages) : null,

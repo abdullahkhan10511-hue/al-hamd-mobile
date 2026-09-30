@@ -1,6 +1,6 @@
-import { Order, OrderItem, InventoryLog, CustomerType } from '@/types/admin';
+import { Order, OrderItem, CustomerType } from '@/types/admin';
 import { Product } from '@/types';
-import { getStoredCollection, persistCollection } from './storage';
+import { persistCollection } from './storage';
 import { getProducts } from './products';
 import { getOrders, generateNextOrderId, generateNextInvoiceNumber } from './orders';
 import { recordInventoryLog } from './inventory';

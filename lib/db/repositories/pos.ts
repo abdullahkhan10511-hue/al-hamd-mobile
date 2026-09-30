@@ -1,7 +1,7 @@
 import { Order, OrderItem } from '@/types/admin';
 import { Product } from '@/types';
-import { getProductByIdFromDb, getAllProductsFromDb } from '@/lib/db/repositories/products';
-import { createOrderInDb, getAllOrdersFromDb, voidOrderInDb } from '@/lib/db/repositories/orders';
+import { getProductByIdFromDb } from '@/lib/db/repositories/products';
+import { createOrderInDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured, query } from '../mysql';
 import { RowDataPacket } from 'mysql2/promise';
 
@@ -66,7 +66,8 @@ export async function createPosSaleInDb(params: CreatePosSaleParams): Promise<Po
 
     let unitPrice = product.price;
     let selectedModelSku = product.sku || `SKU-${product.id}`;
-    let itemAvailableStock = product.stock;
+    // RULE: POS sales check SHOP STOCK (not warehouse stock)
+    let itemAvailableStock = product.shopStock ?? 0;
 
     if (cartItem.selectedModel && Array.isArray(product.models)) {
       const modelObj = product.models.find(
@@ -77,9 +78,11 @@ export async function createPosSaleInDb(params: CreatePosSaleParams): Promise<Po
       if (modelObj) {
         unitPrice = modelObj.price;
         if (modelObj.sku) selectedModelSku = modelObj.sku;
-        if (modelObj.stock !== undefined) itemAvailableStock = modelObj.stock;
+        // For models, use model-level shop_stock if available, fallback to 0
+        itemAvailableStock = (modelObj as any).shopStock ?? 0;
       }
     }
+
 
     if (itemAvailableStock < cartItem.quantity) {
       return {

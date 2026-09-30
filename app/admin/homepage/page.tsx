@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  Sparkles,
   ArrowUp,
   ArrowDown,
   Eye,
@@ -12,7 +11,6 @@ import {
   Check,
   Plus,
   Trash2,
-  Image as ImageIcon,
   Upload,
   ExternalLink,
   Layers,

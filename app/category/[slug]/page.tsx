@@ -91,7 +91,7 @@ export default function CategoryPage() {
     let list = categoryProducts.filter((p) => p.price <= maxPrice);
 
     if (inStockOnly) {
-      list = list.filter((p) => p.stock > 0);
+      list = list.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
     }
 
     switch (sortBy) {

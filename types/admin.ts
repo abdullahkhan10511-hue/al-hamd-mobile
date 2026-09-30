@@ -1,5 +1,3 @@
-import { Product, Category, ProductVariant } from './index';
-
 export type StaffPredefinedRole =
   | 'SUPER_ADMIN'
   | 'ADMIN'
@@ -611,3 +609,38 @@ export interface PromoCodeUsage {
   createdAt: string;
 }
 
+// ============================================================
+// SHOP BILL (Warehouse → Shop Stock Transfer)
+// ============================================================
+
+export type ShopBillStatus = 'draft' | 'finalized' | 'voided';
+
+export interface ShopBillItem {
+  id?: number;
+  shopBillId?: string;
+  productId: string;
+  productName: string;
+  sku?: string;
+  modelId?: string;
+  modelName?: string;
+  transferQuantity: number;
+  warehouseStockBefore?: number;
+  warehouseStockAfter?: number;
+  shopStockBefore?: number;
+  shopStockAfter?: number;
+}
+
+export interface ShopBill {
+  id: string;
+  billNumber: string;
+  status: ShopBillStatus;
+  notes?: string;
+  items: ShopBillItem[];
+  createdBy: string;
+  finalizedBy?: string;
+  voidedBy?: string;
+  voidedAt?: string;
+  voidReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}

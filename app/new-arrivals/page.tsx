@@ -194,9 +194,9 @@ function NewArrivalsContent() {
       result = result.filter((p) => p.rating >= minRating);
     }
 
-    // In-Stock only filter
+    // In-Stock only filter (Customer availability uses Shop Stock + Shop Active)
     if (inStockOnly) {
-      result = result.filter((p) => p.stock > 0);
+      result = result.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
     }
 
     // Search filter

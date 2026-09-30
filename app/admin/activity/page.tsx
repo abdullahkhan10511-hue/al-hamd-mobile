@@ -2,16 +2,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ActivityLog } from '@/types/admin';
-import { getActivityLogs, logActivity } from '@/lib/db/activity';
+import { getActivityLogs } from '@/lib/db/activity';
 import {
   History,
   Search,
-  Calendar,
   User,
-  Shield,
-  Clock,
-  ArrowRight,
-  Filter,
   ArrowUpDown,
   X,
 } from 'lucide-react';

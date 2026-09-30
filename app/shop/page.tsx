@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,8 +8,6 @@ import {
   X,
   ChevronDown,
   Search,
-  Star,
-  Check,
   RotateCcw,
 } from 'lucide-react';
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
@@ -247,8 +244,8 @@ function ShopContent() {
         return false;
       }
 
-      // In stock only filter
-      if (inStockOnly && product.stock <= 0) {
+      // In stock only filter (Customer availability uses Shop Stock + Shop Active)
+      if (inStockOnly && ((product.shopStock ?? 0) <= 0 || product.isShopActive === false)) {
         return false;
       }
 

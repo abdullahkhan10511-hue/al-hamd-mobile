@@ -23,12 +23,9 @@ import {
   Plus,
   Minus,
   History,
-  TrendingDown,
   RefreshCw,
-  Save,
   Check,
   Edit2,
-  Hash,
 } from 'lucide-react';
 
 export default function AdminInventoryPage() {
@@ -40,7 +37,6 @@ export default function AdminInventoryPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'low' | 'out'>('all');
 
   // Interactive Quick Adjust State
-  const [stockDrafts, setStockDrafts] = useState<Record<string, number>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
@@ -78,12 +74,13 @@ export default function AdminInventoryPage() {
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
 
-  const totalSKUs = products.length;
-  const outOfStockItems = products.filter((p) => p.stock <= 0);
-  const lowStockItems = products.filter((p) => p.stock > 0 && p.stock <= getWarningThreshold(p));
-  const inStockItems = products.filter((p) => p.stock > getWarningThreshold(p));
+  const warehouseProducts = products.filter((p) => p.inventoryLocation !== 'SHOP');
+  const totalSKUs = warehouseProducts.length;
+  const outOfStockItems = warehouseProducts.filter((p) => p.stock <= 0);
+  const lowStockItems = warehouseProducts.filter((p) => p.stock > 0 && p.stock <= getWarningThreshold(p));
+  const inStockItems = warehouseProducts.filter((p) => p.stock > getWarningThreshold(p));
 
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = warehouseProducts.filter((p) => {
     const matchesQuery =
       !searchQuery.trim() ||
       (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -229,36 +226,48 @@ export default function AdminInventoryPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Inventory &amp; Stock</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <Boxes className="w-6 h-6 text-neutral-700" />
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Warehouse Inventory</h1>
+          </div>
           <p className="text-xs text-neutral-500 mt-1">
-            Real-time stock level monitoring, instant inline adjustments, and immutable audit logs
+            Warehouse stock levels — these do NOT affect customer-facing availability. Use Shop Bills to transfer to shop.
           </p>
         </div>
 
-        {/* Tab Toggle */}
-        <div className="flex items-center bg-neutral-200/80 p-1 rounded-xl text-xs font-semibold">
-          <button
-            onClick={() => setActiveTab('stock')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'stock'
-                ? 'bg-white text-neutral-950 shadow-sm'
-                : 'text-neutral-600 hover:text-neutral-900'
-            }`}
-          >
-            Stock Levels
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'history'
-                ? 'bg-white text-neutral-950 shadow-sm'
-                : 'text-neutral-600 hover:text-neutral-900'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            Adjustment Logs ({logs.length})
-          </button>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/shop-inventory" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold hover:bg-violet-200 transition-colors">
+            Shop Inventory
+          </Link>
+          <Link href="/admin/shop-bills" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors">
+            Shop Bills
+          </Link>
         </div>
+      </div>
+
+      {/* Tab Toggle */}
+      <div className="flex items-center bg-neutral-200/80 p-1 rounded-xl text-xs font-semibold w-fit">
+        <button
+          onClick={() => setActiveTab('stock')}
+          className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+            activeTab === 'stock'
+              ? 'bg-white text-neutral-950 shadow-sm'
+              : 'text-neutral-600 hover:text-neutral-900'
+          }`}
+        >
+          Stock Levels
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'history'
+              ? 'bg-white text-neutral-950 shadow-sm'
+              : 'text-neutral-600 hover:text-neutral-900'
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          Adjustment Logs ({logs.length})
+        </button>
       </div>
 
       {activeTab === 'stock' ? (

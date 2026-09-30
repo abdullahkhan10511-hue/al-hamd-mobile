@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { Product } from '@/types';
 import { Order, Customer } from '@/types/admin';
 import { getProducts } from '@/lib/db/products';
@@ -14,6 +15,7 @@ import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesal
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
 import {
   Store,
+  Boxes,
   Search,
   ShoppingCart,
   Plus,
@@ -165,8 +167,8 @@ export default function ShopCounterPosPage() {
             : null;
 
         const availableStock = modelObj
-          ? (modelObj.stock !== undefined ? modelObj.stock : liveProduct.stock)
-          : liveProduct.stock;
+          ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (liveProduct.shopStock ?? 0))
+          : (liveProduct.shopStock ?? 0);
 
         // Check Available Stock
         if (availableStock <= 0) {
@@ -244,8 +246,8 @@ export default function ShopCounterPosPage() {
                   )
                 : null;
             const availableStock = modelObj
-              ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
-              : live.stock;
+              ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (live.shopStock ?? 0))
+              : (live.shopStock ?? 0);
             if (availableStock <= 0) {
               removedAny = true;
               continue;
@@ -414,8 +416,8 @@ export default function ShopCounterPosPage() {
         : null;
 
     const availableStock = modelObj
-      ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
-      : live.stock;
+      ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (live.shopStock ?? 0))
+      : (live.shopStock ?? 0);
 
     if (availableStock <= 0) {
       showToast(
@@ -473,8 +475,8 @@ export default function ShopCounterPosPage() {
       return;
     }
 
-    if (live.stock <= 0) {
-      showToast(`"${live.name}" is currently out of stock.`, 'warning');
+    if ((live.shopStock ?? 0) <= 0) {
+      showToast(`"${live.name}" is currently out of stock at the shop.`, 'warning');
       return;
     }
 
@@ -524,8 +526,8 @@ export default function ShopCounterPosPage() {
           : null;
 
       const availableStock = modelObj
-        ? (modelObj.stock !== undefined ? modelObj.stock : target.product.stock)
-        : target.product.stock;
+        ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (target.product.shopStock ?? 0))
+        : (target.product.shopStock ?? 0);
 
       if (newQty > availableStock) {
         showToast(`Only ${availableStock} units available for this selection.`, 'warning');
@@ -667,8 +669,8 @@ export default function ShopCounterPosPage() {
             )
           : null;
       const availableStock = modelObj
-        ? (modelObj.stock !== undefined ? modelObj.stock : live.stock)
-        : live.stock;
+        ? (modelObj.shopStock !== undefined ? modelObj.shopStock : (live.shopStock ?? 0))
+        : (live.shopStock ?? 0);
       if (availableStock < item.quantity) {
         hasInvalid = true;
         break;
@@ -910,46 +912,57 @@ export default function ShopCounterPosPage() {
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setActiveTab('terminal')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-              activeTab === 'terminal'
-                ? 'bg-white text-neutral-950 shadow-xs'
-                : 'text-neutral-600 hover:text-neutral-900'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5" />
-            <span>Counter Terminal</span>
-          </button>
+        {/* View Switcher Tabs & Shop Inventory Option */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setActiveTab('terminal')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                activeTab === 'terminal'
+                  ? 'bg-white text-neutral-950 shadow-xs'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5" />
+              <span>Counter Terminal</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('summary')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-              activeTab === 'summary'
-                ? 'bg-white text-neutral-950 shadow-xs'
-                : 'text-neutral-600 hover:text-neutral-900'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Today's Summary</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('summary')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                activeTab === 'summary'
+                  ? 'bg-white text-neutral-950 shadow-xs'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Today's Summary</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-              activeTab === 'history'
-                ? 'bg-white text-neutral-950 shadow-xs'
-                : 'text-neutral-600 hover:text-neutral-900'
-            }`}
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                activeTab === 'history'
+                  ? 'bg-white text-neutral-950 shadow-xs'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Sales History & Voids</span>
+            </button>
+          </div>
+
+          <Link
+            href="/admin/shop-inventory"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 bg-neutral-950 text-white hover:bg-neutral-800 shadow-xs"
+            title="Open Shop Inventory to inspect retail quantities"
           >
-            <History className="w-3.5 h-3.5" />
-            <span>Sales History & Voids</span>
-          </button>
+            <Boxes className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Shop Inventory</span>
+          </Link>
         </div>
       </div>
 
@@ -1058,8 +1071,8 @@ export default function ShopCounterPosPage() {
               ) : (
                 filteredProducts.map((product) => {
                   const inCartItem = cart.find((i) => i.product.id === product.id);
-                  const isOutOfStock = product.stock <= 0;
-                  const isLowStock = product.stock > 0 && product.stock <= (product.lowStockThreshold || 5);
+                  const isOutOfStock = (product.shopStock ?? 0) <= 0;
+                  const isLowStock = (product.shopStock ?? 0) > 0 && (product.shopStock ?? 0) <= (product.lowStockThreshold || 5);
                   const hasDiscount = product.compareAtPrice && product.compareAtPrice > product.price;
 
                   return (
@@ -1081,9 +1094,16 @@ export default function ShopCounterPosPage() {
                             className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                           />
 
+                          {/* SHOP Tag for Shop-only products */}
+                          {product.inventoryLocation === 'SHOP' && (
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-wider uppercase bg-amber-400 text-neutral-950 shadow-xs z-10 border border-amber-500">
+                              SHOP
+                            </span>
+                          )}
+
                           {/* In-cart badge count */}
                           {inCartItem && (
-                            <span className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-neutral-950 text-white font-black text-[11px] flex items-center justify-center shadow-md">
+                            <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-neutral-950 text-white font-black text-[11px] flex items-center justify-center shadow-md z-10">
                               {inCartItem.quantity}
                             </span>
                           )}
@@ -1096,17 +1116,17 @@ export default function ShopCounterPosPage() {
                               </span>
                             ) : isLowStock ? (
                               <span className="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase bg-amber-500 text-neutral-950 shadow-xs">
-                                Low: {product.stock} left
+                                Low: {product.shopStock ?? 0} left
                               </span>
                             ) : (
                               <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-neutral-900/80 backdrop-blur-xs text-white">
-                                Stock: {product.stock}
+                                Shop: {product.shopStock ?? 0}
                               </span>
                             )}
                           </div>
 
                           {/* Sale Badge */}
-                          {hasDiscount && (
+                          {hasDiscount && !inCartItem && (
                             <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-rose-600 text-white">
                               SALE
                             </span>
@@ -1120,6 +1140,9 @@ export default function ShopCounterPosPage() {
                             <span className="font-mono text-[9px]">{product.sku || '—'}</span>
                           </div>
                           <h4 className="font-bold text-neutral-900 text-xs line-clamp-2 leading-snug">
+                            {product.inventoryLocation === 'SHOP' && (
+                              <span className="text-[10px] font-black text-amber-700 mr-1">[SHOP]</span>
+                            )}
                             {product.name}
                           </h4>
                         </div>
@@ -2035,7 +2058,9 @@ export default function ShopCounterPosPage() {
                         (m) => m.name === selectedVariantModel || m.id === selectedVariantModel
                       );
                       const price = selM ? Number(selM.price) : Number(variantModalProduct.price);
-                      const stock = selM ? (selM.stock ?? variantModalProduct.stock) : variantModalProduct.stock;
+                      const stock = selM
+                        ? (selM.shopStock !== undefined ? selM.shopStock : (variantModalProduct.shopStock ?? 0))
+                        : (variantModalProduct.shopStock ?? 0);
                       return (
                         <>
                           <span className="font-bold text-neutral-900">Rs. {price.toLocaleString('en-PK')}</span>
@@ -2072,7 +2097,8 @@ export default function ShopCounterPosPage() {
                       .filter((m) => m.isActive !== false)
                       .map((m) => {
                         const isSel = selectedVariantModel === m.name;
-                        const isOut = m.stock !== undefined && m.stock <= 0;
+                        const mShopStock = m.shopStock !== undefined ? m.shopStock : (variantModalProduct.shopStock ?? 0);
+                        const isOut = mShopStock <= 0;
                         return (
                           <button
                             key={m.id || m.name}

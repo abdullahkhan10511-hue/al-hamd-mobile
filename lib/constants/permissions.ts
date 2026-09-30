@@ -60,6 +60,27 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
     module: 'Inventory',
     description: 'Access the immutable audit trail of past stock adjustments.',
   },
+  {
+    id: 'perm-inv-5',
+    key: 'inventory.view_shop',
+    name: 'View Shop Inventory',
+    module: 'Inventory',
+    description: 'View the shop retail stock quantities for all products.',
+  },
+  {
+    id: 'perm-inv-6',
+    key: 'inventory.shop_bill',
+    name: 'Create Shop Bills',
+    module: 'Inventory',
+    description: 'Create and finalize shop bills to transfer stock from warehouse to shop.',
+  },
+  {
+    id: 'perm-inv-7',
+    key: 'inventory.void_shop_bill',
+    name: 'Void Shop Bills',
+    module: 'Inventory',
+    description: 'Void finalized shop bills to reverse warehouse-to-shop stock transfers.',
+  },
 
   // ORDERS
   {
@@ -399,6 +420,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'inventory.adjust_stock',
     'inventory.edit_warning',
     'inventory.view_history',
+    'inventory.view_shop',
+    'inventory.shop_bill',
+    'inventory.void_shop_bill',
     'orders.view',
     'orders.update_status',
     'orders.process',
@@ -432,6 +456,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'inventory.adjust_stock',
     'inventory.edit_warning',
     'inventory.view_history',
+    'inventory.view_shop',
+    'inventory.shop_bill',
+    'inventory.void_shop_bill',
     'products.view',
     'orders.view',
   ],

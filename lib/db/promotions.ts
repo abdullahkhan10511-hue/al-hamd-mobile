@@ -1,4 +1,4 @@
-import { PromoCode, PromoCodeUsage, Order } from '@/types/admin';
+import { PromoCode, PromoCodeUsage } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { getOrders } from './orders';
 import { getProducts } from './products';

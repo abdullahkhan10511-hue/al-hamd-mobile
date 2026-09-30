@@ -1,11 +1,7 @@
-import { StaffUser, AdminUser, AdminRole } from '@/types/admin';
+import { StaffUser, AdminRole } from '@/types/admin';
 import {
-  getStaffUsers,
-  getStaffByEmail,
   createStaffUser,
   updateStaffUser,
-  deleteStaffUser,
-  hasStaffPermission,
 } from './staff';
 import { ROLE_DEFAULT_PERMISSIONS } from '../constants/permissions';
 

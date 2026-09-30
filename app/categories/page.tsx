@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Search, ArrowRight, Layers, Sparkles, Package } from 'lucide-react';
+import { Search, ArrowRight, Layers, Package } from 'lucide-react';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { Category, Product } from '@/types';

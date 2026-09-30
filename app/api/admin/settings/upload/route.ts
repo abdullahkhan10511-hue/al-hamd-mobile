@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
+import { saveMediaBuffer } from '@/lib/mediaStorage';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -107,31 +107,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure upload directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'branding');
-    await fs.promises.mkdir(uploadsDir, { recursive: true });
-
     // Clean filename
     const safeBaseName = path
       .basename(originalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 40);
     const uniqueFileName = `logo_${Date.now()}_${safeBaseName}${ext || '.png'}`;
-    const destinationPath = path.join(uploadsDir, uniqueFileName);
 
-    // Write file
+    // Write file via persistent storage manager
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.promises.writeFile(destinationPath, buffer);
-
-    const publicUrl = `/uploads/branding/${uniqueFileName}`;
+    const saved = await saveMediaBuffer('branding', uniqueFileName, buffer);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: saved.publicUrl,
       fileName: uniqueFileName,
       originalName,
-      size: file.size,
+      size: saved.size,
     });
   } catch (error: any) {
     console.error('Failed to upload site logo/favicon:', error);

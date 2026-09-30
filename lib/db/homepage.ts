@@ -11,7 +11,6 @@ import {
   seedHeroConfig,
   seedFlashSaleConfig,
   seedTrustBenefits,
-  seedBanners,
 } from './seed';
 import { getStoredCollection, getLocal, setLocal, persistCollection } from './storage';
 import { logActivity } from './activity';

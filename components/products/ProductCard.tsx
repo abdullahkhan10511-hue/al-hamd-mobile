@@ -10,7 +10,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { StarRating } from '@/components/ui/StarRating';
 import { Badge } from '@/components/ui/Badge';
-import { formatPrice, DEFAULT_PRODUCT_IMAGE, getProductImage } from '@/lib/utils';
+import { formatPrice, getProductImage } from '@/lib/utils';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getProductEffectivePrice } from '@/lib/wholesale';
 
@@ -30,7 +30,9 @@ export function ProductCard({ product, className = '', priority = false }: Produ
   const [outOfStockToast, setOutOfStockToast] = useState(false);
 
   const isFavorited = isInWishlist(product.id);
-  const isOutOfStock = product.stock <= 0;
+  // RULE: Customer-facing availability is driven by SHOP STOCK, not warehouse stock.
+  // Must be in Shop Inventory Active state (isShopActive !== false) and shopStock > 0.
+  const isOutOfStock = (product.shopStock ?? 0) <= 0 || product.isShopActive === false;
 
 
   const handleQuickAdd = async (e: React.MouseEvent) => {

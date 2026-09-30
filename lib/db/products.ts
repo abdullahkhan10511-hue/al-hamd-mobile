@@ -248,17 +248,36 @@ export async function createProduct(
     }
   }
 
+  const isShopLocation = data.inventoryLocation === 'SHOP';
+
   // Calculate default price and stock if model selection is ON
   let finalPrice = data.price !== undefined && data.price !== null ? Number(data.price) : 0;
   let finalStock = data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0;
+  let finalShopStock = data.shopStock !== undefined && data.shopStock !== null ? Number(data.shopStock) : 0;
+
+  if (isShopLocation) {
+    if (finalShopStock === 0 && finalStock > 0) {
+      finalShopStock = finalStock;
+    }
+    finalStock = 0;
+  }
+
   if (data.enableModelSelection && Array.isArray(data.models) && data.models.length > 0) {
     const activeModels = data.models.filter((m) => m.isActive !== false);
     if (activeModels.length > 0 && (!finalPrice || finalPrice <= 0)) {
       finalPrice = activeModels[0].price;
     }
     const totalModelStock = activeModels.reduce((acc, m) => acc + (m.stock ?? 0), 0);
-    if (totalModelStock > 0 && (!finalStock || finalStock <= 0)) {
-      finalStock = totalModelStock;
+    const totalModelShopStock = activeModels.reduce((acc, m) => acc + (m.shopStock ?? 0), 0);
+    if (isShopLocation) {
+      if (totalModelShopStock > 0 && (!finalShopStock || finalShopStock <= 0)) {
+        finalShopStock = totalModelShopStock;
+      }
+      finalStock = 0;
+    } else {
+      if (totalModelStock > 0 && (!finalStock || finalStock <= 0)) {
+        finalStock = totalModelStock;
+      }
     }
   }
 
@@ -270,6 +289,7 @@ export async function createProduct(
     sku: cleanSku,
     brand: data.brand || '',
     category: data.category || '',
+    inventoryLocation: isShopLocation ? 'SHOP' : 'WAREHOUSE',
     price: finalPrice,
     compareAtPrice: data.compareAtPrice !== undefined && data.compareAtPrice !== null ? Number(data.compareAtPrice) : undefined,
     wholesalePrice:
@@ -287,6 +307,7 @@ export async function createProduct(
         ? Number(data.superWholesalePrice)
         : undefined,
     stock: finalStock,
+    shopStock: finalShopStock,
     lowStockThreshold: data.lowStockThreshold !== undefined && data.lowStockThreshold !== null ? Number(data.lowStockThreshold) : 0,
     description: data.description || '',
     longDescription: data.longDescription || '',
@@ -434,6 +455,18 @@ export async function updateProduct(
   const updatedProduct = {
     ...current,
     ...updates,
+    isShopActive:
+      updates.isShopActive !== undefined
+        ? Boolean(updates.isShopActive)
+        : (current.isShopActive !== undefined ? current.isShopActive : true),
+    shopLowStockThreshold:
+      updates.shopLowStockThreshold !== undefined
+        ? Number(updates.shopLowStockThreshold)
+        : (current.shopLowStockThreshold ?? 5),
+    inShopInventory:
+      updates.inShopInventory !== undefined
+        ? Boolean(updates.inShopInventory)
+        : (current.inShopInventory !== undefined ? current.inShopInventory : true),
     enableModelSelection:
       updates.enableModelSelection !== undefined
         ? Boolean(updates.enableModelSelection)
@@ -946,4 +979,61 @@ export function getLowStockProducts() {
 export function getOutOfStockProducts() {
   const products = getProducts();
   return products.filter((p) => p.stock <= 0);
+}
+
+/**
+ * Directly sets the shop_stock for a product via API.
+ * This is ONLY for administrative manual overrides.
+ * Normal shop stock movement happens exclusively via Shop Bills (Warehouse → Shop transfer).
+ * DOES NOT touch warehouse stock (products.stock).
+ */
+export async function setProductShopStock(
+  productId: string,
+  newShopStock: number,
+  reason = 'Manual shop stock adjustment',
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  const products = getProducts();
+  const product = products.find((p) => p.id === productId);
+  if (!product) return false;
+
+  const previousShopStock = product.shopStock ?? 0;
+  const safeStock = Math.max(0, Math.round(newShopStock));
+  product.shopStock = safeStock;
+
+  await persistCollection(COLLECTION_KEY, products);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shopStock: safeStock }),
+    }).catch(() => {});
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: products },
+      })
+    );
+  }
+
+  await recordInventoryLog({
+    productId: product.id,
+    productName: product.name,
+    sku: product.sku,
+    type: 'SHOP_ADJUST' as any,
+    previousStock: previousShopStock,
+    changeAmount: safeStock - previousShopStock,
+    newStock: safeStock,
+    reason: `[SHOP STOCK] ${reason}`,
+    adminEmail,
+  });
+
+  await logActivity({
+    adminEmail,
+    action: 'Adjusted Shop Stock',
+    target: product.name,
+    details: `Shop stock updated to ${safeStock} (previous: ${previousShopStock}). Reason: ${reason}`,
+  });
+
+  return true;
 }

@@ -3,20 +3,38 @@ import mysql, { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mys
 let pool: Pool | null = null;
 
 export function isDbConfigured(): boolean {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql')) {
+    return true;
+  }
   return Boolean(
-    process.env.DB_HOST &&
-    process.env.DB_USER &&
-    process.env.DB_NAME
+    (process.env.DB_HOST || process.env.MYSQL_HOST || process.env.MYSQLHOST) &&
+    (process.env.DB_USER || process.env.MYSQL_USER || process.env.MYSQLUSER) &&
+    (process.env.DB_NAME || process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE)
   );
 }
 
 export function getDbConfig() {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql')) {
+    try {
+      const u = new URL(process.env.DATABASE_URL);
+      return {
+        host: u.hostname || 'localhost',
+        port: parseInt(u.port || '3306', 10),
+        user: decodeURIComponent(u.username || ''),
+        password: decodeURIComponent(u.password || ''),
+        database: u.pathname.replace(/^\//, '') || '',
+      };
+    } catch {
+      // fallback to env vars
+    }
+  }
+
   return {
-    host: process.env.DB_HOST || '',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || '',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || '',
+    host: process.env.DB_HOST || process.env.MYSQL_HOST || process.env.MYSQLHOST || '',
+    port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || process.env.MYSQLPORT || '3306', 10),
+    user: process.env.DB_USER || process.env.MYSQL_USER || process.env.MYSQLUSER || '',
+    password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || '',
+    database: process.env.DB_NAME || process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || '',
   };
 }
 

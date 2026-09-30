@@ -26,15 +26,6 @@ interface LoginPageMediaRow extends RowDataPacket {
   updated_at: string;
 }
 
-function parseJsonSafe<T>(val: any, fallback: T): T {
-  if (!val) return fallback;
-  if (typeof val === 'object') return val as T;
-  try {
-    return JSON.parse(val) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 export async function getLoginPageSettingsFromDb(): Promise<LoginPageSettings> {
   if (!isDbConfigured()) {

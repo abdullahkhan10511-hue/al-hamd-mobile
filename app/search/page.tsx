@@ -5,13 +5,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search,
-  RotateCcw,
   ArrowRight,
   PackageX,
-  SlidersHorizontal,
   ChevronDown,
   Sparkles,
-  TrendingUp,
   X,
   Filter,
 } from 'lucide-react';
@@ -170,9 +167,9 @@ function SearchContent() {
     // Price filter
     result = result.filter((p) => p.price <= maxPrice);
 
-    // In Stock filter
+    // In Stock filter (Customer availability uses Shop Stock + Shop Active)
     if (inStockOnly) {
-      result = result.filter((p) => p.stock > 0);
+      result = result.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
     }
 
     // Sorting

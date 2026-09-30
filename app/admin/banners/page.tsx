@@ -6,7 +6,6 @@ import { getBanners, saveBanner, deleteBanner, toggleBannerStatus } from '@/lib/
 import { uploadImage } from '@/lib/db/media';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import {
-  Image as ImageIcon,
   Plus,
   Trash2,
   Edit2,

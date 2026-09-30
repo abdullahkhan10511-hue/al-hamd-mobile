@@ -1,12 +1,7 @@
 import { db } from '../firebase';
 import {
-  collection,
   doc,
-  getDoc,
-  getDocs,
   setDoc,
-  deleteDoc,
-  onSnapshot,
 } from 'firebase/firestore';
 
 import { allowDevMockFallback } from '../env';
