@@ -22,7 +22,11 @@ export function ShopByCategories() {
     loadData();
     syncCategoriesFromApi().then(() => loadData()).catch(() => {});
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'categories') return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [loadData]);

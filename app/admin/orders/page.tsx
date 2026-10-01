@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Order, OrderStatus, PaymentStatus, getOrderType } from '@/types/admin';
-import { getOrders, updateOrderStatus, filterAndSortOrders } from '@/lib/db/orders';
+import { getOrders, filterAndSortOrders } from '@/lib/db/orders';
 import InvoiceModal from '@/components/admin/InvoiceModal';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
 import { useAdminAuth } from '@/context/AdminAuthContext';
@@ -41,6 +41,8 @@ export default function AdminOrdersPage() {
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
   const [selectedPosOrder, setSelectedPosOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [statusToast, setStatusToast] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const loadData = () => {
     const list = getOrders();
@@ -66,11 +68,64 @@ export default function AdminOrdersPage() {
     setFilteredOrders(filtered);
   }, [orders, searchQuery, statusFilter, paymentFilter, sourceFilter, sortBy]);
 
+  const showToast = (msg: string) => {
+    setStatusToast(msg);
+    setTimeout(() => setStatusToast(null), 3000);
+  };
+
+  const showError = (msg: string) => {
+    setStatusError(msg);
+    setTimeout(() => setStatusError(null), 5000);
+  };
+
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    // Find the previous status for rollback
+    const prevStatus = orders.find((o) => o.id === orderId)?.status;
+    if (!prevStatus || prevStatus === newStatus) return;
+
+    // Optimistic update: update local state immediately for snappy UI
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+    );
     setIsUpdating(orderId);
-    await updateOrderStatus(orderId, newStatus);
-    loadData();
-    setIsUpdating(null);
+
+    try {
+      // CRITICAL FIX: Must include credentials so the admin session cookie is sent.
+      // Without credentials: 'include' the API returns 401 Unauthorized and the
+      // database is never updated (the old code silently swallowed this error).
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        // Rollback optimistic update on failure
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: prevStatus } : o))
+        );
+        showError(`Failed to update order status: ${data.error || res.statusText || 'Server error'}`);
+      } else {
+        showToast('Order status updated successfully.');
+        // Re-sync from server response to ensure consistency
+        if (data.order) {
+          setOrders((prev) =>
+            prev.map((o) => (o.id === orderId ? { ...o, ...data.order, id: o.id } : o))
+          );
+        }
+      }
+    } catch (err: any) {
+      // Network error — rollback
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: prevStatus } : o))
+      );
+      showError('Failed to update order status. Please check your connection and try again.');
+    } finally {
+      setIsUpdating(null);
+    }
   };
 
   const getStatusBadge = (status: OrderStatus) => {
@@ -131,6 +186,19 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notifications */}
+      {statusToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-neutral-950 text-white text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          {statusToast}
+        </div>
+      )}
+      {statusError && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-rose-600 text-white text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-bottom-4 duration-300 max-w-sm">
+          <XCircle className="w-4 h-4 shrink-0" />
+          {statusError}
+        </div>
+      )}
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

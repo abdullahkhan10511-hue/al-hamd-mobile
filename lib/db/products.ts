@@ -40,39 +40,30 @@ const OBSOLETE_NON_MOBILE_IDS = new Set([
   'prod-14', // phone handset
 ]);
 
-export function getProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
-  const fallback = allowDevMockFallback() ? seedProducts : [];
-  let list = getStoredCollection(COLLECTION_KEY, fallback);
-  let modified = false;
+export function sanitizeProducts(
+  rawList: (Product & { sku?: string; lowStockThreshold?: number; trending?: boolean; isActive?: boolean })[]
+): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
+  let list = Array.isArray(rawList) ? rawList : [];
 
   if (!allowDevMockFallback()) {
     // In production, strictly purge any legacy seed products
-    const cleanList = list.filter(
+    list = list.filter(
       (p) =>
         p &&
         p.slug !== 'essential-hoodie' &&
         p.slug !== 'air-max-270' &&
-        !(p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && p.sku === 'AP-APP2-015') &&
+        !(p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && (p as any).sku === 'AP-APP2-015') &&
         !(p.id === 'prod-16' && p.slug === 'anker-20000mah-power-bank')
     );
-    if (cleanList.length !== list.length) {
-      list = cleanList;
-      modified = true;
-    }
   } else {
     const deletedIds = getDeletedProductIds();
     // 1. Purge non-accessory items and permanently deleted IDs
-    const filtered = list.filter((p) => !OBSOLETE_NON_MOBILE_IDS.has(p.id) && !deletedIds.has(p.id));
-    if (filtered.length !== list.length) {
-      list = filtered;
-      modified = true;
-    }
+    list = list.filter((p) => p && !OBSOLETE_NON_MOBILE_IDS.has(p.id) && !deletedIds.has(p.id));
 
     // 2. Ensure historical products with existing order history are deactivated
     list = list.map((p) => {
       if (p.id === 'prod-1' || p.id === 'prod-2') {
         if ((p as any).isActive !== false || p.status !== 'inactive') {
-          modified = true;
           return {
             ...p,
             isActive: false,
@@ -86,8 +77,17 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
     });
   }
 
-  if (modified) {
-    persistCollection(COLLECTION_KEY, list);
+  return list as (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[];
+}
+
+export function getProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
+  const fallback = allowDevMockFallback() ? seedProducts : [];
+  const list = getStoredCollection(COLLECTION_KEY, fallback);
+  const sanitized = sanitizeProducts(list);
+
+  // If sanitization changed items, update memory cache & localStorage silently (silent = true, NO event dispatch)
+  if (sanitized.length !== list.length || JSON.stringify(sanitized) !== JSON.stringify(list)) {
+    setLocal(COLLECTION_KEY, sanitized, true);
   }
 
   if (typeof window !== 'undefined' && !hasSyncedProductsFromApi) {
@@ -95,7 +95,7 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
     syncProductsFromApi().catch(() => {});
   }
 
-  return list;
+  return sanitized;
 }
 
 let hasSyncedProductsFromApi = false;
@@ -114,14 +114,10 @@ export async function syncProductsFromApi(): Promise<
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.products)) {
-        await persistCollection(COLLECTION_KEY, data.products);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: data.products },
-          })
-        );
+        const sanitized = sanitizeProducts(data.products);
+        await persistCollection(COLLECTION_KEY, sanitized);
         hasSyncedProductsFromApi = true;
-        return data.products;
+        return sanitized;
       }
     }
   } catch (err) {

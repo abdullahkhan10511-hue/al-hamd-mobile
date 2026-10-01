@@ -24,7 +24,11 @@ export function AnnouncementBar() {
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'announcements' && key !== 'store_settings') return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

@@ -24,7 +24,12 @@ export default function HomePage() {
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const HOME_KEYS = ['homepage_sections', 'store_settings'];
+      if (key && !HOME_KEYS.includes(key)) return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

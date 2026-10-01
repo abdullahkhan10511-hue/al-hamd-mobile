@@ -92,10 +92,29 @@ function BestSellersContent() {
     setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
+  const refreshFromCache = () => {
+    const prods = getProducts();
+    const bestSellerItems = prods.filter(
+      (p) =>
+        (p as any).status !== 'archived' &&
+        (p as any).status !== 'inactive' &&
+        (p as any).isActive !== false &&
+        (p.isBestSeller || (p.reviewCount && p.reviewCount >= 200))
+    );
+    setProductsList(bestSellerItems);
+    setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+  };
+
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const SHOP_KEYS = ['products', 'categories', 'brands'];
+      if (key && !SHOP_KEYS.includes(key)) return;
+      refreshFromCache();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

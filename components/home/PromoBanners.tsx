@@ -102,7 +102,11 @@ export function PromoBanners() {
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'homepage_banners' && key !== 'banners') return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

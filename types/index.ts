@@ -112,7 +112,11 @@ export interface Product {
     sizes?: string[];
     colors?: { name: string; hex: string }[];
   };
-  specifications?: Record<string, string>;
+  /** Customer-facing technical specifications.
+   * New format: plain multiline text (e.g. "Material: ABS\nWarranty: 1 Year")
+   * Legacy format: key-value Record (still supported for reading/display)
+   * Internal inventory fields are NEVER included here. */
+  specifications?: Record<string, string> | string;
   features?: string[];
   shippingInfo?: string;
   returnsInfo?: string;

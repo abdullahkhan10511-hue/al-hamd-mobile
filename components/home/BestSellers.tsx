@@ -33,7 +33,11 @@ export function BestSellers() {
     loadData();
     syncProductsFromApi().then(() => loadData()).catch(() => {});
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'products') return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

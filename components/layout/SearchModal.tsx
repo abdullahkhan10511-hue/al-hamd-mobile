@@ -125,7 +125,18 @@ export function SearchModal() {
 
   useEffect(() => {
     loadData();
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'products') return;
+      const prods = getProducts();
+      const filtered = prods.filter(
+        (p) =>
+          (p as any).status !== 'archived' &&
+          (p as any).status !== 'inactive' &&
+          (p as any).isActive !== false
+      );
+      setProductsList(filtered);
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

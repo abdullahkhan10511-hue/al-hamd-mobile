@@ -33,10 +33,27 @@ export default function BrandsPage() {
     }
   };
 
+  const refreshFromCache = () => {
+    const activeBrands = getActiveBrands();
+    setBrands(activeBrands.filter((b) => b.status === 'active'));
+    const activeProds = getProducts().filter(
+      (p) =>
+        (p as any).status !== 'archived' &&
+        (p as any).status !== 'inactive' &&
+        (p as any).isActive !== false
+    );
+    setProducts(activeProds);
+  };
+
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const BRAND_KEYS = ['brands', 'products'];
+      if (key && !BRAND_KEYS.includes(key)) return;
+      refreshFromCache();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

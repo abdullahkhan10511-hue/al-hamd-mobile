@@ -21,7 +21,11 @@ export function ShopLocationCard({ className = '', variant = 'card' }: ShopLocat
   useEffect(() => {
     loadLocation();
 
-    const handleUpdate = () => loadLocation();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'shop_locations') return;
+      loadLocation();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

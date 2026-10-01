@@ -86,7 +86,13 @@ export function Header() {
       setCategories(deduplicateCategoriesById(getActiveCategories()));
     }).catch(() => {});
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      // Header cares about nav, categories, settings, locations, pages — not product stock or order events
+      const HEADER_KEYS = ['categories', 'navigation', 'store_settings', 'shop_locations', 'announcements', 'pages'];
+      if (key && !HEADER_KEYS.includes(key)) return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

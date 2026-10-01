@@ -24,8 +24,8 @@ export default function BrandPage() {
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (showSpinner = true) => {
+    if (showSpinner) setIsLoading(true);
     try {
       // 1. Fetch fresh brands from API or local fallback
       const activeBrands = await syncBrandsFromApi().catch(() => getActiveBrands());
@@ -87,13 +87,18 @@ export default function BrandPage() {
 
       setBrandProducts(prods);
     } finally {
-      setIsLoading(false);
+      if (showSpinner) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-    const handleUpdate = () => loadData();
+    loadData(true);
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const BRAND_KEYS = ['brands', 'products'];
+      if (key && !BRAND_KEYS.includes(key)) return;
+      loadData(false);
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [slug]);

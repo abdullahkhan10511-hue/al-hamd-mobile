@@ -64,7 +64,7 @@ export function getCategories(): Category[] {
   }
 
   if (modified) {
-    persistCollection(COLLECTION_KEY, list);
+    setLocal(COLLECTION_KEY, list, true);
   }
 
   if (typeof window !== 'undefined' && !hasSyncedCategoriesFromApi) {
@@ -87,13 +87,12 @@ export async function syncCategoriesFromApi(): Promise<Category[]> {
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.categories)) {
-        const uniqueCategories = deduplicateCategoriesById<Category>(data.categories);
-        await persistCollection(COLLECTION_KEY, uniqueCategories);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: uniqueCategories },
-          })
+        const deletedSlugs = getDeletedCategorySlugs();
+        const filtered = data.categories.filter(
+          (c: any) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
         );
+        const uniqueCategories = deduplicateCategoriesById<Category>(filtered);
+        await persistCollection(COLLECTION_KEY, uniqueCategories);
         hasSyncedCategoriesFromApi = true;
         return uniqueCategories;
       }

@@ -22,19 +22,21 @@ export default function CategoryPage() {
   const [sortBy, setSortBy] = useState<string>('featured');
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
 
-  const loadData = async () => {
+  const loadData = async (syncNetwork = true) => {
     let cats = deduplicateCategoriesById(getActiveCategories());
     setAllCategories(cats);
-    syncCategoriesFromApi().then(() => {
-      const fresh = deduplicateCategoriesById(getActiveCategories());
-      setAllCategories(fresh);
-      const updatedCat = fresh.find(
-        (c) =>
-          c.slug.toLowerCase() === (slug || '').toLowerCase() ||
-          c.id.toLowerCase() === (slug || '').toLowerCase()
-      );
-      if (updatedCat) setCategory(updatedCat);
-    }).catch(() => {});
+    if (syncNetwork) {
+      syncCategoriesFromApi().then(() => {
+        const fresh = deduplicateCategoriesById(getActiveCategories());
+        setAllCategories(fresh);
+        const updatedCat = fresh.find(
+          (c) =>
+            c.slug.toLowerCase() === (slug || '').toLowerCase() ||
+            c.id.toLowerCase() === (slug || '').toLowerCase()
+        );
+        if (updatedCat) setCategory(updatedCat);
+      }).catch(() => {});
+    }
 
     const currentCat = cats.find(
       (c) =>
@@ -44,7 +46,7 @@ export default function CategoryPage() {
     setCategory(currentCat || null);
 
     let prods = getProducts();
-    if (prods.length === 0) {
+    if (prods.length === 0 && syncNetwork) {
       prods = await syncProductsFromApi().catch(() => []);
     }
     const filteredProds = prods.filter(
@@ -61,28 +63,35 @@ export default function CategoryPage() {
     );
     setCategoryProducts(filteredProds);
 
-    syncProductsFromApi().then((fresh) => {
-      if (fresh && fresh.length > 0) {
-        const freshFiltered = fresh.filter(
-          (p) =>
-            (p as any).status !== 'archived' &&
-            (p as any).status !== 'inactive' &&
-            (p as any).isActive !== false &&
-            (p.categorySlug?.toLowerCase() === (slug || '').toLowerCase() ||
-              (currentCat && (
-                p.category?.toLowerCase() === currentCat.name.toLowerCase() ||
-                p.categorySlug?.toLowerCase() === currentCat.slug.toLowerCase() ||
-                (p as any).categoryId === currentCat.id
-              )))
-        );
-        setCategoryProducts(freshFiltered);
-      }
-    }).catch(() => {});
+    if (syncNetwork) {
+      syncProductsFromApi().then((fresh) => {
+        if (fresh && fresh.length > 0) {
+          const freshFiltered = fresh.filter(
+            (p) =>
+              (p as any).status !== 'archived' &&
+              (p as any).status !== 'inactive' &&
+              (p as any).isActive !== false &&
+              (p.categorySlug?.toLowerCase() === (slug || '').toLowerCase() ||
+                (currentCat && (
+                  p.category?.toLowerCase() === currentCat.name.toLowerCase() ||
+                  p.categorySlug?.toLowerCase() === currentCat.slug.toLowerCase() ||
+                  (p as any).categoryId === currentCat.id
+                )))
+          );
+          setCategoryProducts(freshFiltered);
+        }
+      }).catch(() => {});
+    }
   };
 
   useEffect(() => {
-    loadData();
-    const handleUpdate = () => loadData();
+    loadData(true);
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const CAT_KEYS = ['categories', 'products'];
+      if (key && !CAT_KEYS.includes(key)) return;
+      loadData(false);
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [slug]);

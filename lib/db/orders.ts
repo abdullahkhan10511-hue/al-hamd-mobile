@@ -380,6 +380,7 @@ export async function updateOrderStatus(
   if (typeof window !== 'undefined') {
     fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, paymentStatus }),
     }).catch(() => {});

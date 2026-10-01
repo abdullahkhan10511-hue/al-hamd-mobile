@@ -67,7 +67,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     };
     loadBrands();
 
-    const handleBrandUpdate = () => {
+    const handleBrandUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'brands') return;
       setBrandsList(getActiveBrands());
     };
     window.addEventListener('alhamd:data-updated', handleBrandUpdate);
@@ -240,12 +242,30 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       : []
   );
 
-  // Specifications - Optional array
-  const [specs, setSpecs] = useState<{ key: string; val: string }[]>(
-    initialProduct?.specifications
-      ? Object.entries(initialProduct.specifications).map(([key, val]) => ({ key, val: String(val) }))
-      : []
-  );
+  // Specifications — single plain-text field ("Material: ABS\nWarranty: 1 Year")
+  // Internal inventory fields are filtered out when initializing from legacy key-value format
+  const INTERNAL_SPEC_KEYS_FORM = new Set([
+    'inventoryLocation', 'inventory_location', 'isShopActive', 'is_shop_active',
+    'shopLowStockThreshold', 'shop_low_stock_threshold', 'inShopInventory', 'in_shop_inventory',
+    'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+    'warehouse', 'shop', 'inventory', 'createdAt', 'updatedAt', 'created_at', 'updated_at',
+  ]);
+  const [specText, setSpecText] = useState<string>(() => {
+    const rawSpecs = initialProduct?.specifications;
+    if (!rawSpecs) return '';
+    if (typeof rawSpecs === 'string') {
+      // New plain-text format — use as-is
+      return rawSpecs;
+    }
+    if (typeof rawSpecs === 'object') {
+      // Legacy key-value format — convert to text, filtering out internal keys
+      return Object.entries(rawSpecs)
+        .filter(([k]) => !INTERNAL_SPEC_KEYS_FORM.has(k))
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n');
+    }
+    return '';
+  });
 
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -548,11 +568,11 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     const matchedCat = categories.find((c) => c.slug === categorySlug);
     const categoryName = matchedCat ? matchedCat.name : (categorySlug || '');
 
-    // Convert specs array back to Record
-    const specRecord: Record<string, string> = {};
-    specs.forEach((s) => {
-      if (s.key && s.key.trim()) specRecord[s.key.trim()] = (s.val || '').trim();
-    });
+    // Specifications: send the exact text the admin entered (trimmed).
+    // Empty string = intentional clear — the repository will persist null.
+    // We always include this key in the payload so the update logic knows the admin
+    // explicitly set it (even when clearing).
+    const finalSpecText = specText.trim();
 
     const numPrice = price === '' || price === undefined || price === null ? 0 : Number(price);
     const numCompareAtPrice =
@@ -707,7 +727,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       featured,
       trending: badgeTrending,
       status,
-      specifications: specRecord,
+      specifications: finalSpecText,
     };
 
     setIsSaving(true);
@@ -1664,55 +1684,29 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             )}
           </div>
 
-          {/* Specifications Key-Values */}
+          {/* Technical Specifications — single multiline textarea */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+            <div className="border-b border-neutral-100 pb-3">
               <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight">
                 5. Technical Specifications
               </h2>
-              <button
-                type="button"
-                onClick={() => setSpecs([...specs, { key: '', val: '' }])}
-                className="text-xs font-semibold text-neutral-900 hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Row
-              </button>
+              <p className="text-[11px] text-neutral-400 mt-0.5">
+                Enter one specification per line. Example: <span className="font-mono text-neutral-500">Material: ABS</span>
+              </p>
             </div>
 
-            <div className="space-y-2 text-xs">
-              {specs.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={item.key}
-                    onChange={(e) => {
-                      const updated = [...specs];
-                      updated[idx].key = e.target.value;
-                      setSpecs(updated);
-                    }}
-                    placeholder="e.g. Driver Size"
-                    className="w-1/3 p-2 rounded-xl border border-neutral-200 bg-neutral-50 font-medium"
-                  />
-                  <input
-                    type="text"
-                    value={item.val}
-                    onChange={(e) => {
-                      const updated = [...specs];
-                      updated[idx].val = e.target.value;
-                      setSpecs(updated);
-                    }}
-                    placeholder="e.g. 40mm Beryllium"
-                    className="flex-1 p-2 rounded-xl border border-neutral-200 bg-neutral-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setSpecs(specs.filter((_, i) => i !== idx))}
-                    className="p-2 text-neutral-400 hover:text-rose-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+            <div className="text-xs">
+              <textarea
+                rows={8}
+                value={specText}
+                onChange={(e) => setSpecText(e.target.value)}
+                placeholder={`Material: ABS\nCompatibility: Android / iOS\nBattery: 210 mAh\nBluetooth Range: 50m\nWarranty: 1 Year`}
+                className="w-full p-3 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-neutral-800 focus:bg-white focus:border-neutral-400 resize-y"
+                spellCheck={false}
+              />
+              <p className="text-[11px] text-neutral-400 mt-1.5">
+                Leave blank to show no Technical Specifications on the product page.
+              </p>
             </div>
           </div>
 

@@ -84,7 +84,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadSettings();
-    const handleUpdate = () => {
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'store_settings' && key !== 'products') return;
       loadSettings();
       // Validate existing cart items against live catalog
       try {

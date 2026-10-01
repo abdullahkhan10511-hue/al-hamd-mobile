@@ -54,7 +54,12 @@ function LoginContent() {
 
   useEffect(() => {
     loadData();
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const LOGIN_KEYS = ['login_page_settings', 'login_page_media', 'store_settings'];
+      if (key && !LOGIN_KEYS.includes(key)) return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [loadData]);

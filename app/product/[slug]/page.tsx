@@ -437,7 +437,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      if (key && key !== 'products' && key !== 'reviews') return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [resolvedParams.slug]);
@@ -1140,7 +1144,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               </div>
             )}
 
-            {/* Specifications Tab - Clean key-value list with NO SKU */}
+            {/* Specifications Tab — supports plain-text (new format) and legacy key-value format.
+                Internal inventory fields are ALWAYS blocked from public display. */}
             {activeTab === 'specs' && (
               <div className="border border-neutral-200/80 rounded-2xl overflow-hidden divide-y divide-neutral-100 text-xs sm:text-sm">
                 {product.brand && (
@@ -1161,16 +1166,59 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     <span className="col-span-2 text-neutral-900 font-medium">{product.category}</span>
                   </div>
                 )}
-                {product.specifications &&
-                  Object.entries(product.specifications).map(([key, val], idx) => (
-                    <div
-                      key={key}
-                      className={`grid grid-cols-3 p-3.5 ${idx % 2 === 0 ? 'bg-neutral-50/50' : ''}`}
-                    >
-                      <span className="font-semibold text-neutral-500">{key}</span>
-                      <span className="col-span-2 text-neutral-900 font-medium">{val}</span>
-                    </div>
-                  ))}
+                {(() => {
+                  // Fields that must NEVER appear on the public product page (defense-in-depth)
+                  const BLOCKED_KEYS = new Set([
+                    'inventoryLocation', 'inventory_location',
+                    'isShopActive', 'is_shop_active',
+                    'shopLowStockThreshold', 'shop_low_stock_threshold',
+                    'inShopInventory', 'in_shop_inventory',
+                    'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+                    'warehouse', 'shop', 'inventory',
+                    'createdAt', 'updatedAt', 'created_at', 'updated_at',
+                    'id', 'slug', 'sku',
+                  ]);
+                  const specs = (product as any).specifications;
+                  if (!specs) return null;
+                  // New format: plain multiline text
+                  if (typeof specs === 'string' && specs.trim() !== '') {
+                    const lines = specs.trim().split('\n').filter((l: string) => l.trim() !== '');
+                    if (lines.length === 0) return null;
+                    return lines.map((line: string, idx: number) => {
+                      const colonIdx = line.indexOf(':');
+                      if (colonIdx > 0) {
+                        const key = line.substring(0, colonIdx).trim();
+                        const val = line.substring(colonIdx + 1).trim();
+                        if (BLOCKED_KEYS.has(key) || BLOCKED_KEYS.has(key.toLowerCase())) return null;
+                        return (
+                          <div key={`spec-${idx}`} className={`grid grid-cols-3 p-3.5 ${idx % 2 === 0 ? 'bg-neutral-50/50' : ''}`}>
+                            <span className="font-semibold text-neutral-500">{key}</span>
+                            <span className="col-span-2 text-neutral-900 font-medium">{val}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={`spec-${idx}`} className={`p-3.5 text-neutral-700 ${idx % 2 === 0 ? 'bg-neutral-50/50' : ''}`}>
+                          {line.trim()}
+                        </div>
+                      );
+                    });
+                  }
+                  // Legacy format: Record<string, any> key-value object
+                  if (typeof specs === 'object' && specs !== null) {
+                    const entries = Object.entries(specs).filter(
+                      ([key]) => !BLOCKED_KEYS.has(key) && !BLOCKED_KEYS.has(key.toLowerCase())
+                    );
+                    if (entries.length === 0) return null;
+                    return entries.map(([key, val], idx) => (
+                      <div key={key} className={`grid grid-cols-3 p-3.5 ${idx % 2 === 0 ? 'bg-neutral-50/50' : ''}`}>
+                        <span className="font-semibold text-neutral-500">{key}</span>
+                        <span className="col-span-2 text-neutral-900 font-medium">{String(val)}</span>
+                      </div>
+                    ));
+                  }
+                  return null;
+                })()}
               </div>
             )}
 

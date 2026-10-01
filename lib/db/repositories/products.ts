@@ -84,27 +84,82 @@ export function mapRowToProduct(
     ? modelImages
     : [];
 
-  const parsedSpecs = parseJsonField<Record<string, any>>(row.specifications, {});
+  // Internal-only fields that must NEVER appear in public specifications
+  const INTERNAL_SPEC_KEYS = new Set([
+    'inventoryLocation', 'inventory_location',
+    'isShopActive', 'is_shop_active',
+    'shopLowStockThreshold', 'shop_low_stock_threshold',
+    'inShopInventory', 'in_shop_inventory',
+    'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+    'warehouse', 'shop', 'inventory',
+    'createdAt', 'updatedAt', 'created_at', 'updated_at',
+  ]);
+
+  // Parse the raw specifications — may be JSON (legacy key-value) or plain text (new textarea format)
+  let parsedSpecsRaw: Record<string, any> = {};
+  let specsPlainText: string | null = null;
+  if (row.specifications) {
+    if (typeof row.specifications === 'object') {
+      // Already parsed (MySQL driver sometimes auto-parses JSON)
+      parsedSpecsRaw = row.specifications as Record<string, any>;
+    } else if (typeof row.specifications === 'string') {
+      const trimmed = (row.specifications as string).trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        // Looks like JSON
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            parsedSpecsRaw = parsed;
+          }
+        } catch {
+          // Not valid JSON — treat as plain text
+          specsPlainText = trimmed;
+        }
+      } else if (trimmed !== '') {
+        // Plain text (new textarea format)
+        specsPlainText = trimmed;
+      }
+    }
+  }
   const parsedFeatures = parseJsonField<string[]>(row.features, []);
   const parsedTags = parseJsonField<string[]>(row.tags, []);
   const parsedVariants = parseJsonField<any>(row.variants, undefined);
 
+  // Read internal inventory flags from parsedSpecsRaw if no dedicated column exists
+  // (legacy: these were once stored inside the specifications JSON column)
   const isShopActive = (row as any).is_shop_active !== undefined && (row as any).is_shop_active !== null
     ? Boolean((row as any).is_shop_active)
-    : (parsedSpecs.isShopActive !== undefined ? Boolean(parsedSpecs.isShopActive) : true);
+    : (parsedSpecsRaw.isShopActive !== undefined ? Boolean(parsedSpecsRaw.isShopActive) : true);
 
   const shopLowStockThreshold = (row as any).shop_low_stock_threshold !== undefined && (row as any).shop_low_stock_threshold !== null
     ? Number((row as any).shop_low_stock_threshold)
-    : (parsedSpecs.shopLowStockThreshold !== undefined ? Number(parsedSpecs.shopLowStockThreshold) : 5);
+    : (parsedSpecsRaw.shopLowStockThreshold !== undefined ? Number(parsedSpecsRaw.shopLowStockThreshold) : 5);
 
   const inShopInventory = (row as any).in_shop_inventory !== undefined && (row as any).in_shop_inventory !== null
     ? Boolean((row as any).in_shop_inventory)
-    : (parsedSpecs.inShopInventory !== undefined ? Boolean(parsedSpecs.inShopInventory) : true);
+    : (parsedSpecsRaw.inShopInventory !== undefined ? Boolean(parsedSpecsRaw.inShopInventory) : true);
 
   const inventoryLocation: 'WAREHOUSE' | 'SHOP' =
-    (row as any).inventory_location === 'SHOP' || parsedSpecs.inventoryLocation === 'SHOP'
+    (row as any).inventory_location === 'SHOP' || parsedSpecsRaw.inventoryLocation === 'SHOP'
       ? 'SHOP'
       : 'WAREHOUSE';
+
+  // Build a PUBLIC-SAFE specifications value:
+  // - If stored as plain text (new format), return it directly
+  // - If stored as JSON object (legacy format), strip ALL internal/inventory fields
+  // This prevents any internal data from ever reaching the public product page
+  let publicSpecsValue: Record<string, any> | string | undefined;
+  if (specsPlainText !== null) {
+    publicSpecsValue = specsPlainText;
+  } else {
+    const publicSpecs: Record<string, any> = {};
+    for (const [k, v] of Object.entries(parsedSpecsRaw)) {
+      if (!INTERNAL_SPEC_KEYS.has(k)) {
+        publicSpecs[k] = v;
+      }
+    }
+    publicSpecsValue = Object.keys(publicSpecs).length > 0 ? publicSpecs : undefined;
+  }
 
   return {
     id: row.id,
@@ -152,7 +207,9 @@ export function mapRowToProduct(
     videos: galleryVideos.length > 0 ? galleryVideos : undefined,
     bulkPricing: bulkPricing.length > 0 ? bulkPricing : undefined,
     reviews: reviews.length > 0 ? reviews : undefined,
-    specifications: Object.keys(parsedSpecs).length > 0 ? parsedSpecs : undefined,
+    // Only public-safe specs are exposed — internal inventory fields are stripped
+    // Supports both plain text (new format) and Record<string,any> (legacy JSON format)
+    specifications: publicSpecsValue,
     features: parsedFeatures.length > 0 ? parsedFeatures : undefined,
     tags: parsedTags.length > 0 ? parsedTags : undefined,
     variants: parsedVariants,
@@ -484,7 +541,12 @@ export async function insertProductToDb(
         data.trending ? 1 : 0,
         data.enableModelSelection ? 1 : 0,
         data.enableColorSelection ? 1 : 0,
-        JSON.stringify({ ...(data.specifications || {}), inventoryLocation }),
+        // Only store actual customer-facing specifications — never embed internal inventory fields
+        data.specifications && typeof data.specifications === 'string'
+          ? data.specifications
+          : (data.specifications && typeof data.specifications === 'object' && Object.keys(data.specifications).length > 0
+            ? JSON.stringify(data.specifications)
+            : null),
         data.features ? JSON.stringify(data.features) : null,
         data.tags ? JSON.stringify(data.tags) : null,
         data.variants ? JSON.stringify(data.variants) : null,
@@ -626,16 +688,59 @@ export async function updateProductInDb(
     const status = updates.status !== undefined ? updates.status : existing.status;
     const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (existing.isActive ? 1 : 0);
 
-    // Merge shop settings into specifications so it persists safely even without custom columns
-    const baseSpecs: Record<string, any> = typeof existing.specifications === 'object' && existing.specifications !== null ? { ...existing.specifications } : {};
-    if ((updates as any).isShopActive !== undefined) baseSpecs.isShopActive = (updates as any).isShopActive;
-    if ((updates as any).shopLowStockThreshold !== undefined) baseSpecs.shopLowStockThreshold = (updates as any).shopLowStockThreshold;
-    if ((updates as any).inShopInventory !== undefined) baseSpecs.inShopInventory = (updates as any).inShopInventory;
-    if ((updates as any).inventoryLocation !== undefined) baseSpecs.inventoryLocation = (updates as any).inventoryLocation;
+    // Internal inventory flags (isShopActive, shopLowStockThreshold, inShopInventory, inventoryLocation)
+    // are stored in their own columns (or read from parsedSpecsRaw for legacy support).
+    // They must NEVER be written into the specifications column — that column is exclusively
+    // for customer-facing technical specifications text.
+    //
+    // When updates.specifications is explicitly provided (even as empty string / empty object),
+    // that is the admin intentionally setting/clearing the field — respect it exactly.
+    // Do NOT fall back to the old value when the admin deliberately clears the field.
 
-    const mergedSpecs = updates.specifications !== undefined
-      ? { ...baseSpecs, ...updates.specifications }
-      : (Object.keys(baseSpecs).length > 0 ? baseSpecs : null);
+    let mergedSpecs: string | Record<string, any> | null;
+    if (updates.specifications !== undefined) {
+      // Admin explicitly set a new value (including empty = intentional clear)
+      if (typeof updates.specifications === 'string') {
+        mergedSpecs = updates.specifications.trim() !== '' ? updates.specifications.trim() : null;
+      } else if (typeof updates.specifications === 'object' && updates.specifications !== null) {
+        // Filter out any accidentally included internal fields
+        const INTERNAL_KEYS = new Set([
+          'inventoryLocation', 'inventory_location', 'isShopActive', 'is_shop_active',
+          'shopLowStockThreshold', 'shop_low_stock_threshold', 'inShopInventory', 'in_shop_inventory',
+          'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+          'warehouse', 'shop', 'inventory', 'createdAt', 'updatedAt', 'created_at', 'updated_at',
+        ]);
+        const cleanSpecs: Record<string, any> = {};
+        for (const [k, v] of Object.entries(updates.specifications)) {
+          if (!INTERNAL_KEYS.has(k)) cleanSpecs[k] = v;
+        }
+        mergedSpecs = Object.keys(cleanSpecs).length > 0 ? cleanSpecs : null;
+      } else {
+        mergedSpecs = null;
+      }
+    } else {
+      // Admin did not touch specifications — preserve the existing public-safe value
+      // But only keep the existing value if it has content (skip null/undefined/empty)
+      const existingVal = existing.specifications;
+      if (typeof existingVal === 'string' && existingVal.trim() !== '') {
+        mergedSpecs = existingVal;
+      } else if (typeof existingVal === 'object' && existingVal !== null && Object.keys(existingVal).length > 0) {
+        // Filter out internal fields from legacy format
+        const INTERNAL_KEYS = new Set([
+          'inventoryLocation', 'inventory_location', 'isShopActive', 'is_shop_active',
+          'shopLowStockThreshold', 'shop_low_stock_threshold', 'inShopInventory', 'in_shop_inventory',
+          'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+          'warehouse', 'shop', 'inventory', 'createdAt', 'updatedAt', 'created_at', 'updated_at',
+        ]);
+        const cleanSpecs: Record<string, any> = {};
+        for (const [k, v] of Object.entries(existingVal)) {
+          if (!INTERNAL_KEYS.has(k)) cleanSpecs[k] = v;
+        }
+        mergedSpecs = Object.keys(cleanSpecs).length > 0 ? cleanSpecs : null;
+      } else {
+        mergedSpecs = null;
+      }
+    }
 
     await conn.execute(
       `UPDATE products SET
@@ -676,7 +781,9 @@ export async function updateProductInDb(
         (updates.trending !== undefined ? updates.trending : existing.trending) ? 1 : 0,
         (updates.enableModelSelection !== undefined ? updates.enableModelSelection : existing.enableModelSelection) ? 1 : 0,
         (updates.enableColorSelection !== undefined ? updates.enableColorSelection : existing.enableColorSelection) ? 1 : 0,
-        mergedSpecs ? JSON.stringify(mergedSpecs) : null,
+        mergedSpecs !== null
+          ? (typeof mergedSpecs === 'string' ? mergedSpecs : JSON.stringify(mergedSpecs))
+          : null,
         updates.features !== undefined ? JSON.stringify(updates.features) : (existing.features ? JSON.stringify(existing.features) : null),
         updates.tags !== undefined ? JSON.stringify(updates.tags) : (existing.tags ? JSON.stringify(existing.tags) : null),
         updates.variants !== undefined ? JSON.stringify(updates.variants) : (existing.variants ? JSON.stringify(existing.variants) : null),

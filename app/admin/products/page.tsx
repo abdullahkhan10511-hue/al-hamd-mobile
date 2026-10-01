@@ -27,7 +27,7 @@ import { useAdminAuth } from '@/context/AdminAuthContext';
 
 export default function AdminProductsPage() {
   const { admin, isManager } = useAdminAuth();
-  const [products, setProducts] = useState(getProducts());
+  const [products, setProducts] = useState(() => getProducts());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStockStatus, setSelectedStockStatus] = useState('all');

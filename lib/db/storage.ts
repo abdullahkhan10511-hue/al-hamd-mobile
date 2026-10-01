@@ -115,8 +115,8 @@ export function setLocal<T>(key: string, value: T, silent = false): void {
 /**
  * Saves a document or full collection to Firestore with local fallback
  */
-export async function persistCollection<T>(collectionName: string, items: T[]): Promise<void> {
-  setLocal(collectionName, items);
+export async function persistCollection<T>(collectionName: string, items: T[], silent = false): Promise<void> {
+  setLocal(collectionName, items, silent);
 
   // Attempt Firestore sync only if real Firebase credentials are provided
   const hasRealFirebase =

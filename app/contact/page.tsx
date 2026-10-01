@@ -55,7 +55,12 @@ export default function ContactPage() {
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const CONTACT_KEYS = ['store_settings', 'shop_locations'];
+      if (key && !CONTACT_KEYS.includes(key)) return;
+      loadData();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

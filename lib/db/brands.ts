@@ -20,11 +20,6 @@ export async function syncBrandsFromApi(): Promise<Brand[]> {
       const data = await res.json();
       if (data.success && Array.isArray(data.brands)) {
         await persistCollection(COLLECTION_KEY, data.brands);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: data.brands },
-          })
-        );
         hasSyncedBrandsFromApi = true;
         return data.brands;
       }

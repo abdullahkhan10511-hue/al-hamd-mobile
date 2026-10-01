@@ -27,8 +27,8 @@ import { useAdminAuth } from '@/context/AdminAuthContext';
 
 export default function AdminDashboardPage() {
   const { admin, isManager, isSuperAdmin, hasPermission } = useAdminAuth();
-  const [orders, setOrders] = useState(getOrders());
-  const [products, setProducts] = useState(getProducts());
+  const [orders, setOrders] = useState(() => getOrders());
+  const [products, setProducts] = useState(() => getProducts());
 
   const canViewProducts = hasPermission('products.view');
   const canAddProducts = hasPermission('products.add');

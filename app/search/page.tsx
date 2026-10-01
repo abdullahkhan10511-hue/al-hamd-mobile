@@ -86,9 +86,27 @@ function SearchContent() {
     setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
+  const refreshFromCache = () => {
+    const prods = getProducts();
+    const all = prods.filter(
+      (p) =>
+        (p as any).status !== 'archived' &&
+        (p as any).status !== 'inactive' &&
+        (p as any).isActive !== false
+    );
+    setProductsList(all);
+    setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+  };
+
   useEffect(() => {
     loadData();
-    const handleUpdate = () => loadData();
+    const handleUpdate = (e: Event) => {
+      const key = (e as CustomEvent)?.detail?.key;
+      const SEARCH_KEYS = ['products', 'categories', 'brands'];
+      if (key && !SEARCH_KEYS.includes(key)) return;
+      refreshFromCache();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);

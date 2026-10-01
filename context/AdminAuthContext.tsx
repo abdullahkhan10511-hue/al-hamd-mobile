@@ -97,7 +97,18 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = getStaffByEmail(parsed.email);
 
         if (fresh && fresh.status !== 'inactive') {
-          setAdmin(fresh);
+          setAdmin((prev) => {
+            if (
+              prev &&
+              prev.id === fresh.id &&
+              prev.role === fresh.role &&
+              prev.status === fresh.status &&
+              prev.email === fresh.email
+            ) {
+              return prev;
+            }
+            return fresh;
+          });
           localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fresh));
           setSessionCookies(fresh);
         } else if (fresh && fresh.status === 'inactive') {
@@ -106,7 +117,18 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           clearSessionCookies();
           setAdmin(null);
         } else if (fresh) {
-          setAdmin(fresh);
+          setAdmin((prev) => {
+            if (
+              prev &&
+              prev.id === fresh.id &&
+              prev.role === fresh.role &&
+              prev.status === fresh.status &&
+              prev.email === fresh.email
+            ) {
+              return prev;
+            }
+            return fresh;
+          });
           setSessionCookies(fresh);
         }
       }
@@ -150,7 +172,15 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
 
-    const handleUpdate = () => refreshAdmin();
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const key = customEvent?.detail?.key;
+      // Only refresh admin session when staff or auth-related storage changes
+      if (key && !['admin_users', 'staff_roles', ADMIN_STORAGE_KEY, 'alhamd_active_admin'].includes(key)) {
+        return;
+      }
+      refreshAdmin();
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [refreshAdmin]);
