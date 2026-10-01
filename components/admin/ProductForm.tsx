@@ -34,6 +34,7 @@ import { createProduct, updateProduct } from '@/lib/db/products';
 import { ProductMediaItem, ProductModelVariant, ProductColorVariant } from '@/types';
 import { Brand } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
+import { resolveColorHex } from '@/lib/colorUtils';
 
 interface ProductFormProps {
   initialProduct?: any;
@@ -334,7 +335,17 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   const handleUpdateColor = (index: number, updates: Partial<ProductColorVariant>) => {
     setColors((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], ...updates };
+      const merged = { ...next[index], ...updates };
+      // Auto-resolve hex whenever the name changes
+      if ('name' in updates) {
+        const resolved = resolveColorHex(updates.name || '');
+        if (resolved) {
+          merged.hex = resolved;
+        }
+        // If not resolved, keep whatever hex was already stored (preserve existing data)
+        // but do NOT assign a random value — the UI will show "not recognised" instead.
+      }
+      next[index] = merged;
       return next;
     });
   };
@@ -676,7 +687,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             .map((c) => ({
               id: c.id,
               name: c.name.trim(),
-              hex: c.hex || '#000000',
+              hex: (c.hex && c.hex.startsWith('#') ? c.hex : null) ?? resolveColorHex(c.name.trim()) ?? '#000000',
               isActive: c.isActive !== false,
             }))
         : [],
@@ -684,7 +695,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         colors: enableColorSelection
           ? colors
               .filter((c) => c.name && c.name.trim() !== '' && c.isActive !== false)
-              .map((c) => ({ name: c.name.trim(), hex: c.hex || '#000000' }))
+              .map((c) => ({ name: c.name.trim(), hex: (c.hex && c.hex.startsWith('#') ? c.hex : null) ?? resolveColorHex(c.name.trim()) ?? '#000000' }))
           : undefined,
       },
       rating: initialProduct?.rating || 5.0,
@@ -1567,69 +1578,82 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {colors.map((col, idx) => (
-                      <div
-                        key={col.id || idx}
-                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-                          col.isActive !== false
-                            ? 'bg-neutral-50/70 border-neutral-200'
-                            : 'bg-neutral-100/50 border-neutral-200/60 opacity-60'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                          {/* Color Swatch Picker */}
-                          <div className="relative w-8 h-8 rounded-full border border-neutral-300 overflow-hidden shrink-0 shadow-2xs">
-                            <input
-                              type="color"
-                              value={col.hex || '#000000'}
-                              onChange={(e) => handleUpdateColor(idx, { hex: e.target.value })}
-                              className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer border-none bg-transparent"
-                              title="Pick Color Swatch"
-                            />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <input
-                              type="text"
-                              value={col.name}
-                              onChange={(e) => handleUpdateColor(idx, { name: e.target.value })}
-                              placeholder="Color Name (e.g. Space Black)"
-                              className="w-full p-1.5 rounded-lg border border-neutral-200 bg-white text-xs font-semibold text-neutral-900"
-                            />
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="text-[10px] text-neutral-400 font-mono">Hex:</span>
+                    {colors.map((col, idx) => {
+                      const resolvedHex = col.hex && col.hex.startsWith('#') ? col.hex : resolveColorHex(col.name);
+                      const nameIsRecognised = !col.name.trim() || resolvedHex !== null;
+                      return (
+                        <div
+                          key={col.id || idx}
+                          className={`p-3.5 rounded-2xl border transition-all ${
+                            col.isActive !== false
+                              ? 'bg-neutral-50/70 border-neutral-200'
+                              : 'bg-neutral-100/50 border-neutral-200/60 opacity-60'
+                          }`}
+                        >
+                          {/* Color Name Input */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <label className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide block mb-0.5">
+                                Color Name
+                              </label>
                               <input
                                 type="text"
-                                value={col.hex || ''}
-                                onChange={(e) => handleUpdateColor(idx, { hex: e.target.value })}
-                                placeholder="#000000"
-                                className="w-20 p-0.5 px-1.5 rounded border border-neutral-200 bg-white font-mono text-[10px] text-neutral-600 uppercase"
+                                value={col.name}
+                                onChange={(e) => handleUpdateColor(idx, { name: e.target.value })}
+                                placeholder="e.g. Navy Blue, Black, Rose Gold"
+                                className={`w-full p-1.5 rounded-lg border text-xs font-semibold text-neutral-900 bg-white transition-colors ${
+                                  col.name.trim() && !nameIsRecognised
+                                    ? 'border-rose-300 ring-1 ring-rose-200'
+                                    : 'border-neutral-200'
+                                }`}
                               />
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <label className="flex items-center gap-1 text-[11px] text-neutral-600 font-medium cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={col.isActive !== false}
-                              onChange={(e) => handleUpdateColor(idx, { isActive: e.target.checked })}
-                              className="rounded border-neutral-300 text-neutral-950 focus:ring-neutral-950"
-                            />
-                            <span>Active</span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveColor(idx)}
-                            className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
-                            title="Remove Color"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Live Preview */}
+                          {col.name.trim() ? (
+                            nameIsRecognised && resolvedHex ? (
+                              <div className="flex items-center gap-2 bg-white border border-neutral-100 rounded-xl px-2.5 py-1.5 mb-2">
+                                <span
+                                  className="w-5 h-5 rounded-full border border-neutral-300 shadow-2xs shrink-0"
+                                  style={{ backgroundColor: resolvedHex }}
+                                />
+                                <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-wide">{resolvedHex}</span>
+                                <span className="text-[10px] text-emerald-600 font-semibold ml-auto">✓ Recognised</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-100 rounded-xl px-2.5 py-1.5 mb-2">
+                                <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                                <span className="text-[10px] text-rose-600 font-medium">Color not recognised — check the name</span>
+                              </div>
+                            )
+                          ) : (
+                            <div className="h-7 mb-2" />
+                          )}
+
+                          {/* Active toggle + Remove */}
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 font-medium cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={col.isActive !== false}
+                                onChange={(e) => handleUpdateColor(idx, { isActive: e.target.checked })}
+                                className="rounded border-neutral-300 text-neutral-950 focus:ring-neutral-950"
+                              />
+                              <span>Active</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveColor(idx)}
+                              className="text-neutral-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
+                              title="Remove Color"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
