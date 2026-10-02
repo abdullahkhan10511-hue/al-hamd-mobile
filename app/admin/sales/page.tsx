@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Order } from '@/types/admin';
 import { Product } from '@/types';
-import { getOrders } from '@/lib/db/orders';
+import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { getProducts } from '@/lib/db/products';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 import { formatPrice } from '@/lib/utils';
 import {
   TrendingUp,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminSalesPage() {
+  const { admin } = useAdminAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [startDate, setStartDate] = useState('');
@@ -33,11 +35,16 @@ export default function AdminSalesPage() {
 
   useEffect(() => {
     loadData();
+    syncOrdersFromApi(admin?.email).then((synced) => {
+      if (synced && synced.length > 0) {
+        setOrders(synced);
+      }
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [admin?.email]);
 
   // Filter orders by date range
   const filteredOrders = useMemo(() => {

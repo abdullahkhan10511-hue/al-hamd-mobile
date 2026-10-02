@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Product } from '@/types';
 import { Order, Customer } from '@/types/admin';
 import { getProducts } from '@/lib/db/products';
-import { getOrders } from '@/lib/db/orders';
+import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { createPosSale } from '@/lib/db/pos';
 import { getCustomers } from '@/lib/db/customers';
 import { getEnabledPaymentMethods } from '@/lib/db/paymentMethods';
 import { useAdminAuth } from '@/context/AdminAuthContext';
+import { getAdminAuthHeaders } from '@/lib/db/staff';
 import { formatPrice } from '@/lib/utils';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
@@ -215,8 +216,13 @@ export default function ShopCounterPosPage() {
     setProducts(freshProducts);
     validateAndCleanCart(freshProducts);
     setOrders(getOrders());
+    syncOrdersFromApi(admin?.email).then((synced) => {
+      if (synced && synced.length > 0) {
+        setOrders(synced);
+      }
+    }).catch(() => {});
     getCustomers().then((c) => setCustomers(c)).catch(() => {});
-  }, [validateAndCleanCart]);
+  }, [validateAndCleanCart, admin?.email]);
 
   // Hydrate cart from storage once mounted and validate against live catalog
   useEffect(() => {
@@ -784,7 +790,11 @@ export default function ShopCounterPosPage() {
     try {
       const response = await fetch('/api/admin/pos/void', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(admin?.email),
+        },
         body: JSON.stringify({
           orderId: voidModalOrder.id,
           reason: voidReason.trim(),

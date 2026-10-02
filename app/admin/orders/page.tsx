@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Order, OrderStatus, PaymentStatus, getOrderType } from '@/types/admin';
 import { getOrders, filterAndSortOrders } from '@/lib/db/orders';
+import { persistCollection } from '@/lib/db/storage';
+import { getAdminAuthHeaders } from '@/lib/db/staff';
 import InvoiceModal from '@/components/admin/InvoiceModal';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
 import { useAdminAuth } from '@/context/AdminAuthContext';
@@ -30,8 +32,8 @@ import {
 } from 'lucide-react';
 
 export default function AdminOrdersPage() {
-  const { isManager } = useAdminAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const { admin, isManager } = useAdminAuth();
+  const [orders, setOrders] = useState<Order[]>(() => getOrders());
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -41,21 +43,48 @@ export default function AdminOrdersPage() {
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
   const [selectedPosOrder, setSelectedPosOrder] = useState<Order | null>(null);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  const loadData = () => {
-    const list = getOrders();
-    setOrders(list);
-  };
+  const fetchOrders = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/orders', {
+        headers: getAdminAuthHeaders(admin?.email),
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.orders)) {
+        setOrders(data.orders);
+        await persistCollection('orders', data.orders, true);
+      } else {
+        setOrders(getOrders());
+        if (data.error) {
+          console.warn('Orders fetch warning:', data.error);
+        }
+      }
+    } catch (err) {
+      console.warn('Network error fetching orders:', err);
+      setOrders(getOrders());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [admin?.email]);
 
   useEffect(() => {
-    loadData();
+    // 1. Initial render from cache to eliminate layout shift
+    setOrders(getOrders());
+    // 2. Authoritative server sync from production database
+    fetchOrders();
 
-    const handleUpdate = () => loadData();
+    const handleUpdate = () => {
+      setOrders(getOrders());
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [fetchOrders]);
 
   useEffect(() => {
     const filtered = filterAndSortOrders(orders, {
@@ -90,13 +119,10 @@ export default function AdminOrdersPage() {
     setIsUpdating(orderId);
 
     try {
-      // CRITICAL FIX: Must include credentials so the admin session cookie is sent.
-      // Without credentials: 'include' the API returns 401 Unauthorized and the
-      // database is never updated (the old code silently swallowed this error).
       const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminAuthHeaders(admin?.email),
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -112,9 +138,11 @@ export default function AdminOrdersPage() {
         showToast('Order status updated successfully.');
         // Re-sync from server response to ensure consistency
         if (data.order) {
-          setOrders((prev) =>
-            prev.map((o) => (o.id === orderId ? { ...o, ...data.order, id: o.id } : o))
-          );
+          setOrders((prev) => {
+            const next = prev.map((o) => (o.id === orderId ? { ...o, ...data.order, id: o.id } : o));
+            persistCollection('orders', next, true).catch(() => {});
+            return next;
+          });
         }
       }
     } catch (err: any) {
@@ -208,8 +236,19 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        {!isManager && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={fetchOrders}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60 shadow-xs"
+            title="Fetch latest orders from production database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Syncing...' : 'Refresh Orders'}</span>
+          </button>
+
+          {!isManager && (
             <Link
               href="/admin/invoices"
               className="inline-flex items-center gap-2 px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-xl text-xs font-semibold transition-colors border border-neutral-200"
@@ -217,8 +256,8 @@ export default function AdminOrdersPage() {
               <Receipt className="w-4 h-4" />
               Invoices Archive
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Filter and Search Bar */}

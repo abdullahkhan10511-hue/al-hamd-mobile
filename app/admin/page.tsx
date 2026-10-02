@@ -18,7 +18,7 @@ import {
   Printer,
   Layers,
 } from 'lucide-react';
-import { getOrders } from '@/lib/db/orders';
+import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { getProducts, getLowStockProducts, getOutOfStockProducts } from '@/lib/db/products';
 import { subscribeToKey } from '@/lib/db/storage';
 import { formatPrice } from '@/lib/utils';
@@ -39,13 +39,14 @@ export default function AdminDashboardPage() {
   const canViewCategories = hasPermission('categories.view');
 
   useEffect(() => {
+    syncOrdersFromApi(admin?.email).catch(() => {});
     const unsubOrders = subscribeToKey('orders', (data: Order[]) => setOrders(data));
     const unsubProducts = subscribeToKey('products', (data: any) => setProducts(data));
     return () => {
       unsubOrders();
       unsubProducts();
     };
-  }, []);
+  }, [admin?.email]);
 
   // Compute metrics
   const totalSales = orders.reduce((sum, o) => sum + o.total, 0);

@@ -23,7 +23,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Order, PaymentStatus } from '@/types/admin';
-import { getOrders, verifyPayment, rejectPayment } from '@/lib/db/orders';
+import { getOrders, syncOrdersFromApi, verifyPayment, rejectPayment } from '@/lib/db/orders';
 import { formatPrice } from '@/lib/utils';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import InvoiceModal from '@/components/admin/InvoiceModal';
@@ -55,7 +55,16 @@ export default function AdminPaymentVerificationPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    syncOrdersFromApi(adminEmail).then((synced) => {
+      if (synced && synced.length > 0) {
+        setOrders(synced);
+      }
+    }).catch(() => {});
+
+    const handleUpdate = () => loadData();
+    window.addEventListener('alhamd:data-updated', handleUpdate);
+    return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
+  }, [adminEmail]);
 
   const triggerNotice = (msg: string) => {
     setFeedbackNotice(msg);

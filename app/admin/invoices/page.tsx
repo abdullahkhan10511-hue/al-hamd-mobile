@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Order } from '@/types/admin';
-import { getOrders } from '@/lib/db/orders';
+import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 import InvoiceModal from '@/components/admin/InvoiceModal';
 import {
   FileText,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminInvoicesPage() {
+  const { admin } = useAdminAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -29,11 +31,16 @@ export default function AdminInvoicesPage() {
 
   useEffect(() => {
     loadData();
+    syncOrdersFromApi(admin?.email).then((synced) => {
+      if (synced && synced.length > 0) {
+        setOrders(synced);
+      }
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [admin?.email]);
 
   const filtered = orders.filter((o) => {
     if (!searchQuery.trim()) return true;

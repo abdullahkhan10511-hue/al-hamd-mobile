@@ -681,6 +681,10 @@ export async function voidOrderInDb(
       throw new Error(`Order #${id} not found.`);
     }
 
+    if (existing.status === 'Cancelled') {
+      throw new Error(`Order #${id} has already been cancelled / voided.`);
+    }
+
     await conn.execute(
       `UPDATE orders SET
         status = 'Cancelled',

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Order, OrderStatus, PaymentStatus, getOrderType } from '@/types/admin';
-import { getOrderById, updateOrderStatus, verifyPayment, rejectPayment } from '@/lib/db/orders';
+import { getOrderById, updateOrderStatus, verifyPayment, rejectPayment, fetchOrderByIdFromApi } from '@/lib/db/orders';
 import { formatPrice } from '@/lib/utils';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import InvoiceModal from '@/components/admin/InvoiceModal';
@@ -30,6 +30,7 @@ import {
   Building2,
   Store,
   Globe,
+  Loader2,
 } from 'lucide-react';
 
 export default function AdminOrderDetailPage() {
@@ -40,6 +41,7 @@ export default function AdminOrderDetailPage() {
   const adminEmail = admin?.email || 'admin@alhamd.com';
 
   const [order, setOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState<OrderStatus>('Pending');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Pending');
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
@@ -52,27 +54,43 @@ export default function AdminOrderDetailPage() {
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
-  const reloadOrder = () => {
-    if (orderId) {
-      const found = getOrderById(orderId);
-      if (found) {
-        setOrder(found);
-        setStatus(found.status);
-        setPaymentStatus(found.paymentStatus);
-      }
+  const reloadOrder = async () => {
+    if (!orderId) return;
+    const found = getOrderById(orderId);
+    if (found) {
+      setOrder(found);
+      setStatus(found.status);
+      setPaymentStatus(found.paymentStatus);
+      setIsLoading(false);
     }
+    const remote = await fetchOrderByIdFromApi(orderId, admin?.email);
+    if (remote) {
+      setOrder(remote);
+      setStatus(remote.status);
+      setPaymentStatus(remote.paymentStatus);
+    }
+    setIsLoading(false);
   };
 
   useEffect(() => {
     reloadOrder();
-  }, [orderId]);
+  }, [orderId, admin?.email]);
+
+  if (isLoading && !order) {
+    return (
+      <div className="p-16 flex flex-col items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-neutral-400 animate-spin mb-3" />
+        <p className="text-sm font-medium text-neutral-600">Loading order #{orderId}...</p>
+      </div>
+    );
+  }
 
   if (!order) {
     return (
       <div className="p-12 text-center">
         <AlertCircle className="w-10 h-10 text-neutral-400 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-neutral-900">Order Not Found</h2>
-        <p className="text-xs text-neutral-500 mt-1 mb-4">The order ID #{orderId} was not found.</p>
+        <p className="text-xs text-neutral-500 mt-1 mb-4">The order ID #{orderId} was not found in production records.</p>
         <Link
           href="/admin/orders"
           className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold"

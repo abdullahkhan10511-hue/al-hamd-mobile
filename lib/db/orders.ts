@@ -9,8 +9,38 @@ import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import { allowDevMockFallback } from '../env';
+import { getAdminAuthHeaders } from './staff';
 
 const COLLECTION_KEY = 'orders';
+
+let isSyncingOrders = false;
+
+export async function syncOrdersFromApi(adminEmail?: string): Promise<Order[]> {
+  if (typeof window === 'undefined') return [];
+  if (isSyncingOrders) {
+    return getOrders();
+  }
+  isSyncingOrders = true;
+  try {
+    const res = await fetch('/api/orders', {
+      headers: getAdminAuthHeaders(adminEmail),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.orders)) {
+        await persistCollection(COLLECTION_KEY, data.orders);
+        return data.orders;
+      }
+    }
+  } catch (err) {
+    console.warn('API error syncing orders:', err);
+  } finally {
+    isSyncingOrders = false;
+  }
+  return getOrders();
+}
 
 export function getOrders(): Order[] {
   const fallback = allowDevMockFallback() ? seedOrders : [];
@@ -354,6 +384,35 @@ export async function createOrder(
   return newOrder;
 }
 
+export async function fetchOrderByIdFromApi(id: string, adminEmail?: string): Promise<Order | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
+      headers: getAdminAuthHeaders(adminEmail),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.order) {
+        const currentOrders = getOrders();
+        const idx = currentOrders.findIndex((o) => o.id === id);
+        let updated: Order[];
+        if (idx >= 0) {
+          updated = currentOrders.map((o) => (o.id === id ? data.order : o));
+        } else {
+          updated = [data.order, ...currentOrders];
+        }
+        await persistCollection(COLLECTION_KEY, updated, true);
+        return data.order;
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching order by ID from API:', err);
+  }
+  return null;
+}
+
 export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
@@ -381,7 +440,10 @@ export async function updateOrderStatus(
     fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
       body: JSON.stringify({ status, paymentStatus }),
     }).catch(() => {});
   }
@@ -437,7 +499,11 @@ export async function verifyPayment(
   if (typeof window !== 'undefined') {
     fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
       body: JSON.stringify({ paymentStatus: newPaymentStatus, note }),
     }).catch(() => {});
   }
@@ -486,6 +552,18 @@ export async function rejectPayment(
   };
 
   await persistCollection(COLLECTION_KEY, orders);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
+      body: JSON.stringify({ paymentStatus: newPaymentStatus, note }),
+    }).catch(() => {});
+  }
 
   // Requirement 23: Payment Audit Log
   await logActivity({
