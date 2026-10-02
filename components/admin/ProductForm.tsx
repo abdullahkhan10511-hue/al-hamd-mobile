@@ -254,7 +254,22 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     const rawSpecs = initialProduct?.specifications;
     if (!rawSpecs) return '';
     if (typeof rawSpecs === 'string') {
-      // New plain-text format — use as-is
+      const trimmed = rawSpecs.trim();
+      // Handle edge cases where rawSpecs might be stored as a serialized JSON string or JSON object string
+      if ((trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed === 'string') return parsed;
+          if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+            return Object.entries(parsed)
+              .filter(([k]) => !INTERNAL_SPEC_KEYS_FORM.has(k))
+              .map(([k, v]) => `${k}: ${v}`)
+              .join('\n');
+          }
+        } catch {
+          // not JSON, use rawSpecs as-is
+        }
+      }
       return rawSpecs;
     }
     if (typeof rawSpecs === 'object') {
@@ -568,11 +583,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     const matchedCat = categories.find((c) => c.slug === categorySlug);
     const categoryName = matchedCat ? matchedCat.name : (categorySlug || '');
 
-    // Specifications: send the exact text the admin entered (trimmed).
-    // Empty string = intentional clear — the repository will persist null.
-    // We always include this key in the payload so the update logic knows the admin
-    // explicitly set it (even when clearing).
-    const finalSpecText = specText.trim();
+    // Specifications: send the exact text the admin entered.
+    // If empty or whitespace only, send empty string "" to intentionally clear specifications.
+    // Preserves line breaks, punctuation, spaces, and Urdu/English characters.
+    const finalSpecText = specText.trim() === '' ? '' : specText;
 
     const numPrice = price === '' || price === undefined || price === null ? 0 : Number(price);
     const numCompareAtPrice =

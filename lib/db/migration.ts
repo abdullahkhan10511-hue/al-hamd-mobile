@@ -8,6 +8,7 @@ import { defaultBillSettings } from './billSettings';
 import { DEFAULT_LOGIN_PAGE_MEDIA, DEFAULT_LOGIN_PAGE_SETTINGS } from './loginPage';
 import { seedHomepageVideos } from './homepageVideos';
 import { RowDataPacket } from 'mysql2/promise';
+import { serializeSpecifications } from './repositories/products';
 
 export interface MigrationEntityStat {
   entity: string;
@@ -291,7 +292,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
           p.trending ? 1 : 0,
           p.enableModelSelection ? 1 : 0,
           p.enableColorSelection ? 1 : 0,
-          p.specifications ? JSON.stringify(p.specifications) : null,
+          serializeSpecifications(p.specifications),
           p.features ? JSON.stringify(p.features) : null,
           p.tags ? JSON.stringify(p.tags) : null,
           p.variants ? JSON.stringify(p.variants) : null,

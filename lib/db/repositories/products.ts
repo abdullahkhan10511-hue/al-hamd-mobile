@@ -57,6 +57,157 @@ function parseJsonField<T>(field: any, fallback: T): T {
   }
 }
 
+/**
+ * Internal-only fields that must NEVER appear in public specifications
+ * (legacy fields that were once stored inside the specifications column).
+ */
+export const INTERNAL_SPEC_KEYS = new Set([
+  'inventoryLocation', 'inventory_location',
+  'isShopActive', 'is_shop_active',
+  'shopLowStockThreshold', 'shop_low_stock_threshold',
+  'inShopInventory', 'in_shop_inventory',
+  'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
+  'warehouse', 'shop', 'inventory',
+  'createdAt', 'updatedAt', 'created_at', 'updated_at',
+]);
+
+/**
+ * Serializes customer-facing specifications into a valid JSON string
+ * to strictly satisfy the MySQL CHECK constraint: json_valid(specifications).
+ *
+ * Rules:
+ * 1. Multiline text string:
+ *    - Preserves all line breaks, punctuation, spaces, Urdu/English characters, special characters.
+ *    - Encoded via JSON.stringify(text).
+ *    - If empty string or whitespace-only: returns JSON.stringify("") -> '""',
+ *      which is valid JSON representing an empty value in MySQL.
+ * 2. Object (legacy format):
+ *    - Strips internal inventory fields.
+ *    - Encoded via JSON.stringify(cleanObject).
+ *    - If empty object: returns JSON.stringify("") -> '""'.
+ * 3. Null / undefined: returns JSON.stringify("") -> '""'.
+ */
+export function serializeSpecifications(specs: any): string {
+  if (specs === null || specs === undefined) {
+    return JSON.stringify('');
+  }
+
+  if (typeof specs === 'string') {
+    if (specs.trim() === '') {
+      return JSON.stringify('');
+    }
+
+    const trimmed = specs.trim();
+
+    // Check if the string is already a JSON-serialized string (e.g. from an API or DB read)
+    // Avoid double-encoding (e.g. "\"\"text\"\"")
+    if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'string') {
+          return JSON.stringify(parsed);
+        }
+      } catch {
+        // Not a JSON string (e.g. text that happened to start and end with quotes)
+      }
+    }
+
+    // Check if specs is a JSON-encoded object string (e.g. '{"Display":"6.7 inch"}')
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const cleanSpecs: Record<string, any> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!INTERNAL_SPEC_KEYS.has(k)) {
+              cleanSpecs[k] = v;
+            }
+          }
+          return Object.keys(cleanSpecs).length > 0 ? JSON.stringify(cleanSpecs) : JSON.stringify('');
+        }
+      } catch {
+        // Not a JSON object string
+      }
+    }
+
+    // Normal multiline text: serialize to valid JSON string preserving newlines, spaces, Urdu, etc.
+    return JSON.stringify(specs);
+  }
+
+  if (typeof specs === 'object' && !Array.isArray(specs)) {
+    const cleanSpecs: Record<string, any> = {};
+    for (const [k, v] of Object.entries(specs)) {
+      if (!INTERNAL_SPEC_KEYS.has(k)) {
+        cleanSpecs[k] = v;
+      }
+    }
+    return Object.keys(cleanSpecs).length > 0 ? JSON.stringify(cleanSpecs) : JSON.stringify('');
+  }
+
+  return JSON.stringify('');
+}
+
+/**
+ * Deserializes specifications from raw database value.
+ *
+ * Handles:
+ * 1. JSON string (new format): parses to plain multiline string.
+ * 2. JSON object (legacy format): returns clean Record<string, any> and extracts legacy internal fields.
+ * 3. Plain text string (legacy unquoted text): returns text directly without crashing.
+ * 4. Empty value / null / '""' / '{}': returns undefined for publicSpecs.
+ */
+export function deserializeSpecifications(
+  raw: any
+): { publicSpecs: Record<string, any> | string | undefined; legacyInternalFields: Record<string, any> } {
+  const legacyInternalFields: Record<string, any> = {};
+
+  if (raw === null || raw === undefined) {
+    return { publicSpecs: undefined, legacyInternalFields };
+  }
+
+  let parsed: any = raw;
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed === '' || trimmed === '""' || trimmed === 'null' || trimmed === '{}') {
+      return { publicSpecs: undefined, legacyInternalFields };
+    }
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // Legacy value was stored as unquoted plain text — keep as plain text safely
+      parsed = raw;
+    }
+  }
+
+  // If parsed value is a string (e.g. from JSON.parse of JSON string or unquoted text fallback)
+  if (typeof parsed === 'string') {
+    const trimmed = parsed.trim();
+    return {
+      publicSpecs: trimmed !== '' ? parsed : undefined,
+      legacyInternalFields,
+    };
+  }
+
+  // If parsed value is an object (legacy key-value JSON)
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    const publicSpecs: Record<string, any> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (INTERNAL_SPEC_KEYS.has(k)) {
+        legacyInternalFields[k] = v;
+      } else {
+        publicSpecs[k] = v;
+      }
+    }
+    return {
+      publicSpecs: Object.keys(publicSpecs).length > 0 ? publicSpecs : undefined,
+      legacyInternalFields,
+    };
+  }
+
+  return { publicSpecs: undefined, legacyInternalFields };
+}
+
 export function mapRowToProduct(
   row: ProductRow,
   models: ProductModelVariant[] = [],
@@ -84,82 +235,34 @@ export function mapRowToProduct(
     ? modelImages
     : [];
 
-  // Internal-only fields that must NEVER appear in public specifications
-  const INTERNAL_SPEC_KEYS = new Set([
-    'inventoryLocation', 'inventory_location',
-    'isShopActive', 'is_shop_active',
-    'shopLowStockThreshold', 'shop_low_stock_threshold',
-    'inShopInventory', 'in_shop_inventory',
-    'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
-    'warehouse', 'shop', 'inventory',
-    'createdAt', 'updatedAt', 'created_at', 'updated_at',
-  ]);
+  // Parse specifications safely using deserializeSpecifications:
+  // - JSON string (new format) -> plain multiline text
+  // - JSON object (legacy format) -> Record<string, any> with internal keys stripped
+  // - Unquoted text (legacy fallback) -> plain text without crashing
+  const { publicSpecs: publicSpecsValue, legacyInternalFields } = deserializeSpecifications(row.specifications);
 
-  // Parse the raw specifications — may be JSON (legacy key-value) or plain text (new textarea format)
-  let parsedSpecsRaw: Record<string, any> = {};
-  let specsPlainText: string | null = null;
-  if (row.specifications) {
-    if (typeof row.specifications === 'object') {
-      // Already parsed (MySQL driver sometimes auto-parses JSON)
-      parsedSpecsRaw = row.specifications as Record<string, any>;
-    } else if (typeof row.specifications === 'string') {
-      const trimmed = (row.specifications as string).trim();
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        // Looks like JSON
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            parsedSpecsRaw = parsed;
-          }
-        } catch {
-          // Not valid JSON — treat as plain text
-          specsPlainText = trimmed;
-        }
-      } else if (trimmed !== '') {
-        // Plain text (new textarea format)
-        specsPlainText = trimmed;
-      }
-    }
-  }
   const parsedFeatures = parseJsonField<string[]>(row.features, []);
   const parsedTags = parseJsonField<string[]>(row.tags, []);
   const parsedVariants = parseJsonField<any>(row.variants, undefined);
 
-  // Read internal inventory flags from parsedSpecsRaw if no dedicated column exists
+  // Read internal inventory flags from legacyInternalFields if no dedicated column exists
   // (legacy: these were once stored inside the specifications JSON column)
   const isShopActive = (row as any).is_shop_active !== undefined && (row as any).is_shop_active !== null
     ? Boolean((row as any).is_shop_active)
-    : (parsedSpecsRaw.isShopActive !== undefined ? Boolean(parsedSpecsRaw.isShopActive) : true);
+    : (legacyInternalFields.isShopActive !== undefined ? Boolean(legacyInternalFields.isShopActive) : true);
 
   const shopLowStockThreshold = (row as any).shop_low_stock_threshold !== undefined && (row as any).shop_low_stock_threshold !== null
     ? Number((row as any).shop_low_stock_threshold)
-    : (parsedSpecsRaw.shopLowStockThreshold !== undefined ? Number(parsedSpecsRaw.shopLowStockThreshold) : 5);
+    : (legacyInternalFields.shopLowStockThreshold !== undefined ? Number(legacyInternalFields.shopLowStockThreshold) : 5);
 
   const inShopInventory = (row as any).in_shop_inventory !== undefined && (row as any).in_shop_inventory !== null
     ? Boolean((row as any).in_shop_inventory)
-    : (parsedSpecsRaw.inShopInventory !== undefined ? Boolean(parsedSpecsRaw.inShopInventory) : true);
+    : (legacyInternalFields.inShopInventory !== undefined ? Boolean(legacyInternalFields.inShopInventory) : true);
 
   const inventoryLocation: 'WAREHOUSE' | 'SHOP' =
-    (row as any).inventory_location === 'SHOP' || parsedSpecsRaw.inventoryLocation === 'SHOP'
+    (row as any).inventory_location === 'SHOP' || legacyInternalFields.inventoryLocation === 'SHOP'
       ? 'SHOP'
       : 'WAREHOUSE';
-
-  // Build a PUBLIC-SAFE specifications value:
-  // - If stored as plain text (new format), return it directly
-  // - If stored as JSON object (legacy format), strip ALL internal/inventory fields
-  // This prevents any internal data from ever reaching the public product page
-  let publicSpecsValue: Record<string, any> | string | undefined;
-  if (specsPlainText !== null) {
-    publicSpecsValue = specsPlainText;
-  } else {
-    const publicSpecs: Record<string, any> = {};
-    for (const [k, v] of Object.entries(parsedSpecsRaw)) {
-      if (!INTERNAL_SPEC_KEYS.has(k)) {
-        publicSpecs[k] = v;
-      }
-    }
-    publicSpecsValue = Object.keys(publicSpecs).length > 0 ? publicSpecs : undefined;
-  }
 
   return {
     id: row.id,
@@ -541,12 +644,8 @@ export async function insertProductToDb(
         data.trending ? 1 : 0,
         data.enableModelSelection ? 1 : 0,
         data.enableColorSelection ? 1 : 0,
-        // Only store actual customer-facing specifications — never embed internal inventory fields
-        data.specifications && typeof data.specifications === 'string'
-          ? data.specifications
-          : (data.specifications && typeof data.specifications === 'object' && Object.keys(data.specifications).length > 0
-            ? JSON.stringify(data.specifications)
-            : null),
+        // Technical specifications serialized into valid JSON string to satisfy CHECK (json_valid(specifications))
+        serializeSpecifications(data.specifications),
         data.features ? JSON.stringify(data.features) : null,
         data.tags ? JSON.stringify(data.tags) : null,
         data.variants ? JSON.stringify(data.variants) : null,
@@ -688,58 +787,14 @@ export async function updateProductInDb(
     const status = updates.status !== undefined ? updates.status : existing.status;
     const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (existing.isActive ? 1 : 0);
 
-    // Internal inventory flags (isShopActive, shopLowStockThreshold, inShopInventory, inventoryLocation)
-    // are stored in their own columns (or read from parsedSpecsRaw for legacy support).
-    // They must NEVER be written into the specifications column — that column is exclusively
-    // for customer-facing technical specifications text.
-    //
-    // When updates.specifications is explicitly provided (even as empty string / empty object),
-    // that is the admin intentionally setting/clearing the field — respect it exactly.
-    // Do NOT fall back to the old value when the admin deliberately clears the field.
-
-    let mergedSpecs: string | Record<string, any> | null;
+    // Technical specifications: serialize into valid JSON string to satisfy CHECK (json_valid(specifications)).
+    // - When updates.specifications is explicitly provided (even as empty string to clear), serialize it directly.
+    // - When updates.specifications is undefined (admin updated another field), preserve existing specifications as valid JSON.
+    let mergedSpecsJson: string;
     if (updates.specifications !== undefined) {
-      // Admin explicitly set a new value (including empty = intentional clear)
-      if (typeof updates.specifications === 'string') {
-        mergedSpecs = updates.specifications.trim() !== '' ? updates.specifications.trim() : null;
-      } else if (typeof updates.specifications === 'object' && updates.specifications !== null) {
-        // Filter out any accidentally included internal fields
-        const INTERNAL_KEYS = new Set([
-          'inventoryLocation', 'inventory_location', 'isShopActive', 'is_shop_active',
-          'shopLowStockThreshold', 'shop_low_stock_threshold', 'inShopInventory', 'in_shop_inventory',
-          'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
-          'warehouse', 'shop', 'inventory', 'createdAt', 'updatedAt', 'created_at', 'updated_at',
-        ]);
-        const cleanSpecs: Record<string, any> = {};
-        for (const [k, v] of Object.entries(updates.specifications)) {
-          if (!INTERNAL_KEYS.has(k)) cleanSpecs[k] = v;
-        }
-        mergedSpecs = Object.keys(cleanSpecs).length > 0 ? cleanSpecs : null;
-      } else {
-        mergedSpecs = null;
-      }
+      mergedSpecsJson = serializeSpecifications(updates.specifications);
     } else {
-      // Admin did not touch specifications — preserve the existing public-safe value
-      // But only keep the existing value if it has content (skip null/undefined/empty)
-      const existingVal = existing.specifications;
-      if (typeof existingVal === 'string' && existingVal.trim() !== '') {
-        mergedSpecs = existingVal;
-      } else if (typeof existingVal === 'object' && existingVal !== null && Object.keys(existingVal).length > 0) {
-        // Filter out internal fields from legacy format
-        const INTERNAL_KEYS = new Set([
-          'inventoryLocation', 'inventory_location', 'isShopActive', 'is_shop_active',
-          'shopLowStockThreshold', 'shop_low_stock_threshold', 'inShopInventory', 'in_shop_inventory',
-          'stock', 'shop_stock', 'shopStock', 'warehouseStock', 'warehouse_stock',
-          'warehouse', 'shop', 'inventory', 'createdAt', 'updatedAt', 'created_at', 'updated_at',
-        ]);
-        const cleanSpecs: Record<string, any> = {};
-        for (const [k, v] of Object.entries(existingVal)) {
-          if (!INTERNAL_KEYS.has(k)) cleanSpecs[k] = v;
-        }
-        mergedSpecs = Object.keys(cleanSpecs).length > 0 ? cleanSpecs : null;
-      } else {
-        mergedSpecs = null;
-      }
+      mergedSpecsJson = serializeSpecifications(existing.specifications);
     }
 
     await conn.execute(
@@ -781,9 +836,7 @@ export async function updateProductInDb(
         (updates.trending !== undefined ? updates.trending : existing.trending) ? 1 : 0,
         (updates.enableModelSelection !== undefined ? updates.enableModelSelection : existing.enableModelSelection) ? 1 : 0,
         (updates.enableColorSelection !== undefined ? updates.enableColorSelection : existing.enableColorSelection) ? 1 : 0,
-        mergedSpecs !== null
-          ? (typeof mergedSpecs === 'string' ? mergedSpecs : JSON.stringify(mergedSpecs))
-          : null,
+        mergedSpecsJson,
         updates.features !== undefined ? JSON.stringify(updates.features) : (existing.features ? JSON.stringify(existing.features) : null),
         updates.tags !== undefined ? JSON.stringify(updates.tags) : (existing.tags ? JSON.stringify(existing.tags) : null),
         updates.variants !== undefined ? JSON.stringify(updates.variants) : (existing.variants ? JSON.stringify(existing.variants) : null),

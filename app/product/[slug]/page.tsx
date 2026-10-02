@@ -1178,8 +1178,20 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     'createdAt', 'updatedAt', 'created_at', 'updated_at',
                     'id', 'slug', 'sku',
                   ]);
-                  const specs = (product as any).specifications;
-                  if (!specs) return null;
+                  const rawSpecs = (product as any).specifications;
+                  if (!rawSpecs) return null;
+                  let specs = rawSpecs;
+                  if (typeof rawSpecs === 'string') {
+                    const trimmed = rawSpecs.trim();
+                    if ((trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+                      try {
+                        const parsed = JSON.parse(trimmed);
+                        if (parsed) specs = parsed;
+                      } catch {
+                        // ignore, keep as plain string
+                      }
+                    }
+                  }
                   // New format: plain multiline text
                   if (typeof specs === 'string' && specs.trim() !== '') {
                     const lines = specs.trim().split('\n').filter((l: string) => l.trim() !== '');
