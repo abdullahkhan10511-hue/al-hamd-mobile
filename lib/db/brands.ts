@@ -38,7 +38,8 @@ export function getBrands(): Brand[] {
     hasSyncedBrandsFromApi = true;
     syncBrandsFromApi().catch(() => {});
   }
-  return getStoredCollection(COLLECTION_KEY, fallback);
+  const list = getStoredCollection(COLLECTION_KEY, fallback);
+  return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 export function getActiveBrands(): Brand[] {
@@ -209,6 +210,57 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
     adminEmail,
     action: 'Deleted Brand',
     target: target.name,
+  });
+
+  return true;
+}
+
+export async function reorderBrands(
+  orderedIds: string[],
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  const brands = getBrands();
+  const map = new Map(brands.map((b) => [b.id, b]));
+  const reordered: Brand[] = [];
+
+  orderedIds.forEach((id, index) => {
+    const item = map.get(id) || brands.find((b) => b.slug === id);
+    if (item) {
+      reordered.push({ ...item, sortOrder: index });
+      map.delete(item.id);
+    }
+  });
+
+  // Append any remainder
+  map.forEach((item) => {
+    reordered.push({ ...item, sortOrder: reordered.length });
+  });
+
+  await persistCollection(COLLECTION_KEY, reordered);
+
+  if (typeof window !== 'undefined') {
+    try {
+      await fetch('/api/brands', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reorder', orderedIds }),
+      });
+    } catch (err: any) {
+      console.warn('API error reordering brands:', err);
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: reordered },
+      })
+    );
+  }
+
+  await logActivity({
+    adminEmail,
+    action: 'Reordered Brands',
+    target: 'Brands list',
+    details: `Reordered ${orderedIds.length} brands`,
   });
 
   return true;

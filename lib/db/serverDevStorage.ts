@@ -405,6 +405,8 @@ export async function insertDevBrand(
     logo: safeLogo || '',
     status: data.status || 'active',
     productCount: data.productCount || 0,
+    sortOrder: data.sortOrder !== undefined ? Number(data.sortOrder) : brands.length,
+    isFeatured: Boolean(data.isFeatured),
   };
 
   const updated = [newBrand, ...brands];
@@ -439,6 +441,8 @@ export async function updateDevBrand(
     ...existing,
     ...updates,
     logo: safeLogo || existing.logo,
+    sortOrder: updates.sortOrder !== undefined ? Number(updates.sortOrder) : (existing.sortOrder ?? 0),
+    isFeatured: updates.isFeatured !== undefined ? Boolean(updates.isFeatured) : Boolean(existing.isFeatured),
   };
 
   brands[index] = updatedBrand;
@@ -452,6 +456,40 @@ export async function updateDevBrand(
   }).catch(() => {});
 
   return updatedBrand;
+}
+
+export async function reorderDevBrands(
+  orderedIds: string[],
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  assertDevOnly('reorderDevBrands');
+  const brands = getDevBrands();
+  const map = new Map(brands.map((b) => [b.id, b]));
+  const reordered: Brand[] = [];
+
+  orderedIds.forEach((id, index) => {
+    const item = map.get(id) || brands.find((b) => b.slug === id);
+    if (item) {
+      reordered.push({ ...item, sortOrder: index });
+      map.delete(item.id);
+    }
+  });
+
+  // Append any remainder
+  map.forEach((item) => {
+    reordered.push({ ...item, sortOrder: reordered.length });
+  });
+
+  writeJsonFile(DEV_BRANDS_FILE, reordered);
+
+  await logActivity({
+    adminEmail,
+    action: 'Reordered Brands (Local Dev)',
+    target: 'Brands list',
+    details: `Reordered ${orderedIds.length} brands`,
+  }).catch(() => {});
+
+  return true;
 }
 
 export async function deleteDevBrand(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {

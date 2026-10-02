@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { HeroSection } from '@/components/home/HeroSection';
 import { TrustBenefitsBar } from '@/components/home/TrustBenefitsBar';
 import { ShopByCategories } from '@/components/home/ShopByCategories';
+import { ShopByBrands } from '@/components/home/ShopByBrands';
 import { NewArrivals } from '@/components/home/NewArrivals';
 import { BestSellers } from '@/components/home/BestSellers';
 import { PromoBanners } from '@/components/home/PromoBanners';
@@ -26,7 +27,7 @@ export default function HomePage() {
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
-      const HOME_KEYS = ['homepage_sections', 'store_settings'];
+      const HOME_KEYS = ['homepage_sections', 'store_settings', 'brands', 'categories'];
       if (key && !HOME_KEYS.includes(key)) return;
       loadData();
     };
@@ -42,6 +43,8 @@ export default function HomePage() {
         return <TrustBenefitsBar key="trust" />;
       case 'categories':
         return <ShopByCategories key="categories" />;
+      case 'brands':
+        return <ShopByBrands key="brands" />;
       case 'new-arrivals':
         return <NewArrivals key="new-arrivals" />;
       case 'best-sellers':
@@ -65,6 +68,7 @@ export default function HomePage() {
             <HeroSection />
             <TrustBenefitsBar />
             <ShopByCategories />
+            <ShopByBrands />
             <NewArrivals />
             <BestSellers />
             <PromoBanners />

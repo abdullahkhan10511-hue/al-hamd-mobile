@@ -52,10 +52,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const brand = searchParams.get('brand');
+
     if (category) {
       const catClean = category.trim().toLowerCase();
       products = products.filter(
         (p) => p.categorySlug?.toLowerCase() === catClean || p.category?.toLowerCase() === catClean
+      );
+    }
+
+    if (brand) {
+      const brandClean = brand.trim().toLowerCase();
+      products = products.filter(
+        (p) =>
+          p.brandSlug?.toLowerCase() === brandClean ||
+          p.brand?.toLowerCase() === brandClean ||
+          (p.brandId && p.brandId.toLowerCase() === brandClean)
       );
     }
 

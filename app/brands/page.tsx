@@ -69,8 +69,14 @@ export default function BrandsPage() {
       const count = products.filter((p) => {
         const pBrand = (p.brand || '').trim().toLowerCase();
         const pSlug = (p.brandSlug || '').trim().toLowerCase();
-        const pId = (p.brandId || '').trim().toLowerCase();
-        return pBrand === bName || pSlug === bSlug || (pId && pId === bId);
+        const pId = ((p as any).brandId || '').toString().trim().toLowerCase();
+        return (
+          pBrand === bName ||
+          pSlug === bSlug ||
+          pBrand === bSlug ||
+          pSlug === bName ||
+          (pId && (pId === bId || pId === bSlug || pId === bName))
+        );
       }).length;
 
       map.set(brand.id, count > 0 ? count : (brand.productCount || 0));

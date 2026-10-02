@@ -79,3 +79,40 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const session = getAdminSession(request);
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Admin session required.' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    if (body.action === 'reorder' && Array.isArray(body.orderedIds)) {
+      if (isDbConfigured()) {
+        const { reorderBrandsInDb } = await import('@/lib/db/repositories/brands');
+        await reorderBrandsInDb(body.orderedIds);
+        return NextResponse.json({ success: true, message: 'Brands reordered successfully.' });
+      } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+        const { reorderDevBrands } = await import('@/lib/db/serverDevStorage');
+        await reorderDevBrands(body.orderedIds, session.email);
+        return NextResponse.json({ success: true, message: 'Brands reordered successfully.' });
+      } else {
+        return NextResponse.json(
+          { success: false, error: 'Database is not configured in production.' },
+          { status: 503 }
+        );
+      }
+    }
+
+    return NextResponse.json({ success: false, error: 'Invalid brand action.' }, { status: 400 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Failed to process brand action.' },
+      { status: 500 }
+    );
+  }
+}

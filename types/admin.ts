@@ -72,6 +72,8 @@ export interface Brand {
   description?: string;
   status: 'active' | 'inactive';
   productCount?: number;
+  sortOrder?: number;
+  isFeatured?: boolean;
 }
 
 export type OrderStatus =

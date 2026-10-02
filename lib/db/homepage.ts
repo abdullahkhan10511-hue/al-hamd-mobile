@@ -24,9 +24,17 @@ const BANNERS_KEY = 'homepage_banners';
 
 // Homepage Sections & Order
 export function getHomepageSections(): HomepageSection[] {
-  return getStoredCollection(SECTIONS_KEY, seedHomepageSections)
-    .map((s) => (s.id === 'hero' ? { ...s, name: 'Full-Screen Video Hero' } : s))
-    .sort((a, b) => a.order - b.order);
+  const rawList = getStoredCollection(SECTIONS_KEY, seedHomepageSections)
+    .map((s) => (s.id === 'hero' ? { ...s, name: 'Full-Screen Video Hero' } : s));
+
+  // Ensure 'brands' section is present if upgrading an existing cached collection
+  if (!rawList.some((s) => s.id === 'brands')) {
+    const catSection = rawList.find((s) => s.id === 'categories');
+    const brandOrder = catSection ? catSection.order + 0.5 : 3.5;
+    rawList.push({ id: 'brands', name: 'Shop by Brands', enabled: true, order: brandOrder });
+  }
+
+  return rawList.sort((a, b) => a.order - b.order);
 }
 
 export async function updateHomepageSections(

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   SlidersHorizontal,
@@ -28,6 +28,9 @@ export default function ShopPage() {
 
 function ShopContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   const initialCategory = searchParams.get('category') || 'all';
   const initialBrand = searchParams.get('brand') || '';
   const initialFilter = searchParams.get('filter') || '';
@@ -61,12 +64,7 @@ function ShopContent() {
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
 
-  const loadData = async () => {
-    // Only fetch active, non-archived mobile accessories for storefront
-    let prods = getProducts();
-    if (prods.length === 0) {
-      prods = await syncProductsFromApi().catch(() => []);
-    }
+  const applyData = (prods: Product[], cats: Category[], brands: Brand[]) => {
     const activeProds = prods.filter(
       (p) =>
         (p as any).status !== 'archived' &&
@@ -74,40 +72,35 @@ function ShopContent() {
         (p as any).isActive !== false
     );
     setProductsList(activeProds);
+    setCategoriesList(deduplicateCategoriesById(cats));
+    setBrandsList(brands.filter((b) => b.status === 'active'));
+  };
 
-    syncProductsFromApi().then((fresh) => {
-      if (fresh && fresh.length > 0) {
-        const activeFresh = fresh.filter(
-          (p) =>
-            (p as any).status !== 'archived' &&
-            (p as any).status !== 'inactive' &&
-            (p as any).isActive !== false
-        );
-        setProductsList(activeFresh);
-      }
-    }).catch(() => {});
+  const loadData = async () => {
+    // 1. Initial local cache render
+    const initialProds = getProducts();
+    const initialCats = deduplicateCategoriesById(getActiveCategories());
+    const initialBrands = getBrands().filter((b) => b.status === 'active');
+    applyData(initialProds, initialCats, initialBrands);
 
-    let cats = deduplicateCategoriesById(getActiveCategories());
-    setCategoriesList(cats);
-    syncCategoriesFromApi().then(() => {
-      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    }).catch(() => {});
-
-    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
-    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
+    // 2. Network sync: ALWAYS fetch fresh data from API
+    try {
+      const [freshProds, freshCats, freshBrands] = await Promise.all([
+        syncProductsFromApi().catch(() => initialProds),
+        syncCategoriesFromApi().catch(() => initialCats),
+        syncBrandsFromApi().catch(() => initialBrands),
+      ]);
+      applyData(freshProds, freshCats, freshBrands);
+    } catch {
+      // Keep initial cached state
+    }
   };
 
   const refreshFromCache = () => {
     const prods = getProducts();
-    const activeProds = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
-    setProductsList(activeProds);
-    setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+    const cats = deduplicateCategoriesById(getActiveCategories());
+    const brands = getBrands().filter((b) => b.status === 'active');
+    applyData(prods, cats, brands);
   };
 
   useEffect(() => {
@@ -175,57 +168,233 @@ function ShopContent() {
   // Update selected category or brand when query parameter changes
   useEffect(() => {
     const cat = searchParams.get('category');
-    if (cat) setSelectedCategory(cat);
+    setSelectedCategory(cat || 'all');
 
     const brandParam = searchParams.get('brand');
-    if (brandParam) setSelectedBrands([brandParam]);
+    setSelectedBrands(brandParam ? [brandParam] : []);
   }, [searchParams]);
 
-  // Extract available brands
-  const availableBrands = useMemo(() => {
-    if (brandsList.length > 0) {
-      return brandsList.map((b) => b.name);
+  const updateUrlFilters = (nextCategory?: string, nextBrands?: string[]) => {
+    const params = new URLSearchParams(searchParams.toString());
+    const cat = nextCategory !== undefined ? nextCategory : selectedCategory;
+    const brands = nextBrands !== undefined ? nextBrands : selectedBrands;
+
+    if (cat && cat !== 'all') {
+      params.set('category', cat);
+    } else {
+      params.delete('category');
     }
-    const set = new Set<string>();
-    productsList.forEach((p) => {
-      if (p.brand) set.add(p.brand);
+
+    if (brands.length > 0) {
+      params.set('brand', brands[0]);
+    } else {
+      params.delete('brand');
+    }
+
+    const qs = params.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
+  };
+
+  // Active selected brand object and category object
+  const selectedBrandObj = useMemo(() => {
+    if (selectedBrands.length === 0) return null;
+    const target = selectedBrands[0].trim().toLowerCase();
+    return brandsList.find(
+      (b) =>
+        b.slug?.toLowerCase() === target ||
+        b.name?.toLowerCase() === target ||
+        b.id?.toLowerCase() === target
+    );
+  }, [selectedBrands, brandsList]);
+
+  const selectedCategoryObj = useMemo(() => {
+    if (selectedCategory === 'all') return null;
+    const target = selectedCategory.trim().toLowerCase();
+    return categoriesList.find(
+      (c) =>
+        c.slug?.toLowerCase() === target ||
+        c.name?.toLowerCase() === target ||
+        c.id?.toLowerCase() === target
+    );
+  }, [selectedCategory, categoriesList]);
+
+  // Categories available for the currently selected brand
+  // ONLY categories that actually have products for this brand are included.
+  const availableCategoriesForBrand = useMemo(() => {
+    if (selectedBrands.length === 0) {
+      return categoriesList;
+    }
+
+    const matchingBrandProducts = productsList.filter((product) => {
+      return selectedBrands.some((sel) => {
+        const s = sel.trim().toLowerCase();
+        const pBrand = (product.brand || '').trim().toLowerCase();
+        const pSlug = (product.brandSlug || '').trim().toLowerCase();
+        const pId = ((product as any).brandId || '').toString().trim().toLowerCase();
+        const brandObj = brandsList.find(
+          (b) => b.slug?.toLowerCase() === s || b.name?.toLowerCase() === s || b.id?.toLowerCase() === s
+        );
+        const targetName = brandObj ? brandObj.name.toLowerCase() : s;
+        const targetSlug = brandObj ? brandObj.slug.toLowerCase() : s;
+
+        return (
+          pBrand === s ||
+          pSlug === s ||
+          pBrand === targetName ||
+          pSlug === targetSlug ||
+          (pId && (pId === s || (brandObj && pId === brandObj.id.toLowerCase())))
+        );
+      });
     });
-    return Array.from(set);
-  }, [brandsList, productsList]);
+
+    const activeCatKeys = new Set<string>();
+    matchingBrandProducts.forEach((p) => {
+      if (p.categorySlug) activeCatKeys.add(p.categorySlug.trim().toLowerCase());
+      if (p.category) activeCatKeys.add(p.category.trim().toLowerCase());
+      if ((p as any).categoryId) activeCatKeys.add(((p as any).categoryId).toString().trim().toLowerCase());
+    });
+
+    return categoriesList.filter((c) =>
+      activeCatKeys.has(c.slug?.toLowerCase()) ||
+      activeCatKeys.has(c.name?.toLowerCase()) ||
+      activeCatKeys.has(c.id?.toLowerCase())
+    );
+  }, [categoriesList, productsList, selectedBrands, brandsList]);
+
+  // Brands available for the currently selected category
+  // ONLY brands that actually have products in this category are included.
+  const availableBrands = useMemo(() => {
+    const relevantProducts = selectedCategory === 'all'
+      ? productsList
+      : productsList.filter((product) => {
+          const cat = selectedCategory.trim().toLowerCase();
+          const pCat = (product.category || '').trim().toLowerCase();
+          const pCatSlug = (product.categorySlug || '').trim().toLowerCase();
+          const pCatId = ((product as any).categoryId || '').toString().trim().toLowerCase();
+          const catObj = categoriesList.find(
+            (c) => c.slug?.toLowerCase() === cat || c.name?.toLowerCase() === cat || c.id?.toLowerCase() === cat
+          );
+          const targetName = catObj ? catObj.name.toLowerCase() : cat;
+          const targetSlug = catObj ? catObj.slug.toLowerCase() : cat;
+
+          return (
+            pCat === cat ||
+            pCatSlug === cat ||
+            pCatId === cat ||
+            pCat === targetName ||
+            pCatSlug === targetSlug
+          );
+        });
+
+    const brandSet = new Set<string>();
+    relevantProducts.forEach((p) => {
+      const b = p.brand?.trim();
+      if (b) brandSet.add(b);
+    });
+
+    const ordered: string[] = [];
+    brandsList.forEach((b) => {
+      const matched = Array.from(brandSet).find(
+        (name) =>
+          name.toLowerCase() === b.name?.toLowerCase() ||
+          name.toLowerCase() === b.slug?.toLowerCase() ||
+          name.toLowerCase() === b.id?.toLowerCase()
+      );
+      if (matched) {
+        ordered.push(matched);
+        brandSet.delete(matched);
+      }
+    });
+
+    brandSet.forEach((name) => ordered.push(name));
+    return ordered;
+  }, [brandsList, productsList, selectedCategory, categoriesList]);
+
+  // Brand-filtered count for "All Items" quick pill
+  const brandFilteredCount = useMemo(() => {
+    if (selectedBrands.length === 0) return productsList.length;
+    return productsList.filter((product) => {
+      return selectedBrands.some((sel) => {
+        const s = sel.trim().toLowerCase();
+        const pBrand = (product.brand || '').trim().toLowerCase();
+        const pSlug = (product.brandSlug || '').trim().toLowerCase();
+        const pId = ((product as any).brandId || '').toString().trim().toLowerCase();
+        const brandObj = brandsList.find(
+          (b) => b.slug?.toLowerCase() === s || b.name?.toLowerCase() === s || b.id?.toLowerCase() === s
+        );
+        const targetName = brandObj ? brandObj.name.toLowerCase() : s;
+        const targetSlug = brandObj ? brandObj.slug.toLowerCase() : s;
+
+        return (
+          pBrand === s ||
+          pSlug === s ||
+          pBrand === targetName ||
+          pSlug === targetSlug ||
+          (pId && (pId === s || (brandObj && pId === brandObj.id.toLowerCase())))
+        );
+      });
+    }).length;
+  }, [productsList, selectedBrands, brandsList]);
 
   const isBrandSelected = (brandName: string) => {
     const bLower = brandName.toLowerCase();
     const matchedBrandObj = brandsList.find(
-      (b) => b.name.toLowerCase() === bLower || b.slug.toLowerCase() === bLower
+      (b) => b.name?.toLowerCase() === bLower || b.slug?.toLowerCase() === bLower || b.id?.toLowerCase() === bLower
     );
     return selectedBrands.some((sel) => {
       const s = sel.toLowerCase();
       return (
         s === bLower ||
-        (matchedBrandObj && s === matchedBrandObj.slug.toLowerCase()) ||
-        (matchedBrandObj && s === matchedBrandObj.name.toLowerCase())
+        (matchedBrandObj && s === matchedBrandObj.slug?.toLowerCase()) ||
+        (matchedBrandObj && s === matchedBrandObj.name?.toLowerCase()) ||
+        (matchedBrandObj && s === matchedBrandObj.id?.toLowerCase())
       );
     });
   };
 
   const toggleBrand = (brandName: string) => {
     const bLower = brandName.toLowerCase();
-    setSelectedBrands((prev) => {
-      const exists = prev.some((b) => b.toLowerCase() === bLower);
-      return exists
-        ? prev.filter((b) => b.toLowerCase() !== bLower)
-        : [...prev, brandName];
+    const brandObj = brandsList.find(
+      (b) => b.name?.toLowerCase() === bLower || b.slug?.toLowerCase() === bLower || b.id?.toLowerCase() === bLower
+    );
+    const canonical = brandObj?.slug || brandName;
+
+    const isCurrentlySelected = selectedBrands.some((sel) => {
+      const s = sel.toLowerCase();
+      return (
+        s === bLower ||
+        (brandObj && s === brandObj.slug?.toLowerCase()) ||
+        (brandObj && s === brandObj.name?.toLowerCase())
+      );
     });
+
+    const nextBrands = isCurrentlySelected ? [] : [canonical];
+    setSelectedBrands(nextBrands);
+    updateUrlFilters(selectedCategory, nextBrands);
   };
 
-  // Filter logic (ALL ITEMS automatically contains every active product)
+  // Filter logic (Exact intersection of category, brand, price, rating, stock, search)
   const filteredProducts = useMemo(() => {
     return productsList.filter((product) => {
       // Category filter: 'all' shows ALL items automatically
       if (selectedCategory !== 'all') {
+        const cat = selectedCategory.trim().toLowerCase();
+        const pCat = (product.category || '').trim().toLowerCase();
+        const pCatSlug = (product.categorySlug || '').trim().toLowerCase();
+        const pCatId = ((product as any).categoryId || '').toString().trim().toLowerCase();
+        const catObj = categoriesList.find(
+          (c) => c.slug?.toLowerCase() === cat || c.name?.toLowerCase() === cat || c.id?.toLowerCase() === cat
+        );
+        const targetName = catObj ? catObj.name.toLowerCase() : cat;
+        const targetSlug = catObj ? catObj.slug.toLowerCase() : cat;
+
         const matchesCat =
-          product.categorySlug === selectedCategory ||
-          product.category.toLowerCase() === selectedCategory.toLowerCase();
+          pCat === cat ||
+          pCatSlug === cat ||
+          pCatId === cat ||
+          pCat === targetName ||
+          pCatSlug === targetSlug;
+
         if (!matchesCat) return false;
       }
 
@@ -235,15 +404,16 @@ function ShopContent() {
           const s = sel.trim().toLowerCase();
           const pBrand = (product.brand || '').trim().toLowerCase();
           const pSlug = (product.brandSlug || '').trim().toLowerCase();
-          const pId = (product.brandId || '').trim().toLowerCase();
+          const pId = ((product as any).brandId || '').toString().trim().toLowerCase();
           const brandObj = brandsList.find(
-            (b) => b.slug.toLowerCase() === s || b.name.toLowerCase() === s || b.id.toLowerCase() === s
+            (b) => b.slug?.toLowerCase() === s || b.name?.toLowerCase() === s || b.id?.toLowerCase() === s
           );
           const matchedTargetName = brandObj ? brandObj.name.toLowerCase() : s;
           const matchedTargetSlug = brandObj ? brandObj.slug.toLowerCase() : s;
+
           return (
-            s === pBrand ||
-            s === pSlug ||
+            pBrand === s ||
+            pSlug === s ||
             (pId && s === pId) ||
             pBrand === matchedTargetName ||
             pSlug === matchedTargetSlug
@@ -303,6 +473,19 @@ function ShopContent() {
     }
   }, [filteredProducts, sortBy]);
 
+  const pageHeading = useMemo(() => {
+    if (selectedCategoryObj && selectedBrandObj) {
+      return `${selectedCategoryObj.name} — ${selectedBrandObj.name}`;
+    }
+    if (selectedBrandObj) {
+      return `${selectedBrandObj.name} Collection`;
+    }
+    if (selectedCategoryObj) {
+      return selectedCategoryObj.name;
+    }
+    return 'All Items';
+  }, [selectedCategoryObj, selectedBrandObj]);
+
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrands([]);
@@ -311,6 +494,7 @@ function ShopContent() {
     setInStockOnly(false);
     setSearchQuery('');
     setSortBy('featured');
+    updateUrlFilters('all', []);
   };
 
   const activeFilterCount =
@@ -332,9 +516,7 @@ function ShopContent() {
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mt-1">
             <div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-neutral-950">
-                {selectedCategory === 'all'
-                  ? 'All Items'
-                  : categoriesList.find((c) => c.slug === selectedCategory)?.name || 'Catalog'}
+                {pageHeading}
               </h1>
               <p className="text-sm text-neutral-500 mt-1">
                 Showing {sortedProducts.length} curated products
@@ -395,6 +577,7 @@ function ShopContent() {
                     return;
                   }
                   setSelectedCategory('all');
+                  updateUrlFilters('all', selectedBrands);
                 }}
                 className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
                   selectedCategory === 'all'
@@ -402,9 +585,9 @@ function ShopContent() {
                     : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
                 }`}
               >
-                All Items ({productsList.length})
+                {selectedBrandObj ? `All ${selectedBrandObj.name} (${brandFilteredCount})` : `All Items (${productsList.length})`}
               </button>
-              {categoriesList.map((cat) => (
+              {availableCategoriesForBrand.map((cat) => (
                 <button
                   type="button"
                   key={cat.id}
@@ -414,9 +597,11 @@ function ShopContent() {
                       return;
                     }
                     setSelectedCategory(cat.slug);
+                    updateUrlFilters(cat.slug, selectedBrands);
                   }}
                   className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
-                    selectedCategory === cat.slug
+                    selectedCategory.toLowerCase() === cat.slug?.toLowerCase() ||
+                    selectedCategory.toLowerCase() === cat.name?.toLowerCase()
                       ? 'bg-neutral-950 text-white shadow-xs'
                       : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
                   }`}
@@ -433,25 +618,33 @@ function ShopContent() {
               <span className="text-xs text-neutral-400 mr-1">Active filters:</span>
               {selectedCategory !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium">
-                  Category: {selectedCategory}
+                  Category: {selectedCategoryObj?.name || selectedCategory}
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-neutral-950"
-                    onClick={() => setSelectedCategory('all')}
+                    onClick={() => {
+                      setSelectedCategory('all');
+                      updateUrlFilters('all', selectedBrands);
+                    }}
                   />
                 </span>
               )}
-              {selectedBrands.map((brand) => (
-                <span
-                  key={brand}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium"
-                >
-                  Brand: {brand}
-                  <X
-                    className="w-3 h-3 cursor-pointer hover:text-neutral-950"
-                    onClick={() => toggleBrand(brand)}
-                  />
-                </span>
-              ))}
+              {selectedBrands.map((brand) => {
+                const brandObj = brandsList.find(
+                  (b) => b.slug?.toLowerCase() === brand.toLowerCase() || b.name?.toLowerCase() === brand.toLowerCase() || b.id?.toLowerCase() === brand.toLowerCase()
+                );
+                return (
+                  <span
+                    key={brand}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium"
+                  >
+                    Brand: {brandObj?.name || brand}
+                    <X
+                      className="w-3 h-3 cursor-pointer hover:text-neutral-950"
+                      onClick={() => toggleBrand(brand)}
+                    />
+                  </span>
+                );
+              })}
               {maxPrice < 100000 && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium">
                   Under {formatPrice(maxPrice)}
@@ -547,7 +740,10 @@ function ShopContent() {
                 </h3>
                 {selectedBrands.length > 0 && (
                   <button
-                    onClick={() => setSelectedBrands([])}
+                    onClick={() => {
+                      setSelectedBrands([]);
+                      updateUrlFilters(selectedCategory, []);
+                    }}
                     className="text-[10px] text-neutral-400 hover:text-neutral-950 font-semibold cursor-pointer"
                   >
                     Clear ({selectedBrands.length})
@@ -690,22 +886,29 @@ function ShopContent() {
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setSelectedCategory('all')}
+                      onClick={() => {
+                        setSelectedCategory('all');
+                        updateUrlFilters('all', selectedBrands);
+                      }}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
                         selectedCategory === 'all'
                           ? 'bg-neutral-950 text-white'
                           : 'bg-neutral-100 text-neutral-700'
                       }`}
                     >
-                      All Items
+                      {selectedBrandObj ? `All ${selectedBrandObj.name}` : 'All Items'}
                     </button>
-                    {categoriesList.map((cat) => (
+                    {availableCategoriesForBrand.map((cat) => (
                       <button
                         type="button"
                         key={cat.id}
-                        onClick={() => setSelectedCategory(cat.slug)}
+                        onClick={() => {
+                          setSelectedCategory(cat.slug);
+                          updateUrlFilters(cat.slug, selectedBrands);
+                        }}
                         className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
-                          selectedCategory === cat.slug
+                          selectedCategory.toLowerCase() === cat.slug?.toLowerCase() ||
+                          selectedCategory.toLowerCase() === cat.name?.toLowerCase()
                             ? 'bg-neutral-950 text-white'
                             : 'bg-neutral-100 text-neutral-700'
                         }`}
@@ -754,7 +957,10 @@ function ShopContent() {
                     </h3>
                     {selectedBrands.length > 0 && (
                       <button
-                        onClick={() => setSelectedBrands([])}
+                        onClick={() => {
+                          setSelectedBrands([]);
+                          updateUrlFilters(selectedCategory, []);
+                        }}
                         className="text-[10px] text-neutral-400 hover:text-neutral-950 font-semibold"
                       >
                         Clear ({selectedBrands.length})

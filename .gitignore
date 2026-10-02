@@ -53,6 +53,7 @@ data/staff-users.json
 *.sql
 *.dump
 *.sqlite
+!scripts/migrations/*.sql
 
 # test & scratch scripts
 scripts/test-*.js

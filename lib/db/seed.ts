@@ -52,10 +52,11 @@ export const seedHomepageSections: HomepageSection[] = [
   { id: 'hero', name: 'Full-Screen Video Hero', enabled: true, order: 1 },
   { id: 'trust', name: 'Trust & Benefits Bar', enabled: true, order: 2 },
   { id: 'categories', name: 'Shop by Categories', enabled: true, order: 3 },
-  { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 4 },
-  { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 5 },
-  { id: 'promo-banners', name: 'Promotional Banners & Flash Sale', enabled: true, order: 6 },
-  { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 7 },
+  { id: 'brands', name: 'Shop by Brands', enabled: true, order: 4 },
+  { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 5 },
+  { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 6 },
+  { id: 'promo-banners', name: 'Promotional Banners & Flash Sale', enabled: true, order: 7 },
+  { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 8 },
 ];
 
 export const seedHeroConfig: HeroConfig = {
