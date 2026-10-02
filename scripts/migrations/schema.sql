@@ -431,6 +431,7 @@ CREATE TABLE IF NOT EXISTS `bill_settings` (
   `invoice_footer_text` TEXT NULL,
   `tax_number` VARCHAR(100) NULL,
   `thermal_footer_note` TEXT NULL,
+  `template_config` LONGTEXT NULL,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `updated_by` VARCHAR(255) NULL,
   PRIMARY KEY (`id`)

@@ -539,6 +539,22 @@ export interface CustomPage {
 
 export type PageContent = CustomPage;
 
+export interface BillFieldToggles {
+  showLogo: boolean;
+  showStoreName: boolean;
+  showStoreAddress: boolean;
+  showCustomerName: boolean;
+  showCustomerPhone: boolean;
+  showCustomerAddress: boolean;
+  showInvoiceNumber: boolean;
+  showDate: boolean;
+  showTime: boolean;
+  showPaymentMethod: boolean;
+  showWebsite: boolean;
+  showThankYou: boolean;
+  footerMessage?: string;
+}
+
 export interface BillSettings {
   storeName: string;
   storeLogo?: string;
@@ -551,6 +567,25 @@ export interface BillSettings {
   invoiceFooterText?: string;
   taxNumber?: string;
   thermalFooterNote?: string;
+
+  // Format-specific configurations
+  a4Config?: BillFieldToggles;
+  thermalConfig?: BillFieldToggles;
+
+  // Root toggles for backward compatibility / fallback
+  showLogo?: boolean;
+  showStoreName?: boolean;
+  showStoreAddress?: boolean;
+  showCustomerName?: boolean;
+  showCustomerPhone?: boolean;
+  showCustomerAddress?: boolean;
+  showInvoiceNumber?: boolean;
+  showDate?: boolean;
+  showTime?: boolean;
+  showPaymentMethod?: boolean;
+  showWebsite?: boolean;
+  showThankYou?: boolean;
+
   updatedAt?: string;
   updatedBy?: string;
 }

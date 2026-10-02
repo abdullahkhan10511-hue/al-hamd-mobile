@@ -1,8 +1,24 @@
-import { BillSettings } from '@/types/admin';
+import { BillSettings, BillFieldToggles } from '@/types/admin';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
 
 const BILL_SETTINGS_KEY = 'bill_settings';
+
+export const defaultBillFieldToggles: BillFieldToggles = {
+  showLogo: true,
+  showStoreName: true,
+  showStoreAddress: true,
+  showCustomerName: true,
+  showCustomerPhone: true,
+  showCustomerAddress: true,
+  showInvoiceNumber: true,
+  showDate: true,
+  showTime: true,
+  showPaymentMethod: true,
+  showWebsite: true,
+  showThankYou: true,
+  footerMessage: 'Thank You for Shopping!',
+};
 
 export const defaultBillSettings: BillSettings = {
   storeName: 'AL-HAMD MOBILE ACCESSORIES',
@@ -13,9 +29,23 @@ export const defaultBillSettings: BillSettings = {
   email: 'support@alhamd-mobile.com',
   website: 'alhamd.pk',
   invoiceHeaderText: 'Quality Mobile Accessories & Smartphone Essentials',
-  invoiceFooterText: 'Thank you for your business.',
+  invoiceFooterText: 'Thank You for Shopping!',
   taxNumber: '',
-  thermalFooterNote: 'THANK YOU FOR YOUR PATRONAGE!',
+  thermalFooterNote: 'Thank You for Shopping!',
+  a4Config: { ...defaultBillFieldToggles, footerMessage: 'Thank You for Shopping!' },
+  thermalConfig: { ...defaultBillFieldToggles, footerMessage: 'Thank You for Shopping!' },
+  showLogo: true,
+  showStoreName: true,
+  showStoreAddress: true,
+  showCustomerName: true,
+  showCustomerPhone: true,
+  showCustomerAddress: true,
+  showInvoiceNumber: true,
+  showDate: true,
+  showTime: true,
+  showPaymentMethod: true,
+  showWebsite: true,
+  showThankYou: true,
 };
 
 let hasSyncedBillSettingsFromApi = false;
@@ -43,9 +73,19 @@ export function getBillSettings(): BillSettings {
     syncBillSettingsFromApi().catch(() => {});
   }
   const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, defaultBillSettings);
-  const base = {
+  const base: BillSettings = {
     ...defaultBillSettings,
     ...(current || {}),
+    a4Config: {
+      ...defaultBillFieldToggles,
+      ...(current?.a4Config || {}),
+      footerMessage: current?.a4Config?.footerMessage || current?.invoiceFooterText || defaultBillFieldToggles.footerMessage,
+    },
+    thermalConfig: {
+      ...defaultBillFieldToggles,
+      ...(current?.thermalConfig || {}),
+      footerMessage: current?.thermalConfig?.footerMessage || current?.thermalFooterNote || defaultBillFieldToggles.footerMessage,
+    },
   };
 
   if (base.storeName === 'AL-HAMD-MOBILE' || base.storeName === 'AL·HAMD') {

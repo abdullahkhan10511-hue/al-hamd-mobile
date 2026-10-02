@@ -134,7 +134,8 @@ export default function AdminOrderDetailPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-16">
+    <>
+      <div className="space-y-6 max-w-6xl mx-auto pb-16 print:hidden">
       {/* Back button and page title */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
@@ -619,6 +620,7 @@ export default function AdminOrderDetailPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Invoice Modal */}
       {isInvoiceOpen && (
@@ -628,6 +630,6 @@ export default function AdminOrderDetailPage() {
           onClose={() => setIsInvoiceOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }

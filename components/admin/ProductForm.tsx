@@ -1354,23 +1354,6 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
 
                           <div>
                             <label className="font-semibold text-neutral-700 block mb-1">
-                              Discount Price (PKR) <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              value={mod.price ?? ''}
-                              onChange={(e) =>
-                                handleUpdateModel(idx, {
-                                  price: e.target.value === '' ? 0 : Number(e.target.value),
-                                })
-                              }
-                              placeholder="e.g. 1100"
-                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono font-bold"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="font-semibold text-neutral-700 block mb-1">
                               Original Price (PKR)
                             </label>
                             <input
@@ -1381,8 +1364,25 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                                   compareAtPrice: e.target.value === '' ? undefined : Number(e.target.value),
                                 })
                               }
-                              placeholder="Optional strike"
+                              placeholder="e.g. 6000 (regular)"
                               className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-semibold text-neutral-700 block mb-1">
+                              Sale Price (PKR) <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={mod.price ?? ''}
+                              onChange={(e) =>
+                                handleUpdateModel(idx, {
+                                  price: e.target.value === '' ? 0 : Number(e.target.value),
+                                })
+                              }
+                              placeholder="e.g. 2500"
+                              className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono font-bold"
                             />
                           </div>
 
@@ -1736,26 +1736,28 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             </h3>
 
             <div>
-              <label className="font-semibold text-neutral-700 block mb-1">Discount Price (PKR)</label>
-              <input
-                type="number"
-                step="1"
-                value={price}
-                onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="e.g. 2499 (optional)"
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
-              />
-            </div>
-
-            <div>
               <label className="font-semibold text-neutral-700 block mb-1">Original Price (PKR)</label>
+              <p className="text-[11px] text-neutral-400 mb-1.5">The product's normal/regular price before discount</p>
               <input
                 type="number"
                 step="1"
                 value={compareAtPrice}
                 onChange={(e) => setCompareAtPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Optional strike-through"
+                placeholder="e.g. 6000 (strike-through)"
                 className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-neutral-700 block mb-1">Sale Price (PKR)</label>
+              <p className="text-[11px] text-neutral-400 mb-1.5">The discounted price the customer actually pays</p>
+              <input
+                type="number"
+                step="1"
+                value={price}
+                onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="e.g. 2500"
+                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
               />
               {compareAtPrice && Number(compareAtPrice) > Number(price || 0) && (
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1">

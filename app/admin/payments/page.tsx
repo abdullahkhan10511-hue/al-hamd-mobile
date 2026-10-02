@@ -198,7 +198,8 @@ export default function AdminPaymentVerificationPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-16">
+    <>
+      <div className="space-y-8 max-w-7xl mx-auto pb-16 print:hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-neutral-200 pb-5">
         <div>
@@ -651,6 +652,7 @@ export default function AdminPaymentVerificationPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Invoice Modal */}
       {selectedInvoiceOrder && (
@@ -660,6 +662,6 @@ export default function AdminPaymentVerificationPage() {
           onClose={() => setSelectedInvoiceOrder(null)}
         />
       )}
-    </div>
+    </>
   );
 }

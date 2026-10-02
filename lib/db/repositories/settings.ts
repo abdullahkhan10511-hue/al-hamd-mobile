@@ -45,8 +45,36 @@ interface BillSettingsRow extends RowDataPacket {
   invoice_footer_text: string | null;
   tax_number: string | null;
   thermal_footer_note: string | null;
+  template_config?: string | null;
   updated_at: string;
   updated_by: string | null;
+}
+
+let checkedTemplateConfigColumn = false;
+let hasTemplateConfigColumn = false;
+
+async function checkOrAddTemplateConfigColumn(): Promise<boolean> {
+  if (checkedTemplateConfigColumn) return hasTemplateConfigColumn;
+  try {
+    const cols = await query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bill_settings' AND COLUMN_NAME = 'template_config'`
+    );
+    if (cols && cols.length > 0) {
+      hasTemplateConfigColumn = true;
+      checkedTemplateConfigColumn = true;
+      return true;
+    }
+    try {
+      await execute(`ALTER TABLE bill_settings ADD COLUMN template_config LONGTEXT NULL`);
+      hasTemplateConfigColumn = true;
+    } catch {
+      hasTemplateConfigColumn = false;
+    }
+    checkedTemplateConfigColumn = true;
+    return hasTemplateConfigColumn;
+  } catch {
+    return false;
+  }
 }
 
 function parseJsonField<T>(field: any, fallback: T): T {
@@ -197,14 +225,15 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
 export async function getBillSettingsFromDb(): Promise<BillSettings> {
   const fallback: BillSettings = {
     storeName: 'AL-HAMD MOBILE ACCESSORIES',
-    storeAddress: 'Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin',
+    storeAddress: 'Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan',
     phone: '+92 343 2200995',
-    whatsapp: '+923432200995',
+    whatsapp: '+92 343 2200995',
     email: 'support@alhamd-mobile.com',
-    website: 'https://alhamdmobile.com',
-    invoiceHeaderText: 'Official Sales Receipt & Tax Invoice',
-    invoiceFooterText: 'Thank you for choosing Al-Hamd Mobile Accessories! Verified 7-day replacement warranty.',
-    thermalFooterNote: 'Items once sold can be exchanged within 7 days with original receipt and packaging intact.',
+    website: 'alhamd.pk',
+    invoiceHeaderText: 'Quality Mobile Accessories & Smartphone Essentials',
+    invoiceFooterText: 'Thank You for Shopping!',
+    taxNumber: '',
+    thermalFooterNote: 'Thank You for Shopping!',
   };
 
   if (!isDbConfigured()) return fallback;
@@ -213,6 +242,23 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
   if (!rows || rows.length === 0) return fallback;
 
   const r = rows[0];
+  const templateConfig = parseJsonField<{
+    a4Config?: any;
+    thermalConfig?: any;
+    showLogo?: boolean;
+    showStoreName?: boolean;
+    showStoreAddress?: boolean;
+    showCustomerName?: boolean;
+    showCustomerPhone?: boolean;
+    showCustomerAddress?: boolean;
+    showInvoiceNumber?: boolean;
+    showDate?: boolean;
+    showTime?: boolean;
+    showPaymentMethod?: boolean;
+    showWebsite?: boolean;
+    showThankYou?: boolean;
+  }>((r as any).template_config, {});
+
   return {
     storeName: r.store_name,
     storeLogo: r.store_logo || undefined,
@@ -225,6 +271,20 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
     invoiceFooterText: r.invoice_footer_text || undefined,
     taxNumber: r.tax_number || undefined,
     thermalFooterNote: r.thermal_footer_note || undefined,
+    a4Config: templateConfig.a4Config,
+    thermalConfig: templateConfig.thermalConfig,
+    showLogo: templateConfig.showLogo,
+    showStoreName: templateConfig.showStoreName,
+    showStoreAddress: templateConfig.showStoreAddress,
+    showCustomerName: templateConfig.showCustomerName,
+    showCustomerPhone: templateConfig.showCustomerPhone,
+    showCustomerAddress: templateConfig.showCustomerAddress,
+    showInvoiceNumber: templateConfig.showInvoiceNumber,
+    showDate: templateConfig.showDate,
+    showTime: templateConfig.showTime,
+    showPaymentMethod: templateConfig.showPaymentMethod,
+    showWebsite: templateConfig.showWebsite,
+    showThankYou: templateConfig.showThankYou,
     updatedAt: r.updated_at,
     updatedBy: r.updated_by || undefined,
   };
@@ -243,41 +303,99 @@ export async function updateBillSettingsInDb(updates: Partial<BillSettings>, adm
     throw new Error('Database is not configured.');
   }
 
-  await execute(
-    `INSERT INTO bill_settings (
-      id, store_name, store_logo, store_address, phone, whatsapp, email, website,
-      invoice_header_text, invoice_footer_text, tax_number, thermal_footer_note, updated_by
-    ) VALUES (
-      1, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?
-    ) ON DUPLICATE KEY UPDATE
-      store_name = VALUES(store_name),
-      store_logo = VALUES(store_logo),
-      store_address = VALUES(store_address),
-      phone = VALUES(phone),
-      whatsapp = VALUES(whatsapp),
-      email = VALUES(email),
-      website = VALUES(website),
-      invoice_header_text = VALUES(invoice_header_text),
-      invoice_footer_text = VALUES(invoice_footer_text),
-      tax_number = VALUES(tax_number),
-      thermal_footer_note = VALUES(thermal_footer_note),
-      updated_by = VALUES(updated_by)`,
-    [
-      merged.storeName,
-      merged.storeLogo || null,
-      merged.storeAddress,
-      merged.phone,
-      merged.whatsapp || null,
-      merged.email,
-      merged.website || null,
-      merged.invoiceHeaderText || null,
-      merged.invoiceFooterText || null,
-      merged.taxNumber || null,
-      merged.thermalFooterNote || null,
-      adminEmail,
-    ]
-  );
+  const hasTemplateCol = await checkOrAddTemplateConfigColumn();
+  const templateConfigJson = JSON.stringify({
+    a4Config: merged.a4Config,
+    thermalConfig: merged.thermalConfig,
+    showLogo: merged.showLogo,
+    showStoreName: merged.showStoreName,
+    showStoreAddress: merged.showStoreAddress,
+    showCustomerName: merged.showCustomerName,
+    showCustomerPhone: merged.showCustomerPhone,
+    showCustomerAddress: merged.showCustomerAddress,
+    showInvoiceNumber: merged.showInvoiceNumber,
+    showDate: merged.showDate,
+    showTime: merged.showTime,
+    showPaymentMethod: merged.showPaymentMethod,
+    showWebsite: merged.showWebsite,
+    showThankYou: merged.showThankYou,
+  });
+
+  if (hasTemplateCol) {
+    await execute(
+      `INSERT INTO bill_settings (
+        id, store_name, store_logo, store_address, phone, whatsapp, email, website,
+        invoice_header_text, invoice_footer_text, tax_number, thermal_footer_note, template_config, updated_by
+      ) VALUES (
+        1, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?
+      ) ON DUPLICATE KEY UPDATE
+        store_name = VALUES(store_name),
+        store_logo = VALUES(store_logo),
+        store_address = VALUES(store_address),
+        phone = VALUES(phone),
+        whatsapp = VALUES(whatsapp),
+        email = VALUES(email),
+        website = VALUES(website),
+        invoice_header_text = VALUES(invoice_header_text),
+        invoice_footer_text = VALUES(invoice_footer_text),
+        tax_number = VALUES(tax_number),
+        thermal_footer_note = VALUES(thermal_footer_note),
+        template_config = VALUES(template_config),
+        updated_by = VALUES(updated_by)`,
+      [
+        merged.storeName,
+        merged.storeLogo || null,
+        merged.storeAddress,
+        merged.phone,
+        merged.whatsapp || null,
+        merged.email,
+        merged.website || null,
+        merged.invoiceHeaderText || null,
+        merged.invoiceFooterText || null,
+        merged.taxNumber || null,
+        merged.thermalFooterNote || null,
+        templateConfigJson,
+        adminEmail,
+      ]
+    );
+  } else {
+    await execute(
+      `INSERT INTO bill_settings (
+        id, store_name, store_logo, store_address, phone, whatsapp, email, website,
+        invoice_header_text, invoice_footer_text, tax_number, thermal_footer_note, updated_by
+      ) VALUES (
+        1, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?
+      ) ON DUPLICATE KEY UPDATE
+        store_name = VALUES(store_name),
+        store_logo = VALUES(store_logo),
+        store_address = VALUES(store_address),
+        phone = VALUES(phone),
+        whatsapp = VALUES(whatsapp),
+        email = VALUES(email),
+        website = VALUES(website),
+        invoice_header_text = VALUES(invoice_header_text),
+        invoice_footer_text = VALUES(invoice_footer_text),
+        tax_number = VALUES(tax_number),
+        thermal_footer_note = VALUES(thermal_footer_note),
+        updated_by = VALUES(updated_by)`,
+      [
+        merged.storeName,
+        merged.storeLogo || null,
+        merged.storeAddress,
+        merged.phone,
+        merged.whatsapp || null,
+        merged.email,
+        merged.website || null,
+        merged.invoiceHeaderText || null,
+        merged.invoiceFooterText || null,
+        merged.taxNumber || null,
+        merged.thermalFooterNote || null,
+        adminEmail,
+      ]
+    );
+  }
 
   return merged;
 }

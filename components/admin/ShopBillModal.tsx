@@ -13,6 +13,7 @@ import {
   Package,
 } from 'lucide-react';
 import { getBillSettings } from '@/lib/db/billSettings';
+import { printBillElement } from '@/lib/utils/printBill';
 
 interface ShopBillModalProps {
   bill: ShopBill;
@@ -37,8 +38,11 @@ export function ShopBillModal({
   const handlePrint = (format: 'a4' | 'thermal') => {
     setPrintFormat(format);
     setTimeout(() => {
-      window.print();
-    }, 120);
+      printBillElement('printable-shop-bill', {
+        format,
+        title: `ShopTransfer_${bill.billNumber}`,
+      });
+    }, 80);
   };
 
   const totalTransferUnits = bill.items.reduce((sum, item) => sum + item.transferQuantity, 0);

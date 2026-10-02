@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Order } from '@/types/admin';
 import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { useAdminAuth } from '@/context/AdminAuthContext';
+import { formatPrice } from '@/lib/utils';
 import InvoiceModal from '@/components/admin/InvoiceModal';
 import {
   FileText,
@@ -58,21 +59,22 @@ export default function AdminInvoicesPage() {
   const totalInvoiced = orders.reduce((sum, o) => sum + o.total, 0);
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Invoices & Bills</h1>
-          <p className="text-xs text-neutral-500 mt-1">
-            Compliant printable tax invoices and thermal receipts for retail and audit
-          </p>
-        </div>
+    <>
+      <div className="space-y-6 print:hidden">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Invoices &amp; Bills</h1>
+            <p className="text-xs text-neutral-500 mt-1">
+              Compliant printable tax invoices and thermal receipts for retail and audit
+            </p>
+          </div>
 
-        <div className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-xs flex items-center gap-3">
-          <span className="text-neutral-400">Total Billed:</span>
-          <span className="font-bold font-mono text-sm">${totalInvoiced.toFixed(2)}</span>
+          <div className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-xs flex items-center gap-3">
+            <span className="text-neutral-400">Total Billed:</span>
+            <span className="font-bold font-mono text-sm">{formatPrice(totalInvoiced)}</span>
+          </div>
         </div>
-      </div>
 
       {/* Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm flex items-center gap-3">
@@ -141,7 +143,7 @@ export default function AdminInvoicesPage() {
                     </td>
 
                     <td className="py-3.5 px-4 font-mono font-bold text-neutral-900">
-                      ${order.total.toFixed(2)}
+                      {formatPrice(order.total)}
                     </td>
 
                     <td className="py-3.5 px-4">
@@ -169,6 +171,7 @@ export default function AdminInvoicesPage() {
           </table>
         </div>
       </div>
+      </div>
 
       {/* Invoice Modal for Printing */}
       {selectedOrder && (
@@ -178,6 +181,6 @@ export default function AdminInvoicesPage() {
           onClose={() => setSelectedOrder(null)}
         />
       )}
-    </div>
+    </>
   );
 }

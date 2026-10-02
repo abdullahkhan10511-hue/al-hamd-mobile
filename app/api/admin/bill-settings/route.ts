@@ -33,6 +33,34 @@ function getSessionUser(request: NextRequest): { email: string; role: string } |
   return null;
 }
 
+import fs from 'fs';
+import path from 'path';
+
+const DEV_BILL_SETTINGS_FILE = path.join(process.cwd(), 'data', 'dev-bill-settings.json');
+
+function getDevBillSettings(): BillSettings {
+  try {
+    if (fs.existsSync(DEV_BILL_SETTINGS_FILE)) {
+      const raw = fs.readFileSync(DEV_BILL_SETTINGS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return { ...defaultBillSettings, ...parsed };
+      }
+    }
+  } catch {}
+  return defaultBillSettings;
+}
+
+function saveDevBillSettings(settings: BillSettings): void {
+  try {
+    const dir = path.dirname(DEV_BILL_SETTINGS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DEV_BILL_SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch {}
+}
+
 export async function GET() {
   try {
     let settings: BillSettings;
@@ -42,10 +70,10 @@ export async function GET() {
         settings = await getBillSettingsFromDb();
       } catch (err) {
         console.warn('MySQL error in /api/admin/bill-settings GET:', err);
-        settings = defaultBillSettings;
+        settings = getDevBillSettings();
       }
     } else {
-      settings = defaultBillSettings;
+      settings = getDevBillSettings();
     }
 
     return NextResponse.json({ success: true, settings });
@@ -76,7 +104,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: true, settings: updated });
     }
 
-    return NextResponse.json({ success: true, settings: { ...defaultBillSettings, ...body } });
+    const current = getDevBillSettings();
+    const updated = { ...current, ...body, updatedAt: new Date().toISOString(), updatedBy: session?.email || 'admin@alhamd.com' };
+    saveDevBillSettings(updated);
+
+    return NextResponse.json({ success: true, settings: updated });
   } catch (err: any) {
     console.error('Error updating bill settings in MySQL:', err);
     return NextResponse.json(

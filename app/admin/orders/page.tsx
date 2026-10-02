@@ -213,7 +213,8 @@ export default function AdminOrdersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6 print:hidden">
       {/* Toast Notifications */}
       {statusToast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-neutral-950 text-white text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-bottom-4 duration-300">
@@ -517,6 +518,7 @@ export default function AdminOrdersPage() {
           </table>
         </div>
       </div>
+      </div>
 
       {/* Standard Invoice Modal */}
       {selectedOrderForInvoice && (
@@ -536,6 +538,6 @@ export default function AdminOrdersPage() {
           onNewSale={() => setSelectedPosOrder(null)}
         />
       )}
-    </div>
+    </>
   );
 }
