@@ -9,10 +9,10 @@ import { getAnnouncements } from '@/lib/db/announcements';
 import { getStoreSettings } from '@/lib/db/settings';
 import { AnnouncementItem, StoreSettings } from '@/types/admin';
 
-export function AnnouncementBar() {
+export function AnnouncementBar({ initialSettings }: { initialSettings?: StoreSettings }) {
   const pathname = usePathname();
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
-  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const loadData = () => {
@@ -44,13 +44,14 @@ export function AnnouncementBar() {
   if (pathname === '/' || announcements.length === 0) return null;
 
   const current = announcements[currentIndex] || announcements[0];
+  const activeSettings = settings || initialSettings;
 
   return (
     <div className="bg-neutral-950 text-white text-xs py-2 px-4 select-none relative z-50 overflow-hidden border-b border-neutral-900">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="hidden sm:flex items-center gap-1.5 text-neutral-400 font-medium">
           <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-          <span>{settings?.storeTagline || 'Curated Modern Essentials'}</span>
+          <span>{activeSettings?.storeTagline || 'Curated Modern Essentials'}</span>
         </div>
 
         <div className="flex-1 flex justify-center items-center overflow-hidden h-5">
@@ -85,7 +86,7 @@ export function AnnouncementBar() {
           </Link>
           <span className="text-neutral-700">|</span>
           <span className="text-neutral-300 font-mono font-semibold">
-            {settings?.currency || 'PKR'} ({settings?.currencySymbol || 'Rs.'})
+            {activeSettings?.currency || 'PKR'} ({activeSettings?.currencySymbol || 'Rs.'})
           </span>
         </div>
       </div>

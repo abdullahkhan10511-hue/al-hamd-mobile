@@ -77,10 +77,12 @@ function SocialIcon({ platform }: { platform: string }) {
   }
 }
 
-export function Footer() {
+export function Footer({ initialSettings }: { initialSettings?: StoreSettings }) {
   const pathname = usePathname();
-  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
+
+  const currentSettings = settings || initialSettings || null;
 
   const loadData = () => {
     setSettings(getStoreSettings());
@@ -109,12 +111,13 @@ export function Footer() {
   }
 
   // Official Business Details
-  const officialStoreName = 'AL-HAMD MOBILE ACCESSORIES';
+  const officialStoreName = currentSettings?.storeName?.trim() || initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
   const officialDescription =
+    currentSettings?.footerDescription?.trim() ||
     'Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.';
-  const officialPhone = '+92 343 2200995';
-  const officialEmail = 'support@alhamd-mobile.com';
-  const officialAddress = 'Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan';
+  const officialPhone = currentSettings?.phone?.trim() || '+92 343 2200995';
+  const officialEmail = currentSettings?.email?.trim() || 'support@alhamd-mobile.com';
+  const officialAddress = currentSettings?.address?.trim() || 'Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan';
 
   // Google Maps link from active location setting or official address query
   const googleMapsHref =
@@ -123,7 +126,7 @@ export function Footer() {
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officialAddress)}`;
 
   // Social media accounts from Admin Settings
-  const activeSocialAccounts = getActiveSocialAccounts(settings);
+  const activeSocialAccounts = getActiveSocialAccounts(currentSettings);
 
   return (
     <footer
@@ -135,10 +138,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 pb-12">
           {/* Column 1: BRAND / ABOUT & REAL CONTACT DETAILS */}
           <div className="space-y-4">
-            {settings?.logoUrl ? (
+            {currentSettings?.logoUrl ? (
               <img
-                src={settings.logoUrl}
-                alt={settings.storeName || officialStoreName}
+                src={currentSettings.logoUrl}
+                alt={currentSettings.storeName || officialStoreName}
                 className="h-8 w-auto max-w-[150px] object-contain mb-2 brightness-0 invert"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
@@ -146,7 +149,7 @@ export function Footer() {
               />
             ) : null}
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-              {settings?.storeName || officialStoreName}
+              {currentSettings?.storeName || officialStoreName}
             </h3>
             <p className="text-xs text-neutral-400 leading-relaxed max-w-sm">
               {officialDescription}
@@ -346,7 +349,7 @@ export function Footer() {
 
         {/* Footer Bottom Bar */}
         <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <p>© 2026 AL-HAMD MOBILE ACCESSORIES. All Rights Reserved.</p>
+          <p>© {new Date().getFullYear()} {officialStoreName}. All Rights Reserved.</p>
           <div className="flex items-center gap-4 text-neutral-600 text-[11px]">
             <Link href="/wholesale/login" className="hover:text-neutral-400 transition-colors">
               Wholesale Portal

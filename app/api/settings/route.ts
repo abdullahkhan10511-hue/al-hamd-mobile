@@ -6,6 +6,9 @@ import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
 
 function readLocalFileSettings(): StoreSettings {

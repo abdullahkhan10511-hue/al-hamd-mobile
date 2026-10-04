@@ -238,40 +238,46 @@ export function getStoreSettings(): StoreSettings {
   return base;
 }
 
-let isSyncingStoreSettings = false;
+let inFlightSettingsPromise: Promise<StoreSettings> | null = null;
 
 export async function syncStoreSettingsFromApi(): Promise<StoreSettings> {
   if (typeof window === 'undefined') return getStoreSettings();
-  if (isSyncingStoreSettings) return getStoreSettings();
-  isSyncingStoreSettings = true;
-  try {
-    const res = await fetch('/api/settings', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.settings) {
-        const current = getStoreSettings();
-        const merged: StoreSettings = {
-          ...current,
-          ...data.settings,
-          websiteTitle: data.settings.websiteTitle || data.settings.seo?.websiteTitle || current.websiteTitle,
-          canonicalUrl: normalizeCanonicalUrl(data.settings.canonicalUrl || data.settings.seo?.canonicalUrl || current.canonicalUrl),
-          ogImageUrl: data.settings.ogImageUrl || data.settings.seo?.ogImageUrl || current.ogImageUrl,
-          seo: {
-            ...current.seo,
-            ...(data.settings.seo || {}),
-          },
-        };
-        setLocal(SETTINGS_KEY, merged);
-        window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY } }));
-        return merged;
-      }
-    }
-  } catch (err) {
-    console.warn('API error syncing store settings:', err);
-  } finally {
-    isSyncingStoreSettings = false;
+  if (inFlightSettingsPromise) {
+    return inFlightSettingsPromise;
   }
-  return getStoreSettings();
+
+  inFlightSettingsPromise = (async () => {
+    try {
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          const current = getStoreSettings();
+          const merged: StoreSettings = {
+            ...current,
+            ...data.settings,
+            websiteTitle: data.settings.websiteTitle || data.settings.seo?.websiteTitle || current.websiteTitle,
+            canonicalUrl: normalizeCanonicalUrl(data.settings.canonicalUrl || data.settings.seo?.canonicalUrl || current.canonicalUrl),
+            ogImageUrl: data.settings.ogImageUrl || data.settings.seo?.ogImageUrl || current.ogImageUrl,
+            seo: {
+              ...current.seo,
+              ...(data.settings.seo || {}),
+            },
+          };
+          setLocal(SETTINGS_KEY, merged);
+          window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY } }));
+          return merged;
+        }
+      }
+    } catch (err) {
+      console.warn('API error syncing store settings:', err);
+    } finally {
+      inFlightSettingsPromise = null;
+    }
+    return getStoreSettings();
+  })();
+
+  return inFlightSettingsPromise;
 }
 
 export async function updateStoreSettings(

@@ -31,7 +31,7 @@ import { NavigationItem, StoreSettings, ShopLocation, CustomPage } from '@/types
 import { Category } from '@/types';
 import { AnnouncementBar } from './AnnouncementBar';
 
-export function Header() {
+export function Header({ initialSettings }: { initialSettings?: StoreSettings }) {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const isHomePage = pathname === '/';
@@ -40,15 +40,17 @@ export function Header() {
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [navItems, setNavItems] = useState<NavigationItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
   const [mobilePages, setMobilePages] = useState<CustomPage[]>([]);
+
+  const currentSettings = settings || initialSettings || null;
 
   const { customer, isAuthenticated, logout } = useCustomerAuth();
   const { totalItems, setIsCartOpen } = useCart();
   const { wishlistCount } = useWishlist();
   const { openSearch } = useSearch();
-  const activeSocialAccounts = getActiveSocialAccounts(settings);
+  const activeSocialAccounts = getActiveSocialAccounts(currentSettings);
 
   // Close account dropdown on route change
   useEffect(() => {
@@ -118,15 +120,16 @@ export function Header() {
     }
   }, [mobileMenuOpen]);
 
-  const hasLogo = Boolean(settings?.logoUrl && settings.logoUrl.trim());
-  const rawStoreName = settings?.storeName !== undefined ? settings.storeName.trim() : 'AL-HAMD-MOBILE';
-  const storeName = rawStoreName || (!hasLogo ? 'AL-HAMD-MOBILE' : '');
-  const logoUrl = settings?.logoUrl?.trim();
+  const hasLogo = Boolean(currentSettings?.logoUrl && currentSettings.logoUrl.trim());
+  const fallbackStoreName = initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+  const rawStoreName = currentSettings?.storeName !== undefined ? currentSettings.storeName.trim() : fallbackStoreName;
+  const storeName = rawStoreName || (!hasLogo ? fallbackStoreName : '');
+  const logoUrl = currentSettings?.logoUrl?.trim();
 
   const browserTitle =
-    settings?.websiteTitle ||
-    settings?.seo?.websiteTitle ||
-    settings?.seo?.metaTitle ||
+    currentSettings?.websiteTitle ||
+    currentSettings?.seo?.websiteTitle ||
+    currentSettings?.seo?.metaTitle ||
     (storeName ? `${storeName} | Mobile Accessories in Pakistan` : '');
 
   // Sync document title on client only for home page if not set
@@ -144,7 +147,7 @@ export function Header() {
 
   return (
     <>
-      <AnnouncementBar />
+      <AnnouncementBar initialSettings={currentSettings || undefined} />
       <header
         className={`w-full transition-all duration-300 ${
           isHomePage

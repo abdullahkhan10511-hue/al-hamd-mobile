@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import fs from 'fs';
 import path from 'path';
 import { seedStoreSettings } from '@/lib/db/seed';
@@ -132,6 +133,12 @@ export async function POST(request: NextRequest) {
     };
 
     await writeServerSettings(updated);
+
+    try {
+      revalidatePath('/', 'layout');
+    } catch (revalidateErr) {
+      console.warn('revalidatePath notice:', revalidateErr);
+    }
 
     return NextResponse.json({ success: true, settings: updated });
   } catch (err: any) {

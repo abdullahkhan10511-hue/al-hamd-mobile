@@ -7,8 +7,12 @@ import { Footer } from '@/components/layout/Footer';
 import { getStoreSettings, normalizeCanonicalUrl } from '@/lib/db/settings';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
+import { StoreSettings } from '@/types/admin';
 
-export async function generateMetadata(): Promise<Metadata> {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+async function loadServerSettings(): Promise<StoreSettings> {
   let settings = getStoreSettings();
   if (isDbConfigured()) {
     try {
@@ -20,6 +24,11 @@ export async function generateMetadata(): Promise<Metadata> {
       // Fallback to local settings
     }
   }
+  return settings;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await loadServerSettings();
 
   // Favicon: do not automatically use website logo
   const customFavicon =
@@ -124,18 +133,20 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const settings = await loadServerSettings();
+
   return (
     <html lang="en" className="h-full antialiased font-sans" data-scroll-behavior="smooth">
       <body className="min-h-full flex flex-col bg-white text-neutral-900 selection:bg-neutral-950 selection:text-white">
         <Providers>
-          <Header />
+          <Header initialSettings={settings} />
           <main className="flex-1">{children}</main>
-          <Footer />
+          <Footer initialSettings={settings} />
         </Providers>
       </body>
     </html>
