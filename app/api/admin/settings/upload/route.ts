@@ -107,12 +107,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const uploadType = (formData.get('type') as string) || 'logo';
+    const prefix =
+      uploadType === 'favicon'
+        ? 'favicon'
+        : uploadType === 'ogImage' || uploadType === 'og'
+        ? 'og'
+        : 'logo';
+
     // Clean filename
     const safeBaseName = path
       .basename(originalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 40);
-    const uniqueFileName = `logo_${Date.now()}_${safeBaseName}${ext || '.png'}`;
+    const uniqueFileName = `${prefix}_${Date.now()}_${safeBaseName}${ext || '.png'}`;
 
     // Write file via persistent storage manager
     const arrayBuffer = await file.arrayBuffer();

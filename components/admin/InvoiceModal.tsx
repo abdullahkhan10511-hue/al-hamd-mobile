@@ -8,6 +8,7 @@ import { subscribeToKey } from '@/lib/db/storage';
 import { printBillElement } from '@/lib/utils/printBill';
 import A4BillTemplate from './billing/A4BillTemplate';
 import ThermalBillTemplate from './billing/ThermalBillTemplate';
+import { resolveThermalWidth } from '@/lib/utils/thermalWidth';
 
 interface InvoiceModalProps {
   order: Order;
@@ -54,6 +55,11 @@ export default function InvoiceModal({
     email: storeEmail || billConfig.email,
   };
 
+  const thermalResolved = resolveThermalWidth(
+    billConfig.thermalPaperWidth,
+    billConfig.thermalCustomWidth
+  );
+
   const handlePrint = async (format: 'a4' | 'thermal') => {
     setPrintFormat(format);
     setIsPrinting(true);
@@ -63,6 +69,8 @@ export default function InvoiceModal({
       try {
         await printBillElement('alhamd-modal-printable-target', {
           format,
+          paperWidth: format === 'thermal' ? thermalResolved.widthCss : undefined,
+          customWidth: format === 'thermal' ? thermalResolved.customWidth : undefined,
           title: `Invoice_${order.invoiceNumber || order.id}`,
         });
       } finally {
@@ -80,7 +88,7 @@ export default function InvoiceModal({
           @media print {
             @page {
               margin: ${printFormat === 'thermal' ? '0mm' : '10mm'};
-              size: ${printFormat === 'thermal' ? '80mm auto' : 'A4 portrait'};
+              size: ${printFormat === 'thermal' ? `${thermalResolved.widthCss} auto` : 'A4 portrait'};
             }
             html, body {
               background: #ffffff !important;
@@ -100,8 +108,8 @@ export default function InvoiceModal({
               position: fixed !important;
               left: 0 !important;
               top: 0 !important;
-              width: ${printFormat === 'thermal' ? '80mm' : '100%'} !important;
-              max-width: ${printFormat === 'thermal' ? '80mm' : '100%'} !important;
+              width: ${printFormat === 'thermal' ? thermalResolved.widthCss : '100%'} !important;
+              max-width: ${printFormat === 'thermal' ? thermalResolved.widthCss : '100%'} !important;
               margin: 0 auto !important;
               padding: 0 !important;
               box-shadow: none !important;
@@ -162,7 +170,7 @@ export default function InvoiceModal({
                       : 'text-neutral-600 hover:text-neutral-950'
                   }`}
                 >
-                  Thermal (80mm)
+                  Thermal ({thermalResolved.widthCss})
                 </button>
               </div>
 
@@ -202,10 +210,18 @@ export default function InvoiceModal({
             {/* The Dedicated Printable Container */}
             <div id="alhamd-modal-printable-target">
               {printFormat === 'thermal' ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-neutral-200/80 p-2 print:shadow-none print:border-none print:p-0">
+                <div
+                  className="bg-white rounded-2xl shadow-sm border border-neutral-200/80 p-2 mx-auto print:shadow-none print:border-none print:p-0 transition-all"
+                  style={{
+                    width: thermalResolved.widthCss,
+                    maxWidth: '100%',
+                  }}
+                >
                   <ThermalBillTemplate
                     order={order}
                     settings={effectiveSettings}
+                    paperWidth={thermalResolved.paperWidth}
+                    customWidth={thermalResolved.customWidth}
                   />
                 </div>
               ) : (

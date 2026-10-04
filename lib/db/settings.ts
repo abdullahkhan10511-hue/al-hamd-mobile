@@ -106,6 +106,22 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
   };
 }
 
+export function normalizeCanonicalUrl(url?: string): string {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return 'https://alhamdshop.com';
+  }
+  let clean = url.trim();
+  if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+    clean = `https://${clean}`;
+  }
+  try {
+    const parsed = new URL(clean);
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return clean.replace(/\/+$/, '');
+  }
+}
+
 function getServerSavedSettings(): Partial<StoreSettings> | null {
   if (typeof window !== 'undefined') return null;
   try {
@@ -147,6 +163,36 @@ export function getStoreSettings(): StoreSettings {
   if (base.storeName === 'AL-HAMD-MOBILE' || base.storeName === 'AL·HAMD' || !base.storeName) {
     base.storeName = 'AL-HAMD MOBILE ACCESSORIES';
   }
+
+  // SEO & Branding Defaults and Fallbacks
+  const websiteTitle =
+    base.websiteTitle ||
+    base.seo?.websiteTitle ||
+    base.seo?.metaTitle ||
+    `${base.storeName} | Mobile Accessories in Pakistan`;
+  const canonicalUrl = normalizeCanonicalUrl(base.canonicalUrl || base.seo?.canonicalUrl || 'https://alhamdshop.com');
+  const metaDescription =
+    base.seo?.metaDescription ||
+    'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
+  const searchEngineTitle = base.seo?.searchEngineTitle || websiteTitle;
+  const searchEngineDescription = base.seo?.searchEngineDescription || metaDescription;
+  const ogImageUrl = base.ogImageUrl || base.seo?.ogImageUrl || '';
+
+  base.websiteTitle = websiteTitle;
+  base.canonicalUrl = canonicalUrl;
+  base.ogImageUrl = ogImageUrl;
+  base.seo = {
+    ...base.seo,
+    websiteTitle,
+    searchEngineTitle,
+    searchEngineDescription,
+    canonicalUrl,
+    metaDescription,
+    metaTitle: base.seo?.metaTitle || websiteTitle,
+    logoUrl: base.seo?.logoUrl || base.logoUrl || '',
+    faviconUrl: base.seo?.faviconUrl || base.faviconUrl || '/favicon.ico',
+    ogImageUrl,
+  };
 
   // Currency migrations
   if (!base.currency || base.currency === 'USD') {
@@ -192,6 +238,42 @@ export function getStoreSettings(): StoreSettings {
   return base;
 }
 
+let isSyncingStoreSettings = false;
+
+export async function syncStoreSettingsFromApi(): Promise<StoreSettings> {
+  if (typeof window === 'undefined') return getStoreSettings();
+  if (isSyncingStoreSettings) return getStoreSettings();
+  isSyncingStoreSettings = true;
+  try {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        const current = getStoreSettings();
+        const merged: StoreSettings = {
+          ...current,
+          ...data.settings,
+          websiteTitle: data.settings.websiteTitle || data.settings.seo?.websiteTitle || current.websiteTitle,
+          canonicalUrl: normalizeCanonicalUrl(data.settings.canonicalUrl || data.settings.seo?.canonicalUrl || current.canonicalUrl),
+          ogImageUrl: data.settings.ogImageUrl || data.settings.seo?.ogImageUrl || current.ogImageUrl,
+          seo: {
+            ...current.seo,
+            ...(data.settings.seo || {}),
+          },
+        };
+        setLocal(SETTINGS_KEY, merged);
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY } }));
+        return merged;
+      }
+    }
+  } catch (err) {
+    console.warn('API error syncing store settings:', err);
+  } finally {
+    isSyncingStoreSettings = false;
+  }
+  return getStoreSettings();
+}
+
 export async function updateStoreSettings(
   settings: Partial<StoreSettings>,
   adminEmail = 'admin@alhamd.com'
@@ -200,12 +282,24 @@ export async function updateStoreSettings(
   const updated: StoreSettings = {
     ...current,
     ...settings,
+    websiteTitle: settings.websiteTitle !== undefined ? settings.websiteTitle : (settings.seo?.websiteTitle !== undefined ? settings.seo.websiteTitle : current.websiteTitle),
+    canonicalUrl: settings.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.canonicalUrl) : (settings.seo?.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.seo.canonicalUrl) : current.canonicalUrl),
+    ogImageUrl: settings.ogImageUrl !== undefined ? settings.ogImageUrl : (settings.seo?.ogImageUrl !== undefined ? settings.seo.ogImageUrl : current.ogImageUrl),
     seo: {
       ...current.seo,
       ...(settings.seo || {}),
     },
     socialLinks: settings.socialLinks ? normalizeSocialLinks({ ...current.socialLinks, ...settings.socialLinks }) : current.socialLinks,
   };
+
+  // Keep seo mirror properties aligned
+  if (updated.seo) {
+    if (settings.websiteTitle) updated.seo.websiteTitle = settings.websiteTitle;
+    if (settings.canonicalUrl) updated.seo.canonicalUrl = normalizeCanonicalUrl(settings.canonicalUrl);
+    if (settings.ogImageUrl !== undefined) updated.seo.ogImageUrl = settings.ogImageUrl;
+    if (settings.logoUrl !== undefined) updated.seo.logoUrl = settings.logoUrl;
+    if (settings.faviconUrl !== undefined) updated.seo.faviconUrl = settings.faviconUrl;
+  }
 
   setLocal(SETTINGS_KEY, updated);
 

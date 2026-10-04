@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { getBillSettings } from '@/lib/db/billSettings';
 import { printBillElement } from '@/lib/utils/printBill';
+import { resolveThermalWidth } from '@/lib/utils/thermalWidth';
 
 interface ShopBillModalProps {
   bill: ShopBill;
@@ -32,6 +33,10 @@ export function ShopBillModal({
 }: ShopBillModalProps) {
   const [printFormat, setPrintFormat] = useState<'a4' | 'thermal'>('a4');
   const billSettings = getBillSettings();
+  const thermalResolved = resolveThermalWidth(
+    billSettings.thermalPaperWidth,
+    billSettings.thermalCustomWidth
+  );
 
   if (!isOpen || !bill) return null;
 
@@ -40,6 +45,8 @@ export function ShopBillModal({
     setTimeout(() => {
       printBillElement('printable-shop-bill', {
         format,
+        paperWidth: format === 'thermal' ? thermalResolved.widthCss : undefined,
+        customWidth: format === 'thermal' ? thermalResolved.customWidth : undefined,
         title: `ShopTransfer_${bill.billNumber}`,
       });
     }, 80);

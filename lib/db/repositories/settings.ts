@@ -1,5 +1,5 @@
 import { query, execute, isDbConfigured } from '../mysql';
-import { StoreSettings, BillSettings } from '@/types/admin';
+import { StoreSettings, BillSettings, BillFieldToggles } from '@/types/admin';
 import { seedStoreSettings } from '../seed';
 import { RowDataPacket } from 'mysql2/promise';
 
@@ -30,6 +30,53 @@ interface StoreSettingsRow extends RowDataPacket {
   seo_favicon_url: string | null;
   footer_description: string | null;
   business_hours: string | null;
+  website_title?: string | null;
+  search_engine_title?: string | null;
+  search_engine_description?: string | null;
+  canonical_url?: string | null;
+  og_image_url?: string | null;
+}
+
+let checkedStoreSettingsColumns = false;
+
+export async function ensureStoreSettingsColumns(): Promise<void> {
+  if (checkedStoreSettingsColumns || !isDbConfigured()) return;
+  try {
+    const existingCols = await query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_settings'`
+    );
+    const existingSet = new Set((existingCols || []).map((c: any) => String(c.COLUMN_NAME).toLowerCase()));
+
+    const missingAlterations: string[] = [];
+    if (!existingSet.has('website_title')) {
+      missingAlterations.push('ADD COLUMN `website_title` VARCHAR(500) NULL');
+    }
+    if (!existingSet.has('search_engine_title')) {
+      missingAlterations.push('ADD COLUMN `search_engine_title` VARCHAR(500) NULL');
+    }
+    if (!existingSet.has('search_engine_description')) {
+      missingAlterations.push('ADD COLUMN `search_engine_description` TEXT NULL');
+    }
+    if (!existingSet.has('canonical_url')) {
+      missingAlterations.push('ADD COLUMN `canonical_url` VARCHAR(500) NULL');
+    }
+    if (!existingSet.has('og_image_url')) {
+      missingAlterations.push('ADD COLUMN `og_image_url` VARCHAR(1000) NULL');
+    }
+
+    if (missingAlterations.length > 0) {
+      for (const alt of missingAlterations) {
+        try {
+          await execute(`ALTER TABLE store_settings ${alt}`);
+        } catch (e) {
+          console.warn('Notice adding store_settings column:', e);
+        }
+      }
+    }
+    checkedStoreSettingsColumns = true;
+  } catch (err) {
+    console.warn('ensureStoreSettingsColumns notice:', err);
+  }
 }
 
 interface BillSettingsRow extends RowDataPacket {
@@ -92,6 +139,8 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
     return seedStoreSettings;
   }
 
+  await ensureStoreSettingsColumns();
+
   const rows = await query<StoreSettingsRow[]>('SELECT * FROM store_settings WHERE id = 1 LIMIT 1');
   if (!rows || rows.length === 0) {
     return seedStoreSettings;
@@ -101,11 +150,20 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
   const socialLinks = parseJsonField(r.social_links, seedStoreSettings.socialLinks);
   const keywords = parseJsonField<string[]>(r.seo_keywords, seedStoreSettings.seo.keywords);
 
+  const websiteTitle = r.website_title || r.seo_meta_title || seedStoreSettings.seo.metaTitle;
+  const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
+  const ogImageUrl = r.og_image_url || undefined;
+  const searchEngineTitle = r.search_engine_title || websiteTitle;
+  const searchEngineDescription = r.search_engine_description || r.seo_meta_description || seedStoreSettings.seo.metaDescription;
+
   return {
     storeName: r.store_name,
     storeTagline: r.store_tagline || seedStoreSettings.storeTagline,
+    websiteTitle,
+    canonicalUrl,
     logoUrl: r.logo_url || undefined,
     faviconUrl: r.favicon_url || seedStoreSettings.faviconUrl,
+    ogImageUrl,
     email: r.email,
     phone: r.phone,
     address: r.address,
@@ -124,8 +182,13 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
       metaTitle: r.seo_meta_title || seedStoreSettings.seo.metaTitle,
       metaDescription: r.seo_meta_description || seedStoreSettings.seo.metaDescription,
       keywords,
+      websiteTitle,
+      searchEngineTitle,
+      searchEngineDescription,
+      canonicalUrl,
       logoUrl: r.seo_logo_url || r.logo_url || undefined,
-      faviconUrl: r.seo_favicon_url || r.favicon_url || undefined,
+      faviconUrl: r.seo_favicon_url || r.favicon_url || seedStoreSettings.faviconUrl,
+      ogImageUrl,
     },
     footerDescription: r.footer_description || seedStoreSettings.footerDescription,
     businessHours: r.business_hours || seedStoreSettings.businessHours,
@@ -137,6 +200,9 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
   const merged: StoreSettings = {
     ...current,
     ...updates,
+    websiteTitle: updates.websiteTitle !== undefined ? updates.websiteTitle : (updates.seo?.websiteTitle !== undefined ? updates.seo.websiteTitle : current.websiteTitle),
+    canonicalUrl: updates.canonicalUrl !== undefined ? updates.canonicalUrl : (updates.seo?.canonicalUrl !== undefined ? updates.seo.canonicalUrl : current.canonicalUrl),
+    ogImageUrl: updates.ogImageUrl !== undefined ? updates.ogImageUrl : (updates.seo?.ogImageUrl !== undefined ? updates.seo.ogImageUrl : current.ogImageUrl),
     seo: {
       ...current.seo,
       ...(updates.seo || {}),
@@ -151,19 +217,29 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
     throw new Error('Database is not configured.');
   }
 
+  await ensureStoreSettingsColumns();
+
+  const websiteTitle = merged.websiteTitle || merged.seo?.websiteTitle || merged.seo?.metaTitle || null;
+  const searchEngineTitle = merged.seo?.searchEngineTitle || websiteTitle;
+  const searchEngineDescription = merged.seo?.searchEngineDescription || merged.seo?.metaDescription || null;
+  const canonicalUrl = merged.canonicalUrl || merged.seo?.canonicalUrl || 'https://alhamdshop.com';
+  const ogImageUrl = merged.ogImageUrl || merged.seo?.ogImageUrl || null;
+
   await execute(
     `INSERT INTO store_settings (
       id, store_name, store_tagline, logo_url, favicon_url, email, phone, address,
       whatsapp, currency, currency_symbol, free_shipping_threshold, standard_shipping_fee,
       express_shipping_fee, delivery_message, estimated_delivery_text, pakistan_only,
       tax_percentage, social_links, seo_meta_title, seo_meta_description, seo_keywords,
-      seo_logo_url, seo_favicon_url, footer_description, business_hours
+      seo_logo_url, seo_favicon_url, footer_description, business_hours,
+      website_title, search_engine_title, search_engine_description, canonical_url, og_image_url
     ) VALUES (
       1, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
-      ?, ?, ?, ?
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?
     ) ON DUPLICATE KEY UPDATE
       store_name = VALUES(store_name),
       store_tagline = VALUES(store_tagline),
@@ -189,7 +265,12 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
       seo_logo_url = VALUES(seo_logo_url),
       seo_favicon_url = VALUES(seo_favicon_url),
       footer_description = VALUES(footer_description),
-      business_hours = VALUES(business_hours)`,
+      business_hours = VALUES(business_hours),
+      website_title = VALUES(website_title),
+      search_engine_title = VALUES(search_engine_title),
+      search_engine_description = VALUES(search_engine_description),
+      canonical_url = VALUES(canonical_url),
+      og_image_url = VALUES(og_image_url)`,
     [
       merged.storeName,
       merged.storeTagline,
@@ -216,11 +297,34 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
       merged.seo.faviconUrl || merged.faviconUrl || null,
       merged.footerDescription,
       merged.businessHours,
+      websiteTitle,
+      searchEngineTitle,
+      searchEngineDescription,
+      canonicalUrl,
+      ogImageUrl,
     ]
   );
 
   return merged;
 }
+
+const defaultBillToggles: BillFieldToggles = {
+  showLogo: true,
+  showStoreName: true,
+  showStoreAddress: true,
+  showCustomerName: true,
+  showCustomerPhone: true,
+  showCustomerAddress: true,
+  showInvoiceNumber: true,
+  showDate: true,
+  showTime: true,
+  showPaymentMethod: true,
+  showWebsite: true,
+  showThankYou: true,
+  footerMessage: 'Thank You for Shopping!',
+  thermalPaperWidth: '80mm',
+  thermalCustomWidth: 80,
+};
 
 export async function getBillSettingsFromDb(): Promise<BillSettings> {
   const fallback: BillSettings = {
@@ -234,6 +338,10 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
     invoiceFooterText: 'Thank You for Shopping!',
     taxNumber: '',
     thermalFooterNote: 'Thank You for Shopping!',
+    thermalPaperWidth: '80mm',
+    thermalCustomWidth: 80,
+    a4Config: defaultBillToggles,
+    thermalConfig: defaultBillToggles,
   };
 
   if (!isDbConfigured()) return fallback;
@@ -245,6 +353,8 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
   const templateConfig = parseJsonField<{
     a4Config?: any;
     thermalConfig?: any;
+    thermalPaperWidth?: any;
+    thermalCustomWidth?: any;
     showLogo?: boolean;
     showStoreName?: boolean;
     showStoreAddress?: boolean;
@@ -259,6 +369,17 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
     showThankYou?: boolean;
   }>((r as any).template_config, {});
 
+  const savedWidth =
+    templateConfig.thermalPaperWidth ||
+    templateConfig.thermalConfig?.thermalPaperWidth ||
+    '80mm';
+  const savedCustomWidth =
+    typeof templateConfig.thermalCustomWidth === 'number'
+      ? templateConfig.thermalCustomWidth
+      : typeof templateConfig.thermalConfig?.thermalCustomWidth === 'number'
+      ? templateConfig.thermalConfig.thermalCustomWidth
+      : 80;
+
   return {
     storeName: r.store_name,
     storeLogo: r.store_logo || undefined,
@@ -271,8 +392,17 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
     invoiceFooterText: r.invoice_footer_text || undefined,
     taxNumber: r.tax_number || undefined,
     thermalFooterNote: r.thermal_footer_note || undefined,
-    a4Config: templateConfig.a4Config,
-    thermalConfig: templateConfig.thermalConfig,
+    thermalPaperWidth: savedWidth,
+    thermalCustomWidth: savedCustomWidth,
+    a4Config: templateConfig.a4Config
+      ? { ...defaultBillToggles, ...templateConfig.a4Config }
+      : defaultBillToggles,
+    thermalConfig: {
+      ...defaultBillToggles,
+      ...(templateConfig.thermalConfig || {}),
+      thermalPaperWidth: savedWidth,
+      thermalCustomWidth: savedCustomWidth,
+    },
     showLogo: templateConfig.showLogo,
     showStoreName: templateConfig.showStoreName,
     showStoreAddress: templateConfig.showStoreAddress,
@@ -292,9 +422,30 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
 
 export async function updateBillSettingsInDb(updates: Partial<BillSettings>, adminEmail = 'admin@alhamd.com'): Promise<BillSettings> {
   const current = await getBillSettingsFromDb();
+  const width =
+    updates.thermalPaperWidth ||
+    updates.thermalConfig?.thermalPaperWidth ||
+    current.thermalPaperWidth ||
+    '80mm';
+  const customWidth =
+    typeof updates.thermalCustomWidth === 'number'
+      ? updates.thermalCustomWidth
+      : typeof updates.thermalConfig?.thermalCustomWidth === 'number'
+      ? updates.thermalConfig.thermalCustomWidth
+      : current.thermalCustomWidth || 80;
+
   const merged: BillSettings = {
     ...current,
     ...updates,
+    thermalPaperWidth: width,
+    thermalCustomWidth: customWidth,
+    thermalConfig: {
+      ...defaultBillToggles,
+      ...(current.thermalConfig || {}),
+      ...(updates.thermalConfig || {}),
+      thermalPaperWidth: width,
+      thermalCustomWidth: customWidth,
+    },
     updatedAt: new Date().toISOString(),
     updatedBy: adminEmail,
   };
@@ -307,6 +458,8 @@ export async function updateBillSettingsInDb(updates: Partial<BillSettings>, adm
   const templateConfigJson = JSON.stringify({
     a4Config: merged.a4Config,
     thermalConfig: merged.thermalConfig,
+    thermalPaperWidth: merged.thermalPaperWidth,
+    thermalCustomWidth: merged.thermalCustomWidth,
     showLogo: merged.showLogo,
     showStoreName: merged.showStoreName,
     showStoreAddress: merged.showStoreAddress,

@@ -116,17 +116,15 @@ export default function AdminSettingsPage() {
       if (settings && data.url) {
         const updatedSettings: StoreSettings = {
           ...settings,
-          faviconUrl: data.url,
           logoUrl: data.url,
           seo: {
             ...settings.seo,
-            faviconUrl: data.url,
             logoUrl: data.url,
           },
         };
         setSettings(updatedSettings);
         await updateStoreSettings(updatedSettings);
-        setMessage('Site Logo / Favicon uploaded and saved successfully.');
+        setMessage('Site Logo uploaded and saved successfully.');
         setTimeout(() => setMessage(''), 3000);
       }
     } catch (err: any) {
@@ -142,17 +140,15 @@ export default function AdminSettingsPage() {
     setLogoUploadError('');
     const updatedSettings: StoreSettings = {
       ...settings,
-      faviconUrl: '',
       logoUrl: '',
       seo: {
         ...settings.seo,
-        faviconUrl: '',
         logoUrl: '',
       },
     };
     setSettings(updatedSettings);
     await updateStoreSettings(updatedSettings);
-    setMessage('Site Logo removed. Default favicon restored.');
+    setMessage('Site Logo removed.');
     setTimeout(() => setMessage(''), 3000);
   };
 
@@ -1015,6 +1011,33 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-neutral-500 mt-0.5">
                 Manage your global site icon, search engine meta titles, descriptions, and discovery keywords.
               </p>
+            </div>
+
+            {/* Direct Link Banner to Dedicated SEO & Website Settings Page */}
+            <div className="p-4 bg-gradient-to-r from-neutral-900 to-neutral-800 text-white rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Globe className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    Dedicated SEO &amp; Website Branding Suite
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">
+                      New
+                    </span>
+                  </h4>
+                  <p className="text-xs text-neutral-300 mt-0.5">
+                    Live Google search snippet, simulated website header, and real-time social share card preview editor.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/admin/settings/seo"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-neutral-950 hover:bg-neutral-100 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+              >
+                Open Full SEO Editor
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
             </div>
 
             {/* Site Logo / Favicon Upload Section */}

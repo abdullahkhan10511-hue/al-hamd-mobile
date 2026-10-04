@@ -14,6 +14,7 @@ import { subscribeToKey } from '@/lib/db/storage';
 import { printBillElement } from '@/lib/utils/printBill';
 import ThermalBillTemplate from './billing/ThermalBillTemplate';
 import A4BillTemplate from './billing/A4BillTemplate';
+import { resolveThermalWidth } from '@/lib/utils/thermalWidth';
 
 interface PosReceiptModalProps {
   order: Order;
@@ -40,6 +41,11 @@ export default function PosReceiptModal({
     return () => unsub();
   }, []);
 
+  const thermalResolved = resolveThermalWidth(
+    billSettings.thermalPaperWidth,
+    billSettings.thermalCustomWidth
+  );
+
   if (!isOpen || !order) return null;
 
   const handlePrint = async (format: 'thermal' | 'a4') => {
@@ -50,6 +56,8 @@ export default function PosReceiptModal({
       try {
         await printBillElement('pos-receipt-print-area', {
           format,
+          paperWidth: format === 'thermal' ? thermalResolved.widthCss : undefined,
+          customWidth: format === 'thermal' ? thermalResolved.customWidth : undefined,
           title: `Receipt_${order.invoiceNumber || order.id}`,
         });
       } finally {
@@ -67,7 +75,7 @@ export default function PosReceiptModal({
           @media print {
             @page {
               margin: ${printFormat === 'thermal' ? '0mm' : '10mm'};
-              size: ${printFormat === 'thermal' ? '80mm auto' : 'A4 portrait'};
+              size: ${printFormat === 'thermal' ? `${thermalResolved.widthCss} auto` : 'A4 portrait'};
             }
             html, body {
               background: #ffffff !important;
@@ -87,8 +95,8 @@ export default function PosReceiptModal({
               position: fixed !important;
               left: 0 !important;
               top: 0 !important;
-              width: ${printFormat === 'thermal' ? '80mm' : '100%'} !important;
-              max-width: ${printFormat === 'thermal' ? '80mm' : '100%'} !important;
+              width: ${printFormat === 'thermal' ? thermalResolved.widthCss : '100%'} !important;
+              max-width: ${printFormat === 'thermal' ? thermalResolved.widthCss : '100%'} !important;
               margin: 0 auto !important;
               padding: 0 !important;
               box-shadow: none !important;
@@ -137,7 +145,7 @@ export default function PosReceiptModal({
                       : 'text-neutral-600 hover:text-neutral-900'
                   }`}
                 >
-                  Thermal (80mm)
+                  Thermal ({thermalResolved.widthCss})
                 </button>
                 <button
                   type="button"
@@ -188,10 +196,18 @@ export default function PosReceiptModal({
             {/* The Dedicated Printable Container */}
             <div id="pos-receipt-print-area">
               {printFormat === 'thermal' ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-neutral-200/80 p-2 mx-auto w-[80mm] print:shadow-none print:border-none print:p-0">
+                <div
+                  className="bg-white rounded-2xl shadow-sm border border-neutral-200/80 p-2 mx-auto print:shadow-none print:border-none print:p-0 transition-all"
+                  style={{
+                    width: thermalResolved.widthCss,
+                    maxWidth: '100%',
+                  }}
+                >
                   <ThermalBillTemplate
                     order={order}
                     settings={billSettings}
+                    paperWidth={thermalResolved.paperWidth}
+                    customWidth={thermalResolved.customWidth}
                   />
                 </div>
               ) : (

@@ -19,6 +19,7 @@ import {
   LoginPageMediaItem,
   DEFAULT_LOGIN_PAGE_SETTINGS,
 } from '@/lib/db/loginPage';
+import { getStoreSettings } from '@/lib/db/settings';
 
 function LoginContent() {
   const router = useRouter();
@@ -218,7 +219,10 @@ function LoginContent() {
     >
       {/* Customer Login Unified View */}
       <CustomerLoginView
-        settings={settings}
+        settings={{
+          ...settings,
+          logoUrl: settings.logoUrl || getStoreSettings().logoUrl || '',
+        }}
         mediaItems={mediaItems}
         isPreview={false}
         activeTab={activeTab}

@@ -1,6 +1,7 @@
 import { BillSettings, BillFieldToggles } from '@/types/admin';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
+import { DEFAULT_THERMAL_WIDTH, DEFAULT_CUSTOM_WIDTH } from '@/lib/utils/thermalWidth';
 
 const BILL_SETTINGS_KEY = 'bill_settings';
 
@@ -18,6 +19,8 @@ export const defaultBillFieldToggles: BillFieldToggles = {
   showWebsite: true,
   showThankYou: true,
   footerMessage: 'Thank You for Shopping!',
+  thermalPaperWidth: DEFAULT_THERMAL_WIDTH,
+  thermalCustomWidth: DEFAULT_CUSTOM_WIDTH,
 };
 
 export const defaultBillSettings: BillSettings = {
@@ -32,8 +35,15 @@ export const defaultBillSettings: BillSettings = {
   invoiceFooterText: 'Thank You for Shopping!',
   taxNumber: '',
   thermalFooterNote: 'Thank You for Shopping!',
+  thermalPaperWidth: DEFAULT_THERMAL_WIDTH,
+  thermalCustomWidth: DEFAULT_CUSTOM_WIDTH,
   a4Config: { ...defaultBillFieldToggles, footerMessage: 'Thank You for Shopping!' },
-  thermalConfig: { ...defaultBillFieldToggles, footerMessage: 'Thank You for Shopping!' },
+  thermalConfig: {
+    ...defaultBillFieldToggles,
+    footerMessage: 'Thank You for Shopping!',
+    thermalPaperWidth: DEFAULT_THERMAL_WIDTH,
+    thermalCustomWidth: DEFAULT_CUSTOM_WIDTH,
+  },
   showLogo: true,
   showStoreName: true,
   showStoreAddress: true,
@@ -73,9 +83,21 @@ export function getBillSettings(): BillSettings {
     syncBillSettingsFromApi().catch(() => {});
   }
   const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, defaultBillSettings);
+
+  // Preserve existing saved thermal width, fallback to default '80mm' only if unset
+  const savedWidth = current?.thermalPaperWidth || current?.thermalConfig?.thermalPaperWidth || DEFAULT_THERMAL_WIDTH;
+  const savedCustomWidth =
+    typeof current?.thermalCustomWidth === 'number'
+      ? current.thermalCustomWidth
+      : typeof current?.thermalConfig?.thermalCustomWidth === 'number'
+      ? current.thermalConfig.thermalCustomWidth
+      : DEFAULT_CUSTOM_WIDTH;
+
   const base: BillSettings = {
     ...defaultBillSettings,
     ...(current || {}),
+    thermalPaperWidth: savedWidth,
+    thermalCustomWidth: savedCustomWidth,
     a4Config: {
       ...defaultBillFieldToggles,
       ...(current?.a4Config || {}),
@@ -84,6 +106,8 @@ export function getBillSettings(): BillSettings {
     thermalConfig: {
       ...defaultBillFieldToggles,
       ...(current?.thermalConfig || {}),
+      thermalPaperWidth: savedWidth,
+      thermalCustomWidth: savedCustomWidth,
       footerMessage: current?.thermalConfig?.footerMessage || current?.thermalFooterNote || defaultBillFieldToggles.footerMessage,
     },
   };
@@ -114,9 +138,30 @@ export async function updateBillSettings(
   adminEmail = 'admin@alhamd.com'
 ): Promise<BillSettings> {
   const current = getBillSettings();
+  const width =
+    settings.thermalPaperWidth ||
+    settings.thermalConfig?.thermalPaperWidth ||
+    current.thermalPaperWidth ||
+    DEFAULT_THERMAL_WIDTH;
+  const customWidth =
+    typeof settings.thermalCustomWidth === 'number'
+      ? settings.thermalCustomWidth
+      : typeof settings.thermalConfig?.thermalCustomWidth === 'number'
+      ? settings.thermalConfig.thermalCustomWidth
+      : current.thermalCustomWidth || DEFAULT_CUSTOM_WIDTH;
+
   const updated: BillSettings = {
     ...current,
     ...settings,
+    thermalPaperWidth: width,
+    thermalCustomWidth: customWidth,
+    thermalConfig: {
+      ...defaultBillFieldToggles,
+      ...(current.thermalConfig || {}),
+      ...(settings.thermalConfig || {}),
+      thermalPaperWidth: width,
+      thermalCustomWidth: customWidth,
+    },
     updatedAt: new Date().toISOString(),
     updatedBy: adminEmail,
   };

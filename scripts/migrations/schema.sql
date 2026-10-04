@@ -411,6 +411,11 @@ CREATE TABLE IF NOT EXISTS `store_settings` (
   `seo_favicon_url` VARCHAR(1000) NULL,
   `footer_description` TEXT NULL,
   `business_hours` VARCHAR(255) NULL,
+  `website_title` VARCHAR(500) NULL,
+  `search_engine_title` VARCHAR(500) NULL,
+  `search_engine_description` TEXT NULL,
+  `canonical_url` VARCHAR(500) NULL,
+  `og_image_url` VARCHAR(1000) NULL,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

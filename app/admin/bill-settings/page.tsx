@@ -21,16 +21,23 @@ import {
   AlertCircle,
   Check,
 } from 'lucide-react';
-import { BillSettings, BillFieldToggles, Order } from '@/types/admin';
+import { BillSettings, BillFieldToggles, Order, ThermalPaperWidth } from '@/types/admin';
 import { getBillSettings, updateBillSettings, defaultBillFieldToggles } from '@/lib/db/billSettings';
 import { uploadMediaFile } from '@/lib/db/media';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { subscribeToKey } from '@/lib/db/storage';
 import { printBillElement } from '@/lib/utils/printBill';
+import {
+  resolveThermalWidth,
+  THERMAL_WIDTH_OPTIONS,
+  MIN_CUSTOM_WIDTH,
+  MAX_CUSTOM_WIDTH,
+} from '@/lib/utils/thermalWidth';
 import A4BillTemplate from '@/components/admin/billing/A4BillTemplate';
 import ThermalBillTemplate from '@/components/admin/billing/ThermalBillTemplate';
 
 // Realistic preview sample data (NEVER saved into orders table)
+// Includes real test cases: Rs. 4,499 price, long product name, Cash on Delivery (Pending)
 const samplePreviewOrder: Order = {
   id: '78921',
   invoiceNumber: 'INV-2026-00892',
@@ -38,47 +45,47 @@ const samplePreviewOrder: Order = {
     firstName: 'Abdullah',
     lastName: 'Testing',
     email: 'abdullah.test@example.com',
-    phone: '+92 300 0000000',
+    phone: '+92 343 2200995',
   },
   shippingAddress: {
-    street: 'House 42, Street 7, Sector F-8/2',
-    city: 'Islamabad',
-    postalCode: '44000',
+    street: 'Mobile Street, Opposite Habib Bank, Katchery Road',
+    city: 'Mandi Bahauddin',
+    postalCode: '50400',
     country: 'Pakistan',
   },
   items: [
     {
       productId: 'sample-p1',
-      productName: 'Vivid Earbuds ANC Pro Wireless',
-      slug: 'vivid-earbuds-anc-pro',
+      productName: 'Wireless Fast Charging Cable Type-C 2m',
+      slug: 'wireless-fast-charging-cable',
       quantity: 1,
-      price: 3495,
-      total: 3495,
-      sku: 'ALH-EB-001',
-      selectedModel: 'Pro Edition',
-      selectedColor: 'Midnight Black',
+      price: 1499,
+      total: 1499,
+      sku: 'ALH-CAB-002',
+      selectedModel: '2m Braided Edition',
+      selectedColor: 'Black',
       image: '/placeholder.png',
     },
     {
       productId: 'sample-p2',
-      productName: '65W GaN Fast Charger Dual Port',
+      productName: '65W GaN Fast Charger Dual Port Super Charge Edition',
       slug: '65w-gan-fast-charger',
       quantity: 1,
-      price: 2450,
-      total: 2450,
+      price: 4499,
+      total: 4499,
       sku: 'ALH-CH-065',
       selectedColor: 'White',
       image: '/placeholder.png',
     },
   ],
-  subtotal: 5945,
-  shipping: 200,
+  subtotal: 5998,
+  shipping: 0,
   tax: 0,
   discount: 500,
-  total: 5645,
+  total: 5498,
   paymentMethod: 'Cash on Delivery',
-  paymentStatus: 'Paid',
-  status: 'Delivered',
+  paymentStatus: 'Pending',
+  status: 'Processing',
   currency: 'PKR',
   createdAt: '2026-10-02T14:30:00.000Z',
   updatedAt: '2026-10-02T14:30:00.000Z',
@@ -173,8 +180,41 @@ export default function StoreBillSettingsPage() {
   const handleTestPrint = () => {
     printBillElement('alhamd-live-preview-target', {
       format: previewTab,
+      paperWidth: previewTab === 'thermal' ? currentResolvedWidth.widthCss : undefined,
+      customWidth: previewTab === 'thermal' ? currentResolvedWidth.customWidth : undefined,
       title: `Test_Print_${previewTab.toUpperCase()}`,
     });
+  };
+
+  // Resolved dynamic thermal width
+  const currentResolvedWidth = resolveThermalWidth(
+    settings.thermalPaperWidth,
+    settings.thermalCustomWidth
+  );
+
+  const handlePaperWidthChange = (width: ThermalPaperWidth) => {
+    setSettings((prev) => ({
+      ...prev,
+      thermalPaperWidth: width,
+      thermalConfig: {
+        ...defaultBillFieldToggles,
+        ...(prev.thermalConfig || {}),
+        thermalPaperWidth: width,
+      },
+    }));
+  };
+
+  const handleCustomWidthChange = (val: number) => {
+    const clamped = Math.min(MAX_CUSTOM_WIDTH, Math.max(MIN_CUSTOM_WIDTH, Math.round(val)));
+    setSettings((prev) => ({
+      ...prev,
+      thermalCustomWidth: clamped,
+      thermalConfig: {
+        ...defaultBillFieldToggles,
+        ...(prev.thermalConfig || {}),
+        thermalCustomWidth: clamped,
+      },
+    }));
   };
 
   // Active toggles for currently selected preview format
@@ -538,16 +578,120 @@ export default function StoreBillSettingsPage() {
               <div className="bg-neutral-950 text-white p-4 rounded-2xl flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-xs uppercase tracking-wider">
-                    {activeSettingsSection === 'a4' ? 'A4 Invoice Format Controls' : '80mm Thermal Receipt Controls'}
+                    {activeSettingsSection === 'a4'
+                      ? 'A4 Invoice Format Controls'
+                      : `Thermal Receipt Controls (${currentResolvedWidth.widthCss})`}
                   </h3>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
                     Toggle visibility of header, customer, and invoice fields. Changes reflect live in the preview.
                   </p>
                 </div>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
-                  {activeSettingsSection.toUpperCase()}
+                  {activeSettingsSection === 'thermal' ? currentResolvedWidth.widthCss : 'A4'}
                 </span>
               </div>
+
+              {/* Thermal Paper Width Settings (Shown on Thermal Tab) */}
+              {activeSettingsSection === 'thermal' && (
+                <div className="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-neutral-950 uppercase tracking-tight">
+                        Thermal Paper Width
+                      </h4>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        Select the actual paper width used by the thermal printer. The receipt layout and print CSS will automatically adapt to this width.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                      {currentResolvedWidth.widthCss}
+                    </span>
+                  </div>
+
+                  {/* Radio Options Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                    {THERMAL_WIDTH_OPTIONS.map((opt) => {
+                      const isSelected = (settings.thermalPaperWidth || '80mm') === opt.value;
+                      return (
+                        <label
+                          key={opt.value}
+                          onClick={() => handlePaperWidthChange(opt.value)}
+                          className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
+                            isSelected
+                              ? 'bg-neutral-900 border-neutral-900 text-white shadow-xs'
+                              : 'bg-neutral-50/70 border-neutral-200 hover:bg-neutral-100/70 text-neutral-800'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="thermalPaperWidth"
+                            value={opt.value}
+                            checked={isSelected}
+                            onChange={() => handlePaperWidthChange(opt.value)}
+                            className="mt-0.5 w-3.5 h-3.5 accent-white shrink-0 cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className={`font-bold text-xs ${isSelected ? 'text-white' : 'text-neutral-900'}`}>
+                              {opt.label}
+                            </div>
+                            <div
+                              className={`text-[10px] leading-tight line-clamp-1 ${
+                                isSelected ? 'text-neutral-300' : 'text-neutral-500'
+                              }`}
+                            >
+                              {opt.description}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Width Numeric Input (if Custom selected) */}
+                  {settings.thermalPaperWidth === 'custom' && (
+                    <div className="mt-3 p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="custom-width-input" className="text-xs font-bold text-neutral-900">
+                          Custom Width (mm):
+                        </label>
+                        <span className="text-[10px] text-amber-800 font-mono">
+                          Safe range: {MIN_CUSTOM_WIDTH}mm – {MAX_CUSTOM_WIDTH}mm
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="custom-width-input"
+                          type="number"
+                          min={MIN_CUSTOM_WIDTH}
+                          max={MAX_CUSTOM_WIDTH}
+                          step="1"
+                          value={settings.thermalCustomWidth ?? 80}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val)) {
+                              handleCustomWidthChange(val);
+                            }
+                          }}
+                          className="w-32 px-3 py-2 text-xs font-bold font-mono rounded-xl border border-neutral-300 bg-white text-neutral-900 focus:outline-hidden focus:ring-2 focus:ring-neutral-900"
+                          placeholder="80"
+                        />
+                        <span className="text-xs font-bold text-neutral-700">mm</span>
+                        <span className="text-[11px] text-neutral-500 ml-2">
+                          Print document and live preview will resize to {currentResolvedWidth.widthCss}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Printer Driver Compatibility Notice */}
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-neutral-100 border border-neutral-200/80 text-[11px] text-neutral-600">
+                    <AlertCircle className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                    <span>
+                      Make sure the printer driver/page size matches the selected paper width.
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* 1. Header & Shop Display Toggles */}
               <div className="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
@@ -767,7 +911,7 @@ export default function StoreBillSettingsPage() {
                       : 'text-neutral-400 hover:text-white'
                   }`}
                 >
-                  Thermal (80mm)
+                  Thermal ({currentResolvedWidth.widthCss})
                 </button>
               </div>
 
@@ -794,10 +938,18 @@ export default function StoreBillSettingsPage() {
                   />
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl shadow-md border border-neutral-200 overflow-hidden mx-auto w-[80mm]">
+                <div
+                  className="bg-white rounded-2xl shadow-md border border-neutral-200 overflow-hidden mx-auto transition-all duration-200"
+                  style={{
+                    width: currentResolvedWidth.widthCss,
+                    maxWidth: '100%',
+                  }}
+                >
                   <ThermalBillTemplate
                     order={samplePreviewOrder}
                     settings={settings}
+                    paperWidth={currentResolvedWidth.paperWidth}
+                    customWidth={currentResolvedWidth.customWidth}
                   />
                 </div>
               )}

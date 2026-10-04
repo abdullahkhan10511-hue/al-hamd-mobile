@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import { getStoreSettings, getActiveSocialAccounts } from '@/lib/db/settings';
+import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { getActiveShopLocation } from '@/lib/db/locations';
 import { StoreSettings, ShopLocation } from '@/types/admin';
 
@@ -89,6 +89,9 @@ export function Footer() {
 
   useEffect(() => {
     loadData();
+    syncStoreSettingsFromApi().then((fresh) => {
+      if (fresh) setSettings(fresh);
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -132,8 +135,18 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 pb-12">
           {/* Column 1: BRAND / ABOUT & REAL CONTACT DETAILS */}
           <div className="space-y-4">
+            {settings?.logoUrl ? (
+              <img
+                src={settings.logoUrl}
+                alt={settings.storeName || officialStoreName}
+                className="h-8 w-auto max-w-[150px] object-contain mb-2 brightness-0 invert"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : null}
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-              {officialStoreName}
+              {settings?.storeName || officialStoreName}
             </h3>
             <p className="text-xs text-neutral-400 leading-relaxed max-w-sm">
               {officialDescription}

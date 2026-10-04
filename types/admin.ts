@@ -399,8 +399,11 @@ export interface SocialLinksSettings {
 export interface StoreSettings {
   storeName: string;
   storeTagline: string;
+  websiteTitle?: string;
+  canonicalUrl?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  ogImageUrl?: string;
   email: string;
   phone: string;
   address: string;
@@ -419,8 +422,13 @@ export interface StoreSettings {
     metaTitle: string;
     metaDescription: string;
     keywords: string[];
+    websiteTitle?: string;
+    searchEngineTitle?: string;
+    searchEngineDescription?: string;
+    canonicalUrl?: string;
     faviconUrl?: string;
     logoUrl?: string;
+    ogImageUrl?: string;
   };
   footerDescription: string;
   businessHours: string;
@@ -539,6 +547,8 @@ export interface CustomPage {
 
 export type PageContent = CustomPage;
 
+export type ThermalPaperWidth = '58mm' | '80mm' | '76mm' | '72mm' | '57.5mm' | 'custom';
+
 export interface BillFieldToggles {
   showLogo: boolean;
   showStoreName: boolean;
@@ -553,6 +563,8 @@ export interface BillFieldToggles {
   showWebsite: boolean;
   showThankYou: boolean;
   footerMessage?: string;
+  thermalPaperWidth?: ThermalPaperWidth;
+  thermalCustomWidth?: number;
 }
 
 export interface BillSettings {
@@ -571,6 +583,10 @@ export interface BillSettings {
   // Format-specific configurations
   a4Config?: BillFieldToggles;
   thermalConfig?: BillFieldToggles;
+
+  // Thermal paper width configuration
+  thermalPaperWidth?: ThermalPaperWidth;
+  thermalCustomWidth?: number;
 
   // Root toggles for backward compatibility / fallback
   showLogo?: boolean;

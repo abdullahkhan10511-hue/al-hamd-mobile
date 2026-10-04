@@ -5,6 +5,7 @@ import { seedStoreSettings } from '@/lib/db/seed';
 import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb } from '@/lib/db/repositories/settings';
+import { normalizeCanonicalUrl } from '@/lib/db/settings';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -71,11 +72,14 @@ async function readServerSettings(): Promise<StoreSettings> {
 
 async function writeServerSettings(settings: StoreSettings): Promise<void> {
   if (isDbConfigured()) {
-    await updateStoreSettingsInDb(settings);
-    return;
+    try {
+      await updateStoreSettingsInDb(settings);
+    } catch (err) {
+      console.warn('MySQL updateStoreSettingsInDb notice:', err);
+    }
   }
 
-  // Fallback for local development without MySQL configured
+  // Persistent file cache on disk so file-based reads & local fallback stay synchronized
   try {
     const dir = path.dirname(SETTINGS_FILE_PATH);
     if (!fs.existsSync(dir)) {
@@ -93,7 +97,7 @@ export async function GET() {
     { success: true, settings },
     {
       headers: {
-        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=59',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     }
   );
@@ -113,12 +117,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const current = await readServerSettings();
+    const rawCanonical = body.canonicalUrl || body.seo?.canonicalUrl || current.canonicalUrl || current.seo?.canonicalUrl;
+    const normalizedCanonical = rawCanonical ? normalizeCanonicalUrl(rawCanonical) : 'https://alhamdshop.com';
+
     const updated: StoreSettings = {
       ...current,
       ...body,
+      canonicalUrl: normalizedCanonical,
       seo: {
         ...current.seo,
         ...(body.seo || {}),
+        canonicalUrl: normalizedCanonical,
       },
     };
 

@@ -24,7 +24,7 @@ import { useSearch } from '@/context/SearchContext';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getNavigation } from '@/lib/db/navigation';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
-import { getStoreSettings, getActiveSocialAccounts } from '@/lib/db/settings';
+import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { getActiveShopLocation } from '@/lib/db/locations';
 import { getPages } from '@/lib/db/pages';
 import { NavigationItem, StoreSettings, ShopLocation, CustomPage } from '@/types/admin';
@@ -85,6 +85,9 @@ export function Header() {
     syncCategoriesFromApi().then(() => {
       setCategories(deduplicateCategoriesById(getActiveCategories()));
     }).catch(() => {});
+    syncStoreSettingsFromApi().then((fresh) => {
+      if (fresh) setSettings(fresh);
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -120,14 +123,20 @@ export function Header() {
   const storeName = rawStoreName || (!hasLogo ? 'AL-HAMD-MOBILE' : '');
   const logoUrl = settings?.logoUrl?.trim();
 
-  // Sync document title on client when storeName is updated
+  const browserTitle =
+    settings?.websiteTitle ||
+    settings?.seo?.websiteTitle ||
+    settings?.seo?.metaTitle ||
+    (storeName ? `${storeName} | Mobile Accessories in Pakistan` : '');
+
+  // Sync document title on client only for home page if not set
   useEffect(() => {
-    if (typeof document !== 'undefined' && storeName) {
-      if (!document.title.includes(storeName) && !document.title.includes('Admin')) {
-        document.title = `${storeName} | Premium Mobile Accessories & Charging Essentials`;
+    if (typeof document !== 'undefined' && browserTitle) {
+      if (pathname === '/' && !document.title.includes('Admin')) {
+        document.title = browserTitle;
       }
     }
-  }, [storeName]);
+  }, [browserTitle, pathname]);
 
   if (pathname?.startsWith('/admin')) {
     return null;

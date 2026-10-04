@@ -44,7 +44,30 @@ function getDevBillSettings(): BillSettings {
       const raw = fs.readFileSync(DEV_BILL_SETTINGS_FILE, 'utf8');
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
-        return { ...defaultBillSettings, ...parsed };
+        const width =
+          parsed.thermalPaperWidth ||
+          parsed.thermalConfig?.thermalPaperWidth ||
+          defaultBillSettings.thermalPaperWidth ||
+          '80mm';
+        const customWidth =
+          typeof parsed.thermalCustomWidth === 'number'
+            ? parsed.thermalCustomWidth
+            : typeof parsed.thermalConfig?.thermalCustomWidth === 'number'
+            ? parsed.thermalConfig.thermalCustomWidth
+            : defaultBillSettings.thermalCustomWidth || 80;
+
+        return {
+          ...defaultBillSettings,
+          ...parsed,
+          thermalPaperWidth: width,
+          thermalCustomWidth: customWidth,
+          thermalConfig: {
+            ...defaultBillSettings.thermalConfig,
+            ...(parsed.thermalConfig || {}),
+            thermalPaperWidth: width,
+            thermalCustomWidth: customWidth,
+          },
+        };
       }
     }
   } catch {}
@@ -105,7 +128,32 @@ export async function PUT(request: NextRequest) {
     }
 
     const current = getDevBillSettings();
-    const updated = { ...current, ...body, updatedAt: new Date().toISOString(), updatedBy: session?.email || 'admin@alhamd.com' };
+    const width =
+      body.thermalPaperWidth ||
+      body.thermalConfig?.thermalPaperWidth ||
+      current.thermalPaperWidth ||
+      '80mm';
+    const customWidth =
+      typeof body.thermalCustomWidth === 'number'
+        ? body.thermalCustomWidth
+        : typeof body.thermalConfig?.thermalCustomWidth === 'number'
+        ? body.thermalConfig.thermalCustomWidth
+        : current.thermalCustomWidth || 80;
+
+    const updated = {
+      ...current,
+      ...body,
+      thermalPaperWidth: width,
+      thermalCustomWidth: customWidth,
+      thermalConfig: {
+        ...(current.thermalConfig || {}),
+        ...(body.thermalConfig || {}),
+        thermalPaperWidth: width,
+        thermalCustomWidth: customWidth,
+      },
+      updatedAt: new Date().toISOString(),
+      updatedBy: session?.email || 'admin@alhamd.com',
+    };
     saveDevBillSettings(updated);
 
     return NextResponse.json({ success: true, settings: updated });

@@ -6,9 +6,13 @@
  * guaranteeing that zero admin UI, tables, or buttons bleed into the print output.
  */
 
+import { resolveThermalWidth, ThermalPaperWidth } from './thermalWidth';
+
 interface PrintBillOptions {
   title?: string;
   format?: 'a4' | 'thermal';
+  paperWidth?: ThermalPaperWidth | string;
+  customWidth?: number;
   styles?: string;
 }
 
@@ -29,6 +33,7 @@ export function printBillElement(elementId: string, options: PrintBillOptions = 
 
     const format = options.format || 'a4';
     const title = options.title || 'Bill';
+    const thermalWidth = resolveThermalWidth(options.paperWidth, options.customWidth);
 
     // Create an isolated hidden iframe
     const iframe = document.createElement('iframe');
@@ -51,24 +56,26 @@ export function printBillElement(elementId: string, options: PrintBillOptions = 
       return;
     }
 
-    // Determine target page CSS based on format
+    // Determine target page CSS based on format and selected paper width
     const pageCss =
       format === 'thermal'
         ? `
         @page {
-          size: 80mm auto;
+          size: ${thermalWidth.widthCss} auto;
           margin: 0mm;
         }
         html, body {
-          width: 76mm !important;
-          max-width: 76mm !important;
+          width: ${thermalWidth.widthCss} !important;
+          max-width: ${thermalWidth.widthCss} !important;
           margin: 0 auto !important;
-          padding: 2mm !important;
+          padding: 0 !important;
           background: #ffffff !important;
           color: #000000 !important;
           font-family: monospace, "Courier New", Courier, ui-monospace, sans-serif !important;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
+          overflow-x: hidden !important;
+          box-sizing: border-box !important;
         }
       `
         : `

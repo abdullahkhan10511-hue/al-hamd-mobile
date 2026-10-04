@@ -4,7 +4,7 @@ import { Providers } from '@/components/Providers';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
-import { getStoreSettings } from '@/lib/db/settings';
+import { getStoreSettings, normalizeCanonicalUrl } from '@/lib/db/settings';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
 
@@ -16,29 +16,56 @@ export async function generateMetadata(): Promise<Metadata> {
       if (dbSettings) {
         settings = dbSettings;
       }
-    } catch (e) {
+    } catch {
       // Fallback to local settings
     }
   }
 
+  // Favicon: do not automatically use website logo
   const customFavicon =
-    (settings.seo?.faviconUrl && typeof settings.seo.faviconUrl === 'string' && settings.seo.faviconUrl.trim()) ||
     (settings.faviconUrl && typeof settings.faviconUrl === 'string' && settings.faviconUrl.trim()) ||
-    (settings.logoUrl && typeof settings.logoUrl === 'string' && settings.logoUrl.trim()) ||
+    (settings.seo?.faviconUrl && typeof settings.seo.faviconUrl === 'string' && settings.seo.faviconUrl.trim()) ||
     '/favicon.ico';
 
   const defaultOgImage =
     'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop';
 
-  const ogImage = customFavicon !== '/favicon.ico' ? customFavicon : defaultOgImage;
+  const customOgImage =
+    (settings.ogImageUrl && typeof settings.ogImageUrl === 'string' && settings.ogImageUrl.trim()) ||
+    (settings.seo?.ogImageUrl && typeof settings.seo.ogImageUrl === 'string' && settings.seo.ogImageUrl.trim()) ||
+    '';
 
-  const title =
+  const ogImage = customOgImage || defaultOgImage;
+
+  const rawCanonical =
+    (settings.canonicalUrl && typeof settings.canonicalUrl === 'string' && settings.canonicalUrl.trim()) ||
+    (settings.seo?.canonicalUrl && typeof settings.seo.canonicalUrl === 'string' && settings.seo.canonicalUrl.trim()) ||
+    'https://alhamdshop.com';
+  const canonicalUrl = normalizeCanonicalUrl(rawCanonical);
+
+  const siteName = (settings.storeName && settings.storeName.trim()) || 'AL-HAMD MOBILE ACCESSORIES';
+
+  // Website / Browser Title
+  const websiteTitle =
+    (settings.websiteTitle && settings.websiteTitle.trim()) ||
+    (settings.seo?.websiteTitle && settings.seo.websiteTitle.trim()) ||
     (settings.seo?.metaTitle && settings.seo.metaTitle.trim()) ||
-    'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories & Smartphone Essentials';
+    `${siteName} | Mobile Accessories in Pakistan`;
 
-  const description =
+  // Search Engine Title (falls back to Website / Browser Title)
+  const searchEngineTitle =
+    (settings.seo?.searchEngineTitle && settings.seo.searchEngineTitle.trim()) ||
+    websiteTitle;
+
+  // Meta Description
+  const metaDescription =
     (settings.seo?.metaDescription && settings.seo.metaDescription.trim()) ||
-    'Discover premium mobile accessories, high-speed GaN chargers, military-grade drop cases, Kevlar braided cables, and wireless audio across Pakistan.';
+    'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
+
+  // Search Engine Description (falls back to Meta Description)
+  const searchEngineDescription =
+    (settings.seo?.searchEngineDescription && settings.seo.searchEngineDescription.trim()) ||
+    metaDescription;
 
   const keywords =
     Array.isArray(settings.seo?.keywords) && settings.seo.keywords.length > 0
@@ -56,25 +83,28 @@ export async function generateMetadata(): Promise<Metadata> {
         ];
 
   return {
-    metadataBase: new URL('https://alhamdshop.com'),
+    metadataBase: new URL(canonicalUrl),
     alternates: {
-      canonical: 'https://alhamdshop.com',
+      canonical: canonicalUrl,
     },
-    title,
-    description,
+    title: {
+      default: searchEngineTitle,
+      template: `%s | ${siteName}`,
+    },
+    description: searchEngineDescription,
     keywords,
-    authors: [{ name: settings.storeName || 'AL-HAMD MOBILE ACCESSORIES' }],
+    authors: [{ name: siteName }],
     openGraph: {
-      title,
-      description,
-      url: 'https://alhamdshop.com',
-      siteName: settings.storeName || 'AL-HAMD MOBILE ACCESSORIES',
+      title: searchEngineTitle,
+      description: searchEngineDescription,
+      url: canonicalUrl,
+      siteName,
       images: [
         {
           url: ogImage,
           width: 1200,
           height: 630,
-          alt: settings.storeName || 'AL-HAMD-MOBILE Premium Mobile Accessories',
+          alt: siteName,
         },
       ],
       locale: 'en_PK',
@@ -82,8 +112,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: 'summary_large_image',
-      title,
-      description,
+      title: searchEngineTitle,
+      description: searchEngineDescription,
       images: [ogImage],
     },
     icons: {
