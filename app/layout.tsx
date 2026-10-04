@@ -52,7 +52,7 @@ export async function generateMetadata(): Promise<Metadata> {
     'https://alhamdshop.com';
   const canonicalUrl = normalizeCanonicalUrl(rawCanonical);
 
-  const siteName = (settings.storeName && settings.storeName.trim()) || 'AL-HAMD MOBILE ACCESSORIES';
+  const siteName = 'AL-HAMD-SHOP';
 
   // Primary Website / Browser Title from Admin SEO settings
   const websiteTitle =
@@ -159,8 +159,60 @@ export default async function RootLayout({
 }) {
   const settings = await loadServerSettings();
 
+  const customFavicon =
+    (settings.faviconUrl && typeof settings.faviconUrl === 'string' && settings.faviconUrl.trim()) ||
+    (settings.seo?.faviconUrl && typeof settings.seo.faviconUrl === 'string' && settings.seo.faviconUrl.trim()) ||
+    '/favicon.ico';
+
+  const rawLogo =
+    (settings.logoUrl && typeof settings.logoUrl === 'string' && settings.logoUrl.trim()) ||
+    (settings.seo?.logoUrl && typeof settings.seo.logoUrl === 'string' && settings.seo.logoUrl.trim()) ||
+    '';
+
+  const rawCanonical =
+    (settings.canonicalUrl && typeof settings.canonicalUrl === 'string' && settings.canonicalUrl.trim()) ||
+    (settings.seo?.canonicalUrl && typeof settings.seo.canonicalUrl === 'string' && settings.seo.canonicalUrl.trim()) ||
+    'https://alhamdshop.com';
+  const canonicalUrl = normalizeCanonicalUrl(rawCanonical);
+  const baseUrl = canonicalUrl.replace(/\/+$/, '');
+
+  const absoluteLogoUrl = rawLogo
+    ? (rawLogo.startsWith('http') ? rawLogo : `${baseUrl}${rawLogo.startsWith('/') ? '' : '/'}${rawLogo}`)
+    : (rawLogo || `${baseUrl}/favicon.ico`);
+
+  // WebSite and Organization / OnlineStore JSON-LD Structured Data
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': `${baseUrl}/#website`,
+      name: 'AL-HAMD-SHOP',
+      alternateName: 'AL-HAMD',
+      url: baseUrl,
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': ['Organization', 'OnlineStore'],
+      '@id': `${baseUrl}/#organization`,
+      name: 'AL-HAMD-SHOP',
+      alternateName: 'AL-HAMD',
+      url: baseUrl,
+      logo: absoluteLogoUrl,
+      image: absoluteLogoUrl,
+    },
+  ];
+
   return (
     <html lang="en" className="h-full antialiased font-sans" data-scroll-behavior="smooth">
+      <head>
+        <link rel="icon" href={customFavicon} />
+        <link rel="shortcut icon" href={customFavicon} />
+        <link rel="apple-touch-icon" href={customFavicon} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-white text-neutral-900 selection:bg-neutral-950 selection:text-white">
         <Providers>
           <Header initialSettings={settings} />
