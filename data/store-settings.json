@@ -1,8 +1,8 @@
 {
-  "storeName": "AL-HAMD MOBILE ACCESSORIES",
+  "storeName": "AL-HAMD SHOP",
   "storeTagline": "Quality Mobile Accessories & Everyday Smartphone Essentials",
-  "logoUrl": "/uploads/branding/logo_1791052828392_logo_brand_v2.webp",
-  "faviconUrl": "/uploads/branding/favicon_demo_test.ico",
+  "logoUrl": "/uploads/branding/logo_1791116748644_download.jpg",
+  "faviconUrl": "/uploads/branding/favicon_1791116789478_download.jpg",
   "email": "support@alhamd-mobile.com",
   "phone": "+92 343 2200995",
   "address": "Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan",
@@ -28,13 +28,45 @@
       "tiktok": false,
       "youtube": false,
       "whatsapp": true
-    }
+    },
+    "accounts": [
+      {
+        "platform": "facebook",
+        "name": "Facebook",
+        "url": "",
+        "isActive": false
+      },
+      {
+        "platform": "instagram",
+        "name": "Instagram",
+        "url": "",
+        "isActive": false
+      },
+      {
+        "platform": "tiktok",
+        "name": "TikTok",
+        "url": "",
+        "isActive": false
+      },
+      {
+        "platform": "youtube",
+        "name": "YouTube",
+        "url": "",
+        "isActive": false
+      },
+      {
+        "platform": "whatsapp",
+        "name": "WhatsApp",
+        "url": "https://wa.me/923432200995",
+        "isActive": true
+      }
+    ]
   },
-  "websiteTitle": "AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan",
+  "websiteTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
   "canonicalUrl": "https://alhamdshop.com",
-  "ogImageUrl": "/uploads/branding/og_demo_test.jpg",
+  "ogImageUrl": "/uploads/branding/og_1791116795475_download.jpg",
   "seo": {
-    "metaTitle": "AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan",
+    "metaTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
     "metaDescription": "Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.",
     "keywords": [
       "mobile accessories pakistan",
@@ -46,13 +78,13 @@
       "magsafe",
       "al-hamd"
     ],
-    "websiteTitle": "AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan",
-    "searchEngineTitle": "AL-HAMD MOBILE | Premium Mobile Accessories Online",
-    "searchEngineDescription": "Find authentic chargers, cables, cases, and earbuds with express delivery across Pakistan.",
+    "websiteTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
+    "searchEngineTitle": "AL-HAMD SHOP | Premium Mobile Accessories Online",
+    "searchEngineDescription": "Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.",
     "canonicalUrl": "https://alhamdshop.com",
-    "faviconUrl": "/uploads/branding/favicon_demo_test.ico",
-    "logoUrl": "/uploads/branding/logo_demo_test.png",
-    "ogImageUrl": "/uploads/branding/og_demo_test.jpg"
+    "faviconUrl": "/uploads/branding/favicon_1791116789478_download.jpg",
+    "logoUrl": "/uploads/branding/logo_1791116748644_download.jpg",
+    "ogImageUrl": "/uploads/branding/og_1791116795475_download.jpg"
   },
   "footerDescription": "Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.",
   "businessHours": "Mon – Sat: 10:00 AM – 10:00 PM PKT"

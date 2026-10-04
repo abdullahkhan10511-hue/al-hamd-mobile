@@ -92,8 +92,31 @@ export default function AdminSeoSettingsPage() {
     const rawSiteName = s.storeName || 'AL-HAMD MOBILE ACCESSORIES';
     const rawWebsiteTitle = s.websiteTitle || s.seo?.websiteTitle || s.seo?.metaTitle || `${rawSiteName} | Mobile Accessories in Pakistan`;
     const rawMetaDesc = s.seo?.metaDescription || 'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
-    const rawSearchTitle = s.seo?.searchEngineTitle || '';
-    const rawSearchDesc = s.seo?.searchEngineDescription || '';
+    
+    // Stale seed/legacy default values
+    const knownSeedTitles = [
+      'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories in Pakistan',
+      'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
+    ];
+
+    const knownSeedDescriptions = [
+      'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.',
+      'Find authentic chargers, cables, cases, and earbuds with express delivery across Pakistan.',
+    ];
+
+    // Only pre-fill override fields if they are explicitly different from primary title/description and not stale seed defaults
+    const rawSearchTitle =
+      s.seo?.searchEngineTitle &&
+      s.seo.searchEngineTitle.trim() !== rawWebsiteTitle.trim() &&
+      !knownSeedTitles.includes(s.seo.searchEngineTitle.trim())
+        ? s.seo.searchEngineTitle.trim()
+        : '';
+    const rawSearchDesc =
+      s.seo?.searchEngineDescription &&
+      s.seo.searchEngineDescription.trim() !== rawMetaDesc.trim() &&
+      !knownSeedDescriptions.includes(s.seo.searchEngineDescription.trim())
+        ? s.seo.searchEngineDescription.trim()
+        : '';
     const rawCanonical = s.canonicalUrl || s.seo?.canonicalUrl || 'https://alhamdshop.com';
     const rawLogo = s.logoUrl || s.seo?.logoUrl || '';
     const rawFavicon = s.faviconUrl || s.seo?.faviconUrl || '/favicon.ico';
@@ -184,24 +207,29 @@ export default function AdminSeoSettingsPage() {
     try {
       const normalizedCanonical = normalizeCanonicalUrl(canonicalUrl);
 
-      const effectiveSearchTitle = searchEngineTitle.trim() || websiteTitle.trim();
-      const effectiveSearchDesc = searchEngineDescription.trim() || metaDescription.trim();
+      const cleanSiteName = siteName.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+      const cleanWebsiteTitle = websiteTitle.trim();
+      const cleanMetaDescription = metaDescription.trim();
+
+      // If override is left blank, intentionally default to primary title / description so no stale overrides linger
+      const effectiveSearchTitle = searchEngineTitle.trim() ? searchEngineTitle.trim() : cleanWebsiteTitle;
+      const effectiveSearchDesc = searchEngineDescription.trim() ? searchEngineDescription.trim() : cleanMetaDescription;
 
       const updatedSettings: StoreSettings = {
         ...settings,
-        storeName: siteName.trim() || 'AL-HAMD MOBILE ACCESSORIES',
-        websiteTitle: websiteTitle.trim(),
+        storeName: cleanSiteName,
+        websiteTitle: cleanWebsiteTitle,
         canonicalUrl: normalizedCanonical,
         logoUrl: logoUrl.trim(),
         faviconUrl: faviconUrl.trim() || '/favicon.ico',
         ogImageUrl: ogImageUrl.trim(),
         seo: {
           ...settings.seo,
-          metaTitle: websiteTitle.trim(),
-          metaDescription: metaDescription.trim(),
-          websiteTitle: websiteTitle.trim(),
-          searchEngineTitle: searchEngineTitle.trim(),
-          searchEngineDescription: searchEngineDescription.trim(),
+          metaTitle: cleanWebsiteTitle,
+          metaDescription: cleanMetaDescription,
+          websiteTitle: cleanWebsiteTitle,
+          searchEngineTitle: effectiveSearchTitle,
+          searchEngineDescription: effectiveSearchDesc,
           canonicalUrl: normalizedCanonical,
           logoUrl: logoUrl.trim(),
           faviconUrl: faviconUrl.trim() || '/favicon.ico',
@@ -490,9 +518,20 @@ export default function AdminSeoSettingsPage() {
                   Search Engine Title (Override)
                   <span className="text-[10px] font-normal text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">Optional</span>
                 </label>
-                <span className={`text-[11px] font-mono ${searchEngineTitle.length > 70 ? 'text-amber-600 font-bold' : 'text-neutral-400'}`}>
-                  {searchEngineTitle.length} chars
-                </span>
+                <div className="flex items-center gap-2">
+                  {searchEngineTitle.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchEngineTitle('')}
+                      className="text-[11px] text-neutral-500 hover:text-neutral-900 underline cursor-pointer"
+                    >
+                      Clear override
+                    </button>
+                  )}
+                  <span className={`text-[11px] font-mono ${searchEngineTitle.length > 70 ? 'text-amber-600 font-bold' : 'text-neutral-400'}`}>
+                    {searchEngineTitle.length} chars
+                  </span>
+                </div>
               </div>
               <input
                 type="text"
@@ -513,9 +552,20 @@ export default function AdminSeoSettingsPage() {
                   Search Engine Description (Override)
                   <span className="text-[10px] font-normal text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">Optional</span>
                 </label>
-                <span className={`text-[11px] font-mono ${searchEngineDescription.length > 160 ? 'text-amber-600 font-bold' : 'text-neutral-400'}`}>
-                  {searchEngineDescription.length} / 160 chars
-                </span>
+                <div className="flex items-center gap-2">
+                  {searchEngineDescription.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchEngineDescription('')}
+                      className="text-[11px] text-neutral-500 hover:text-neutral-900 underline cursor-pointer"
+                    >
+                      Clear override
+                    </button>
+                  )}
+                  <span className={`text-[11px] font-mono ${searchEngineDescription.length > 160 ? 'text-amber-600 font-bold' : 'text-neutral-400'}`}>
+                    {searchEngineDescription.length} / 160 chars
+                  </span>
+                </div>
               </div>
               <textarea
                 rows={2}

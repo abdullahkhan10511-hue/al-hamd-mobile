@@ -54,27 +54,46 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const siteName = (settings.storeName && settings.storeName.trim()) || 'AL-HAMD MOBILE ACCESSORIES';
 
-  // Website / Browser Title
+  // Primary Website / Browser Title from Admin SEO settings
   const websiteTitle =
     (settings.websiteTitle && settings.websiteTitle.trim()) ||
     (settings.seo?.websiteTitle && settings.seo.websiteTitle.trim()) ||
     (settings.seo?.metaTitle && settings.seo.metaTitle.trim()) ||
     `${siteName} | Mobile Accessories in Pakistan`;
 
-  // Search Engine Title (falls back to Website / Browser Title)
-  const searchEngineTitle =
-    (settings.seo?.searchEngineTitle && settings.seo.searchEngineTitle.trim()) ||
-    websiteTitle;
+  // Search Engine Title Override (only used if intentionally set and not a stale default)
+  const knownSeedTitles = [
+    'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories in Pakistan',
+    'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
+  ];
+  const rawSearchEngineTitle = settings.seo?.searchEngineTitle?.trim() || '';
+  const isSearchTitleStale =
+    !rawSearchEngineTitle ||
+    rawSearchEngineTitle === websiteTitle ||
+    (websiteTitle !== `${siteName} | Mobile Accessories in Pakistan` &&
+      knownSeedTitles.includes(rawSearchEngineTitle));
 
-  // Meta Description
-  const metaDescription =
+  const effectiveTitle = isSearchTitleStale ? websiteTitle : rawSearchEngineTitle;
+
+  // Primary Meta Description from Admin SEO settings
+  const primaryMetaDescription =
     (settings.seo?.metaDescription && settings.seo.metaDescription.trim()) ||
     'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
 
-  // Search Engine Description (falls back to Meta Description)
-  const searchEngineDescription =
-    (settings.seo?.searchEngineDescription && settings.seo.searchEngineDescription.trim()) ||
-    metaDescription;
+  // Search Engine Description Override (used only when intentionally populated, never silently overriding newer metaDescription)
+  const knownSeedDescriptions = [
+    'Find authentic chargers, cables, cases, and earbuds with express delivery across Pakistan.',
+    'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.',
+  ];
+  const rawSearchEngineDesc = settings.seo?.searchEngineDescription?.trim() || '';
+  const isSearchDescStale =
+    !rawSearchEngineDesc ||
+    rawSearchEngineDesc === primaryMetaDescription ||
+    (primaryMetaDescription &&
+      !knownSeedDescriptions.includes(primaryMetaDescription) &&
+      knownSeedDescriptions.includes(rawSearchEngineDesc));
+
+  const effectiveDescription = isSearchDescStale ? primaryMetaDescription : rawSearchEngineDesc;
 
   const keywords =
     Array.isArray(settings.seo?.keywords) && settings.seo.keywords.length > 0
@@ -97,15 +116,15 @@ export async function generateMetadata(): Promise<Metadata> {
       canonical: canonicalUrl,
     },
     title: {
-      default: searchEngineTitle,
+      default: effectiveTitle,
       template: `%s | ${siteName}`,
     },
-    description: searchEngineDescription,
+    description: effectiveDescription,
     keywords,
     authors: [{ name: siteName }],
     openGraph: {
-      title: searchEngineTitle,
-      description: searchEngineDescription,
+      title: effectiveTitle,
+      description: effectiveDescription,
       url: canonicalUrl,
       siteName,
       images: [
@@ -121,8 +140,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: 'summary_large_image',
-      title: searchEngineTitle,
-      description: searchEngineDescription,
+      title: effectiveTitle,
+      description: effectiveDescription,
       images: [ogImage],
     },
     icons: {
