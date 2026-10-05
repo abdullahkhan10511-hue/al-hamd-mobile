@@ -378,13 +378,13 @@ export default function AdminBrandsPage() {
                         <img
                           src={b.logo}
                           alt={b.name}
-                          className="w-9 h-9 rounded-xl object-contain bg-neutral-50 border border-neutral-200 p-0.5 shadow-2xs"
+                          className="w-12 h-9 rounded-lg object-contain bg-white border border-neutral-200 p-1 shadow-2xs shrink-0"
                           onError={(e) => {
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
                       ) : (
-                        <div className="w-9 h-9 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 font-bold text-xs">
+                        <div className="w-12 h-9 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 font-bold text-xs shrink-0">
                           {b.name.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -537,7 +537,7 @@ export default function AdminBrandsPage() {
                         <img
                           src={logo}
                           alt="Logo Preview"
-                          className="w-14 h-14 rounded-xl object-contain bg-neutral-50 border border-neutral-200 p-1"
+                          className="w-24 h-16 rounded-xl object-contain bg-white border border-neutral-200 p-1.5 shadow-2xs"
                         />
                         <button
                           type="button"
@@ -549,7 +549,7 @@ export default function AdminBrandsPage() {
                         </button>
                       </div>
                     ) : (
-                      <div className="w-14 h-14 rounded-xl bg-neutral-100 border border-dashed border-neutral-300 flex items-center justify-center text-neutral-400">
+                      <div className="w-24 h-16 rounded-xl bg-neutral-100 border border-dashed border-neutral-300 flex items-center justify-center text-neutral-400">
                         <ImageIcon className="w-6 h-6" />
                       </div>
                     )}

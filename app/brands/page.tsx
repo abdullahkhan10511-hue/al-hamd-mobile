@@ -214,24 +214,27 @@ export default function BrandsPage() {
                     className="group flex flex-col h-full rounded-3xl overflow-hidden bg-white border border-neutral-200/90 shadow-xs hover:shadow-xl hover:border-neutral-300 transition-all duration-300 transform hover:-translate-y-1.5"
                   >
                     {/* Brand Logo Box */}
-                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-neutral-50 border-b border-neutral-100 flex items-center justify-center p-6">
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-neutral-50/80 border-b border-neutral-100 flex items-center justify-center p-4 sm:p-5">
                       {brand.logo ? (
-                        <img
-                          src={brand.logo}
-                          alt={brand.name}
-                          className="max-h-16 max-w-[70%] object-contain transition-transform duration-500 group-hover:scale-108"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        <div className="relative w-full h-full flex items-center justify-center">
+                          <img
+                            src={brand.logo}
+                            alt={brand.name}
+                            loading="lazy"
+                            className="w-auto h-auto max-h-20 sm:max-h-24 max-w-[82%] sm:max-w-[85%] object-contain transition-transform duration-500 group-hover:scale-105 filter drop-shadow-2xs"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
                       ) : (
-                        <div className="w-16 h-16 rounded-2xl bg-neutral-950 text-white font-black text-2xl flex items-center justify-center shadow-sm">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-neutral-950 text-white font-black text-2xl sm:text-3xl flex items-center justify-center shadow-sm">
                           {brand.name.charAt(0).toUpperCase()}
                         </div>
                       )}
 
                       {/* Product Count Pill */}
-                      <div className="absolute top-3.5 right-3.5 px-2.5 py-1 rounded-full bg-neutral-950 text-[10px] font-bold text-white shadow-xs">
+                      <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-neutral-950 text-[10px] font-bold text-white shadow-xs z-10 pointer-events-none">
                         {count} {count === 1 ? 'Item' : 'Items'}
                       </div>
                     </div>

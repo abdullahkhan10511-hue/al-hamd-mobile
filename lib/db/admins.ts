@@ -130,6 +130,11 @@ export function canAccessAdminRoute(
     return has('customers.view');
   }
 
+  // Customer Inquiries & Support Complaints
+  if (pathname.startsWith('/admin/inquiries')) {
+    return has('inquiries.view') || has('customers.view') || has('orders.view');
+  }
+
   // Promotions & Banners
   if (pathname.startsWith('/admin/banners')) {
     return has('promotions.view') || has('content.banners');

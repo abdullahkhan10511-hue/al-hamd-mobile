@@ -697,3 +697,49 @@ export interface ShopBill {
   createdAt: string;
   updatedAt: string;
 }
+
+// ==============================================================================
+// CUSTOMER INQUIRIES & COMPLAINTS SYSTEM TYPES
+// ==============================================================================
+export type InquiryType =
+  | 'General Question'
+  | 'Product Inquiry'
+  | 'Order Issue'
+  | 'Delivery Issue'
+  | 'Return / Replacement'
+  | 'Warranty'
+  | 'Complaint'
+  | 'Payment Issue'
+  | 'Other';
+
+export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+export type InquiryPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+export interface CustomerInquiry {
+  id: string;
+  referenceNo: string;
+  name: string;
+  email?: string | null;
+  phone: string;
+  inquiryType: InquiryType;
+  orderNumber?: string | null;
+  subject: string;
+  message: string;
+  status: InquiryStatus;
+  priority: InquiryPriority;
+  adminNotes?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InquiryFilterOptions {
+  search?: string;
+  status?: InquiryStatus | 'ALL';
+  priority?: InquiryPriority | 'ALL';
+  inquiryType?: InquiryType | 'ALL';
+  page?: number;
+  limit?: number;
+}

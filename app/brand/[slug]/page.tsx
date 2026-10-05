@@ -325,11 +325,11 @@ function BrandPageContent() {
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-6">
             {brand?.logo && (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white p-2.5 flex items-center justify-center shrink-0 shadow-lg border border-neutral-800">
+              <div className="min-w-20 sm:min-w-24 max-w-44 sm:max-w-56 h-20 sm:h-24 rounded-2xl bg-white px-4 py-2.5 flex items-center justify-center shrink-0 shadow-lg border border-neutral-800">
                 <img
                   src={brand.logo}
                   alt={displayName}
-                  className="w-full h-full object-contain"
+                  className="w-auto h-auto max-w-full max-h-full object-contain filter drop-shadow-2xs"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';
                   }}

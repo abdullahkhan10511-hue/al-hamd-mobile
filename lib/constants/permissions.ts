@@ -238,6 +238,20 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
     module: 'Customers',
     description: 'Reactivate previously suspended customer accounts.',
   },
+  {
+    id: 'perm-inq-1',
+    key: 'inquiries.view',
+    name: 'View Customer Inquiries',
+    module: 'Customers',
+    description: 'Access customer inquiries, complaint logs, and support inquiries.',
+  },
+  {
+    id: 'perm-inq-2',
+    key: 'inquiries.manage',
+    name: 'Manage Inquiries',
+    module: 'Customers',
+    description: 'Update inquiry status, adjust priority, add admin notes, and mark resolved.',
+  },
 
   // WHOLESALE ACCOUNT MANAGEMENT
   {

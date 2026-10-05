@@ -17,6 +17,7 @@ import {
   Plus,
   Printer,
   Layers,
+  MessageSquare,
 } from 'lucide-react';
 import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { getProducts, getLowStockProducts, getOutOfStockProducts } from '@/lib/db/products';
@@ -29,6 +30,12 @@ export default function AdminDashboardPage() {
   const { admin, isManager, isSuperAdmin, hasPermission } = useAdminAuth();
   const [orders, setOrders] = useState(() => getOrders());
   const [products, setProducts] = useState(() => getProducts());
+  const [inquiryStats, setInquiryStats] = useState({
+    total: 0,
+    newCount: 0,
+    inProgressCount: 0,
+    highOrUrgentCount: 0,
+  });
 
   const canViewProducts = hasPermission('products.view');
   const canAddProducts = hasPermission('products.add');
@@ -42,6 +49,17 @@ export default function AdminDashboardPage() {
     syncOrdersFromApi(admin?.email).catch(() => {});
     const unsubOrders = subscribeToKey('orders', (data: Order[]) => setOrders(data));
     const unsubProducts = subscribeToKey('products', (data: any) => setProducts(data));
+
+    // Fetch customer inquiry summary counts
+    fetch('/api/admin/inquiries')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.success && data.stats) {
+          setInquiryStats(data.stats);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       unsubOrders();
       unsubProducts();
@@ -229,6 +247,40 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] text-emerald-600 font-medium mt-1 block">Active shoppers</span>
             </div>
           )}
+
+          {/* Customer Inquiries Summary */}
+          <Link
+            href="/admin/inquiries"
+            className="bg-white hover:bg-neutral-50 p-5 rounded-2xl border border-neutral-200/80 shadow-xs transition-colors group block"
+          >
+            <div className="flex items-center justify-between text-neutral-500 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-neutral-900 group-hover:text-amber-600 transition-colors">
+                Customer Inquiries
+              </span>
+              <MessageSquare className="w-4 h-4 text-neutral-700 group-hover:text-amber-600 transition-colors" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-extrabold text-neutral-950 font-mono">
+                {inquiryStats.total}
+              </p>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                  {inquiryStats.newCount} new
+                </span>
+                <span className="px-1.5 py-0.5 rounded-md bg-sky-100 text-sky-800">
+                  {inquiryStats.inProgressCount} active
+                </span>
+                {inquiryStats.highOrUrgentCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800">
+                    {inquiryStats.highOrUrgentCount} urgent
+                  </span>
+                )}
+              </div>
+            </div>
+            <span className="text-[11px] text-neutral-400 group-hover:underline mt-1 block">
+              Open support desk &rarr;
+            </span>
+          </Link>
         </div>
 
         {/* Operational Fulfillment Pipeline Bar */}
@@ -501,7 +553,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Secondary Metrics Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="p-4 rounded-2xl bg-white border border-neutral-200/80 flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-800">
             <Package className="w-5 h-5" />
@@ -541,6 +593,32 @@ export default function AdminDashboardPage() {
             <p className="text-lg font-bold text-emerald-600 font-mono">{completedOrders}</p>
           </div>
         </div>
+
+        {/* Customer Inquiries Card */}
+        <Link
+          href="/admin/inquiries"
+          className="p-4 rounded-2xl bg-white hover:bg-neutral-50 border border-neutral-200/80 flex items-center justify-between gap-3 transition-colors group cursor-pointer"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center text-amber-700 shrink-0 transition-colors">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+            <div className="truncate">
+              <span className="text-xs text-neutral-500 font-medium block truncate">Inquiries</span>
+              <p className="text-lg font-bold text-neutral-950 font-mono">{inquiryStats.total}</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 text-[10px] font-bold shrink-0">
+            <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800">
+              {inquiryStats.newCount} New
+            </span>
+            {inquiryStats.highOrUrgentCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800">
+                {inquiryStats.highOrUrgentCount} Urgent
+              </span>
+            )}
+          </div>
+        </Link>
       </div>
 
       {/* Visual Charts & Overview */}

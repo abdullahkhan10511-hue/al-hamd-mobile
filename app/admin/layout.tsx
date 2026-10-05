@@ -40,6 +40,7 @@ import {
   Building2,
   Crown,
   Video,
+  MessageSquare,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import { getNotifications, markNotificationAsRead } from '@/lib/db/notifications';
@@ -71,6 +72,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Inventory (Warehouse)', href: '/admin/inventory', icon: Warehouse, permission: 'inventory.view' },
   { label: 'Shop Inventory', href: '/admin/shop-inventory', icon: Store, permission: 'inventory.view_shop' },
   { label: 'Customers', href: '/admin/customers', icon: Users, permission: 'customers.view' },
+  { label: 'Customer Inquiries', href: '/admin/inquiries', icon: MessageSquare, permissions: ['inquiries.view', 'customers.view', 'orders.view'] },
   { label: 'Wholesale Accounts', href: '/admin/wholesale', icon: Building2, permission: 'wholesale.manage' },
   { label: 'Super Wholesale Accounts', href: '/admin/super-wholesale', icon: Crown, permission: 'wholesale.manage' },
   { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['orders.view', 'products.view'] },

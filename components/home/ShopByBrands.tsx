@@ -189,24 +189,27 @@ export function ShopByBrands() {
                 className="group relative shrink-0 w-44 sm:w-56 md:w-60 rounded-2xl sm:rounded-3xl overflow-hidden bg-white border border-neutral-200/90 hover:border-neutral-900 shadow-xs hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1.5 block text-neutral-900"
               >
                 {/* Brand Showcase Area */}
-                <div className="relative aspect-[16/10] w-full p-4 sm:p-6 flex items-center justify-center bg-gradient-to-b from-neutral-50/60 to-white overflow-hidden border-b border-neutral-100">
+                <div className="relative aspect-[16/10] w-full p-3 sm:p-4 flex items-center justify-center bg-gradient-to-b from-neutral-50/70 to-white overflow-hidden border-b border-neutral-100">
                   {brand.logo ? (
-                    <img
-                      src={brand.logo}
-                      alt={brand.name}
-                      className="max-h-12 sm:max-h-14 max-w-[80%] object-contain transition-transform duration-500 ease-out group-hover:scale-110 filter drop-shadow-xs"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <img
+                        src={brand.logo}
+                        alt={brand.name}
+                        loading="lazy"
+                        className="w-auto h-auto max-h-[68px] sm:max-h-[84px] max-w-[82%] sm:max-w-[85%] object-contain transition-transform duration-500 ease-out group-hover:scale-105 filter drop-shadow-2xs"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-neutral-900 text-white font-extrabold text-xl tracking-tight shadow-sm group-hover:scale-110 transition-transform duration-500">
+                    <div className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-neutral-900 text-white font-extrabold text-xl sm:text-2xl tracking-tight shadow-sm group-hover:scale-105 transition-transform duration-500">
                       {brand.name.slice(0, 2).toUpperCase()}
                     </div>
                   )}
 
                   {/* Top Right Product Count Pill */}
-                  <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200/80 text-[10px] font-bold text-neutral-600 group-hover:bg-neutral-900 group-hover:text-white group-hover:border-neutral-900 transition-colors">
+                  <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200/80 text-[10px] font-bold text-neutral-600 group-hover:bg-neutral-900 group-hover:text-white group-hover:border-neutral-900 transition-colors z-10 pointer-events-none">
                     {count} {count === 1 ? 'item' : 'items'}
                   </div>
                 </div>

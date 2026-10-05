@@ -54,6 +54,7 @@ export async function getDatabaseTableCounts(): Promise<Record<string, number>> 
     'homepage_videos',
     'login_page_media',
     'login_page_settings',
+    'customer_inquiries',
   ];
 
   const counts: Record<string, number> = {};

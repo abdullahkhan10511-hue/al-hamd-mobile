@@ -40,6 +40,7 @@ export default function AdminCategoriesPage() {
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState('');
+  const [urlInput, setUrlInput] = useState('');
   const [status, setStatus] = useState<'active' | 'archived' | 'inactive'>('active');
 
   // Async & UI status
@@ -84,7 +85,8 @@ export default function AdminCategoriesPage() {
     setName('');
     setSlug('');
     setDescription('');
-    setImage('https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop');
+    setImage('');
+    setUrlInput('');
     setStatus('active');
     setErrorMessage('');
     setIsCreating(true);
@@ -95,7 +97,13 @@ export default function AdminCategoriesPage() {
     setName(cat.name);
     setSlug(cat.slug);
     setDescription(cat.description || '');
-    setImage(cat.image);
+    const currentImg = (cat.image || '').trim();
+    setImage(currentImg);
+    if (currentImg.startsWith('http://') || currentImg.startsWith('https://')) {
+      setUrlInput(currentImg);
+    } else {
+      setUrlInput('');
+    }
     setStatus(cat.status);
     setErrorMessage('');
     setIsEditing(cat);
@@ -107,12 +115,29 @@ export default function AdminCategoriesPage() {
     setIsCreating(false);
     setIsEditing(null);
     setErrorMessage('');
+    setImage('');
+    setUrlInput('');
   };
 
   const handleNameChange = (val: string) => {
     setName(val);
     if (isCreating) {
       setSlug(generateCategorySlug(val));
+    }
+  };
+
+  const handleUrlChange = (val: string) => {
+    setUrlInput(val);
+    const trimmed = val.trim();
+    setImage(trimmed);
+    if (errorMessage) setErrorMessage('');
+  };
+
+  const handleRemoveImage = () => {
+    setImage('');
+    setUrlInput('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -141,7 +166,10 @@ export default function AdminCategoriesPage() {
         throw new Error(data.error || 'Failed to upload category image.');
       }
 
+      // Store the uploaded path into image state and clear manual URL input
       setImage(data.url);
+      setUrlInput('');
+      if (errorMessage) setErrorMessage('');
     } catch (err: any) {
       console.error('Category image upload error:', err);
       alert(err?.message || 'Failed to upload image. Please try again.');
@@ -164,6 +192,26 @@ export default function AdminCategoriesPage() {
       return;
     }
 
+    const finalImage = image.trim();
+    if (!finalImage) {
+      setErrorMessage('Category Image is required. Please provide an Image URL or Upload from Gallery / Device.');
+      return;
+    }
+
+    // If image is a remote web URL, validate its format
+    if (!finalImage.startsWith('/uploads/') && !finalImage.startsWith('uploads/') && !finalImage.startsWith('data:')) {
+      try {
+        const parsed = new URL(finalImage);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          setErrorMessage('Please enter a valid Image URL beginning with http:// or https://');
+          return;
+        }
+      } catch {
+        setErrorMessage('Please enter a valid Image URL (e.g. https://images.unsplash.com/...) or Upload from Gallery.');
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
@@ -173,7 +221,7 @@ export default function AdminCategoriesPage() {
             name: trimmedName,
             slug: slug.trim() ? slug.trim() : generateCategorySlug(trimmedName),
             description: description.trim(),
-            image: image.trim(),
+            image: finalImage,
             status,
             productCount: 0,
           },
@@ -191,6 +239,7 @@ export default function AdminCategoriesPage() {
         setSlug('');
         setDescription('');
         setImage('');
+        setUrlInput('');
         setErrorMessage('');
         loadData();
         triggerSuccessToast('Category created successfully');
@@ -201,7 +250,7 @@ export default function AdminCategoriesPage() {
             name: trimmedName,
             slug: slug.trim() ? slug.trim() : generateCategorySlug(trimmedName),
             description: description.trim(),
-            image: image.trim(),
+            image: finalImage,
             status,
           },
           userEmail
@@ -213,6 +262,8 @@ export default function AdminCategoriesPage() {
         }
 
         setIsEditing(null);
+        setImage('');
+        setUrlInput('');
         setErrorMessage('');
         loadData();
         triggerSuccessToast('Category updated successfully');
@@ -485,25 +536,36 @@ export default function AdminCategoriesPage() {
                 </div>
 
                 {/* Category Image: URL OR Upload from Gallery */}
-                <div className="space-y-3 p-3.5 bg-neutral-50/70 border border-neutral-200 rounded-2xl">
+                <div className="space-y-3.5 p-3.5 bg-neutral-50/80 border border-neutral-200 rounded-2xl">
                   <div className="flex items-center justify-between">
                     <label className="font-bold text-neutral-800 block text-xs">
                       Category Image *
                     </label>
-                    {image && (
-                      <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                        Image Ready
+                    {image ? (
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        {image.startsWith('/uploads/') || image.startsWith('uploads/')
+                          ? 'Uploaded from Device'
+                          : 'URL Image Ready'}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                        URL or Upload required
                       </span>
                     )}
                   </div>
 
+                  <p className="text-[11px] text-neutral-500 leading-snug">
+                    Use either <strong className="text-neutral-700">Image URL</strong> OR <strong className="text-neutral-700">Upload from Gallery / Device</strong> — any one is enough.
+                  </p>
+
                   {/* Immediate Image Preview */}
                   {image ? (
-                    <div className="flex items-center gap-3">
-                      <div className="relative w-20 h-24 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-200 shadow-xs shrink-0">
+                    <div className="flex items-center gap-3 p-2.5 bg-white border border-neutral-200 rounded-xl shadow-2xs">
+                      <div className="relative w-20 h-24 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 shadow-2xs shrink-0 flex items-center justify-center">
                         <img
                           src={image}
-                          alt="Preview"
+                          alt="Category Preview"
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             (e.target as HTMLImageElement).src =
@@ -512,23 +574,27 @@ export default function AdminCategoriesPage() {
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <button
-                          type="button"
-                          disabled={isUploading || isSaving}
-                          onClick={() => fileInputRef.current?.click()}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>{isUploading ? 'Uploading...' : 'Change / Replace Image'}</span>
-                        </button>
+                      <div className="space-y-2 flex-1 min-w-0">
+                        <div className="text-[11px] text-neutral-600 font-mono truncate" title={image}>
+                          {image.startsWith('/uploads/') ? image.split('/').pop() : image}
+                        </div>
 
-                        <div>
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             disabled={isUploading || isSaving}
-                            onClick={() => setImage('')}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{isUploading ? 'Uploading...' : 'Change / Replace Image'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isUploading || isSaving}
+                            onClick={handleRemoveImage}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Remove Image</span>
@@ -539,16 +605,17 @@ export default function AdminCategoriesPage() {
                   ) : null}
 
                   {/* Option 1: Image URL */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-neutral-600">
                       Option 1: Image URL
                     </label>
                     <input
-                      type="url"
-                      value={image}
-                      onChange={(e) => setImage(e.target.value)}
-                      placeholder="https://images.unsplash.com/..."
-                      className="w-full p-2 text-[11px] rounded-xl border border-neutral-200 bg-white font-mono text-neutral-900 focus:ring-2 focus:ring-neutral-900"
+                      type="text"
+                      inputMode="url"
+                      value={urlInput}
+                      onChange={(e) => handleUrlChange(e.target.value)}
+                      placeholder="Paste image link, e.g. https://images.unsplash.com/..."
+                      className="w-full p-2 text-[11px] rounded-xl border border-neutral-200 bg-white font-mono text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
                     />
                   </div>
 
@@ -560,8 +627,8 @@ export default function AdminCategoriesPage() {
                   </div>
 
                   {/* Option 2: Upload from Gallery */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-neutral-600">
                       Option 2: Upload from Gallery / Device
                     </label>
                     <button
@@ -571,7 +638,7 @@ export default function AdminCategoriesPage() {
                       className="w-full py-2 px-3 bg-white hover:bg-neutral-100 border border-neutral-200 hover:border-neutral-300 rounded-xl text-neutral-800 text-xs font-semibold shadow-2xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       <Upload className="w-3.5 h-3.5 text-neutral-600" />
-                      <span>{isUploading ? 'Uploading Image...' : 'Upload from Gallery'}</span>
+                      <span>{isUploading ? 'Uploading Image...' : 'Upload from Gallery / Device'}</span>
                     </button>
                     <input
                       type="file"
@@ -580,8 +647,8 @@ export default function AdminCategoriesPage() {
                       onChange={handleImageUpload}
                       className="hidden"
                     />
-                    <p className="text-[10px] text-neutral-400 mt-1 text-center">
-                      Accepts JPG, JPEG, PNG, WEBP (Max 5MB)
+                    <p className="text-[10px] text-neutral-400 text-center">
+                      Accepts JPG, JPEG, PNG, WEBP (Max 15MB)
                     </p>
                   </div>
                 </div>
