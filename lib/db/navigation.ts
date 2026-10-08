@@ -14,6 +14,18 @@ export function getNavigation(): NavigationItem[] {
       if ((n.label.toLowerCase() === 'categories' || n.href === '/#categories') && n.href !== '/categories') return { ...n, href: '/categories' };
       return n;
     });
+
+  // Ensure Deals navigation link is present if not already in collection
+  if (!items.some((n) => n.href === '/deals' || n.label.toLowerCase() === 'deals')) {
+    items.push({
+      id: 'nav-deals',
+      label: 'Deals',
+      href: '/deals',
+      displayOrder: 8,
+      visible: true,
+    });
+  }
+
   return items.sort((a, b) => a.displayOrder - b.displayOrder);
 }
 

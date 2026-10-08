@@ -8,6 +8,7 @@ export type UploadFolder =
   | 'brands'
   | 'branding'
   | 'login'
+  | 'deals'
   | 'general';
 
 const ALLOWED_FOLDERS = new Set<string>([
@@ -17,6 +18,7 @@ const ALLOWED_FOLDERS = new Set<string>([
   'brands',
   'branding',
   'login',
+  'deals',
   'general',
 ]);
 

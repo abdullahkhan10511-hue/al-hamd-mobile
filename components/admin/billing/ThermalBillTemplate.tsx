@@ -206,16 +206,23 @@ export default function ThermalBillTemplate({
           </div>
           <div className="divide-y divide-neutral-200">
             {order.items.map((item, idx) => {
+              const isDeal = item.itemType === 'DEAL';
+              const displayName = isDeal ? `[DEAL] ${item.dealName || item.productName}` : item.productName;
               const unitPrice = item.price ?? (item.quantity > 0 ? item.total / item.quantity : item.total);
-              const variantText = [item.selectedModel, item.selectedColor, item.selectedSize]
-                .filter(Boolean)
-                .join('/');
+              const variantText = isDeal
+                ? 'Bundle Deal'
+                : [item.selectedModel, item.selectedColor, item.selectedSize].filter(Boolean).join('/');
 
               return (
                 <div key={idx} className="py-1.5 first:pt-1 last:pb-1">
-                  <div className="font-bold leading-tight break-words">{item.productName}</div>
+                  <div className="font-bold leading-tight break-words">{displayName}</div>
                   {variantText && (
                     <div className="text-[9px] text-neutral-600 font-sans break-words">{variantText}</div>
+                  )}
+                  {isDeal && item.dealProducts && item.dealProducts.length > 0 && (
+                    <div className="text-[8px] text-neutral-600 font-sans break-words mt-0.5">
+                      Incl: {item.dealProducts.map((p) => `${p.productName} (${p.quantity || 1}x)`).join(', ')}
+                    </div>
                   )}
                   {item.sku && (
                     <div className="text-[8px] text-neutral-500 font-sans break-words">SKU: {item.sku}</div>
@@ -245,16 +252,23 @@ export default function ThermalBillTemplate({
           </thead>
           <tbody className="divide-y divide-neutral-200">
             {order.items.map((item, idx) => {
-              const variantText = [item.selectedModel, item.selectedColor, item.selectedSize]
-                .filter(Boolean)
-                .join('/');
+              const isDeal = item.itemType === 'DEAL';
+              const displayName = isDeal ? `[DEAL] ${item.dealName || item.productName}` : item.productName;
+              const variantText = isDeal
+                ? 'Bundle Deal'
+                : [item.selectedModel, item.selectedColor, item.selectedSize].filter(Boolean).join('/');
 
               return (
                 <tr key={idx} className="align-top">
                   <td className="py-1.5 pr-1 break-words min-w-0">
-                    <div className="font-bold leading-tight break-words">{item.productName}</div>
+                    <div className="font-bold leading-tight break-words">{displayName}</div>
                     {variantText && (
                       <div className="text-[9px] text-neutral-600 font-sans break-words">{variantText}</div>
+                    )}
+                    {isDeal && item.dealProducts && item.dealProducts.length > 0 && (
+                      <div className="text-[8px] text-neutral-600 font-sans break-words mt-0.5">
+                        Incl: {item.dealProducts.map((p) => `${p.productName} (${p.quantity || 1}x)`).join(', ')}
+                      </div>
                     )}
                     {item.sku && (
                       <div className="text-[8px] text-neutral-500 font-sans break-words">SKU: {item.sku}</div>

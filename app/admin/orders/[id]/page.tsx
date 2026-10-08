@@ -176,6 +176,12 @@ export default function AdminOrderDetailPage() {
                   </span>
                 );
               })()}
+              {(order.hasBackorder || order.stockStatus === 'PARTIAL_STOCK' || order.stockStatus === 'BACKORDER') && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  {order.stockStatus === 'BACKORDER' ? 'FULL BACKORDER' : 'STOCK SHORTAGE / BACKORDER'}
+                </span>
+              )}
             </div>
             <p className="text-xs text-neutral-500 mt-0.5">
               Placed on {new Date(order.createdAt).toLocaleString()}
@@ -227,11 +233,32 @@ export default function AdminOrderDetailPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xs font-bold text-neutral-900 truncate">{item.productName}</h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.itemType === 'DEAL' && (
+                        <span className="inline-block px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-indigo-100 text-indigo-700 tracking-wider">
+                          Deal Bundle
+                        </span>
+                      )}
+                      <h3 className="text-xs font-bold text-neutral-900 truncate">
+                        {item.itemType === 'DEAL' ? (item.dealName || item.productName) : item.productName}
+                      </h3>
+                    </div>
                     <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
                       SKU: <span className="font-semibold text-neutral-700">{item.sku}</span>
                     </p>
-                    {(item.selectedModel || item.selectedColor || item.selectedSize) && (
+                    {item.itemType === 'DEAL' && item.dealProducts && item.dealProducts.length > 0 && (
+                      <div className="mt-1.5 p-2 rounded-lg bg-neutral-50 border border-neutral-100 text-[11px] text-neutral-600 space-y-0.5">
+                        <span className="font-semibold text-neutral-700 block text-[10px] uppercase">Included Products:</span>
+                        {item.dealProducts.map((dp, pIdx) => (
+                          <div key={pIdx} className="flex items-center gap-1.5">
+                            <span className="text-neutral-400">•</span>
+                            <span className="font-medium text-neutral-800">{dp.productName}</span>
+                            <span className="text-neutral-400 font-mono text-[10px]">({dp.quantity || 1}x)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {item.itemType !== 'DEAL' && (item.selectedModel || item.selectedColor || item.selectedSize) && (
                       <p className="text-[11px] text-neutral-600 mt-0.5 font-medium">
                         {[
                           item.selectedModel ? `Model: ${item.selectedModel}` : null,
@@ -247,6 +274,20 @@ export default function AdminOrderDetailPage() {
                     <div className="text-[10px] text-neutral-500 font-mono">
                       {formatPrice(item.price)} × {item.quantity}
                     </div>
+                    {item.backorderedQuantity !== undefined && item.backorderedQuantity > 0 ? (
+                      <div className="mt-1 space-y-0.5 text-right">
+                        <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded border border-amber-300">
+                          Shortage: {item.backorderedQuantity} pending
+                        </span>
+                        <div className="text-[9px] text-neutral-600 font-mono">
+                          Stock fulfilled: {item.fulfilledQuantity ?? 0}
+                        </div>
+                      </div>
+                    ) : item.fulfilledQuantity !== undefined && item.fulfilledQuantity > 0 ? (
+                      <div className="text-[9px] text-emerald-600 font-mono mt-0.5">
+                        Stock fulfilled: {item.fulfilledQuantity}
+                      </div>
+                    ) : null}
                     {order.customerType === 'WHOLESALE' && (
                       <span className="inline-block text-[9px] font-semibold px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 mt-1">
                         Wholesale Rate

@@ -121,9 +121,12 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
   }, [mobileMenuOpen]);
 
   const hasLogo = Boolean(currentSettings?.logoUrl && currentSettings.logoUrl.trim());
-  const fallbackStoreName = initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
+  const rawFallback = initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+  const fallbackStoreName = legacyStoreNames.includes(rawFallback) ? 'AL-HAMD MOBILE ACCESSORIES' : rawFallback;
   const rawStoreName = currentSettings?.storeName !== undefined ? currentSettings.storeName.trim() : fallbackStoreName;
-  const storeName = rawStoreName || (!hasLogo ? fallbackStoreName : '');
+  const normalizedRaw = legacyStoreNames.includes(rawStoreName) ? 'AL-HAMD MOBILE ACCESSORIES' : rawStoreName;
+  const storeName = normalizedRaw || (!hasLogo ? fallbackStoreName : '');
   const logoUrl = currentSettings?.logoUrl?.trim();
 
   const browserTitle =

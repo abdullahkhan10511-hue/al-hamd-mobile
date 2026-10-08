@@ -321,8 +321,12 @@ CREATE TABLE IF NOT EXISTS `order_items` (
   `selected_model` VARCHAR(150) NULL,
   `image` VARCHAR(1000) NULL,
   `total` DECIMAL(12, 2) NOT NULL,
+  `item_type` VARCHAR(20) NOT NULL DEFAULT 'PRODUCT',
+  `deal_id` VARCHAR(100) NULL,
+  `deal_details` LONGTEXT NULL,
   KEY `idx_order_items_order` (`order_id`),
   KEY `idx_order_items_product` (`product_id`),
+  KEY `idx_order_items_deal` (`deal_id`),
   CONSTRAINT `fk_order_items_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -575,6 +579,57 @@ CREATE TABLE IF NOT EXISTS `customer_inquiries` (
   KEY `idx_inquiries_type` (`inquiry_type`),
   KEY `idx_inquiries_order_number` (`order_number`),
   KEY `idx_inquiries_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------------------
+-- 23. DEALS SYSTEM
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `deals` (
+  `id` VARCHAR(100) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `slug` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL,
+  `image` VARCHAR(1000) NULL,
+  `deal_price` DECIMAL(12, 2) NULL DEFAULT 0.00,
+  `original_price` DECIMAL(12, 2) NULL DEFAULT 0.00,
+  `discount_amount` DECIMAL(12, 2) NULL DEFAULT 0.00,
+  `discount_percentage` INT NULL DEFAULT 0,
+  `start_date` DATETIME NULL,
+  `end_date` DATETIME NULL,
+  `status` ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  `show_on_homepage` TINYINT(1) NOT NULL DEFAULT 1,
+  `display_order` INT NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_deals_slug` (`slug`),
+  KEY `idx_deals_status` (`status`, `show_on_homepage`),
+  KEY `idx_deals_order` (`display_order`),
+  KEY `idx_deals_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------------------
+-- 24. DEAL PRODUCTS (Promotional groupings from Shop Inventory)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `deal_products` (
+  `id` VARCHAR(100) NOT NULL,
+  `deal_id` VARCHAR(100) NOT NULL,
+  `product_id` VARCHAR(100) NOT NULL,
+  `model_id` VARCHAR(100) NULL,
+  `product_name` VARCHAR(255) NOT NULL,
+  `model_name` VARCHAR(255) NULL,
+  `sku` VARCHAR(100) NULL,
+  `image` VARCHAR(1000) NULL,
+  `category` VARCHAR(150) NULL,
+  `brand` VARCHAR(100) NULL,
+  `price` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  `shop_stock` INT NOT NULL DEFAULT 0,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_dp_deal` (`deal_id`, `sort_order`),
+  KEY `idx_dp_product` (`product_id`),
+  CONSTRAINT `fk_dp_deal` FOREIGN KEY (`deal_id`) REFERENCES `deals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

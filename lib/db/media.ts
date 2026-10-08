@@ -65,10 +65,12 @@ export async function uploadMediaFile(
   try {
     const isCategory = targetFolderOrEmail === 'categories' || targetFolderOrEmail === 'category';
     const isBrand = targetFolderOrEmail === 'brands' || targetFolderOrEmail === 'brand';
+    const isDeal = targetFolderOrEmail === 'deals' || targetFolderOrEmail === 'deal';
 
     let uploadEndpoint = '/api/admin/products/upload';
     if (isCategory) uploadEndpoint = '/api/admin/categories/upload';
     else if (isBrand) uploadEndpoint = '/api/admin/brands/upload';
+    else if (isDeal) uploadEndpoint = '/api/admin/deals/upload';
 
     const formData = new FormData();
     formData.append('file', file);

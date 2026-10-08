@@ -19,8 +19,12 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
   const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
   const { product, quantity, selectedSize, selectedColor, selectedModel, selectedImage, selectedPrice } = item;
 
+  const isDeal = item.itemType === 'DEAL';
   let unitPrice: number;
-  if (selectedModel && product.models && Array.isArray(product.models)) {
+
+  if (isDeal) {
+    unitPrice = item.dealPrice ?? item.selectedPrice ?? product.price;
+  } else if (selectedModel && product.models && Array.isArray(product.models)) {
     const modelObj = product.models.find(
       (m) => m.name.toLowerCase() === selectedModel.toLowerCase() || m.id === selectedModel
     );
@@ -34,23 +38,24 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
   }
 
   const lineTotal = unitPrice * quantity;
-  const isWholesaleActive = (isWholesale || isSuperWholesale) && product.wholesalePrice && Number(product.wholesalePrice) > 0;
+  const isWholesaleActive = !isDeal && (isWholesale || isSuperWholesale) && product.wholesalePrice && Number(product.wholesalePrice) > 0;
   const validImage = selectedImage || getValidImageSrc(product?.images);
+  const itemHref = isDeal ? `/deals/${item.dealId || product.slug.replace(/^deal-/, '')}` : `/product/${product.slug}`;
+  const itemName = isDeal ? (item.dealName || product.name) : product.name;
 
   return (
     <div className="flex gap-4 py-4 border-b border-neutral-100 last:border-none group">
       {/* Thumbnail */}
       <Link
-        href={`/product/${product.slug}`}
+        href={itemHref}
         onClick={onItemClick}
         className="relative w-20 h-24 rounded-xl overflow-hidden bg-neutral-100 shrink-0 border border-neutral-200/60 group-hover:opacity-95 transition-opacity flex items-center justify-center"
       >
         {validImage ? (
-          <Image
+          <img
             src={validImage}
-            alt={product.name || 'Product'}
-            fill
-            className="object-cover"
+            alt={itemName || 'Product'}
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 text-neutral-400 p-2 text-center">
@@ -65,29 +70,43 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
         <div>
           <div className="flex items-start justify-between gap-2">
             <Link
-              href={`/product/${product.slug}`}
+              href={itemHref}
               onClick={onItemClick}
               className="text-sm font-semibold text-neutral-900 hover:text-neutral-600 transition-colors line-clamp-1"
             >
-              {product.name}
+              {itemName}
             </Link>
             <button
               onClick={() => removeFromCart(item.id)}
               className="text-neutral-400 hover:text-rose-600 p-1 rounded-md transition-colors cursor-pointer"
-              aria-label={`Remove ${product.name}`}
+              aria-label={`Remove ${itemName}`}
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Variants */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-neutral-500">
-            {selectedModel && <span className="font-semibold text-neutral-800">Model: {selectedModel}</span>}
-            {selectedModel && (selectedColor || selectedSize) && <span>•</span>}
-            {selectedColor && <span>Color: {selectedColor}</span>}
-            {selectedColor && selectedSize && <span>•</span>}
-            {selectedSize && <span>Size: {selectedSize}</span>}
-          </div>
+          {/* Deal Badge & Bundled Items Preview */}
+          {isDeal ? (
+            <div className="mt-1 space-y-1">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-neutral-950 uppercase tracking-wider">
+                Bundle Deal
+              </span>
+              {Array.isArray(item.dealProducts) && item.dealProducts.length > 0 && (
+                <p className="text-[11px] text-neutral-500 line-clamp-1">
+                  Includes: {item.dealProducts.map((p) => p.productName).join(' + ')}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Variants */
+            <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-neutral-500">
+              {selectedModel && <span className="font-semibold text-neutral-800">Model: {selectedModel}</span>}
+              {selectedModel && (selectedColor || selectedSize) && <span>•</span>}
+              {selectedColor && <span>Color: {selectedColor}</span>}
+              {selectedColor && selectedSize && <span>•</span>}
+              {selectedSize && <span>Size: {selectedSize}</span>}
+            </div>
+          )}
 
           {isWholesaleActive && (
             <div className="mt-1 flex items-center gap-1.5">

@@ -7,7 +7,7 @@ import { ShopByCategories } from '@/components/home/ShopByCategories';
 import { ShopByBrands } from '@/components/home/ShopByBrands';
 import { NewArrivals } from '@/components/home/NewArrivals';
 import { BestSellers } from '@/components/home/BestSellers';
-import { PromoBanners } from '@/components/home/PromoBanners';
+import { DealsSection } from '@/components/home/DealsSection';
 import { FinalTrustBar } from '@/components/home/FinalTrustBar';
 import { getHomepageSections } from '@/lib/db/homepage';
 import { HomepageSection } from '@/types/admin';
@@ -27,7 +27,7 @@ export default function HomePage() {
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
-      const HOME_KEYS = ['homepage_sections', 'store_settings', 'brands', 'categories'];
+      const HOME_KEYS = ['homepage_sections', 'store_settings', 'brands', 'categories', 'store_deals'];
       if (key && !HOME_KEYS.includes(key)) return;
       loadData();
     };
@@ -49,8 +49,9 @@ export default function HomePage() {
         return <NewArrivals key="new-arrivals" />;
       case 'best-sellers':
         return <BestSellers key="best-sellers" />;
+      case 'deals':
       case 'promo-banners':
-        return <PromoBanners key="promo-banners" />;
+        return <DealsSection key="deals" />;
       case 'final-trust':
         return <FinalTrustBar key="final-trust" />;
       default:
@@ -71,7 +72,7 @@ export default function HomePage() {
             <ShopByBrands />
             <NewArrivals />
             <BestSellers />
-            <PromoBanners />
+            <DealsSection />
             <FinalTrustBar />
           </>
         )}

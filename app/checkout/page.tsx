@@ -303,6 +303,31 @@ export default function CheckoutPage() {
 
       // Map cart items into OrderItem format using authorized effective pricing
       const orderItems = cart.map((ci) => {
+        if (ci.itemType === 'DEAL') {
+          const dealUnitPrice = Number(ci.dealPrice ?? ci.selectedPrice ?? ci.product?.price ?? 0);
+          const lineTotal = dealUnitPrice * ci.quantity;
+          const validImage = ci.selectedImage || getValidImageSrc(ci.product?.images);
+          return {
+            productId: ci.productId || `deal-${ci.dealId}`,
+            productName: ci.dealName || ci.product?.name || 'Bundle Deal',
+            slug: ci.product?.slug || `deal-${ci.dealId}`,
+            sku: `DEAL-${(ci.dealId || ci.productId).replace(/^deal-/, '').slice(0, 8)}`,
+            price: dealUnitPrice,
+            originalPrice: ci.dealOriginalPrice ? Number(ci.dealOriginalPrice) : dealUnitPrice,
+            quantity: ci.quantity,
+            selectedSize: undefined,
+            selectedColor: undefined,
+            selectedModel: undefined,
+            image: validImage || 'https://via.placeholder.com/200',
+            total: lineTotal,
+            itemType: 'DEAL' as const,
+            dealId: ci.dealId || ci.productId.replace(/^deal-/, ''),
+            dealName: ci.dealName || ci.product?.name,
+            dealPrice: dealUnitPrice,
+            dealProducts: ci.dealProducts || [],
+          };
+        }
+
         const modelObj =
           ci.selectedModel && ci.product?.models
             ? ci.product.models.find(
@@ -335,6 +360,7 @@ export default function CheckoutPage() {
           selectedModel: ci.selectedModel,
           image: validImage || 'https://via.placeholder.com/200',
           total: lineTotal,
+          itemType: 'PRODUCT' as const,
         };
       });
 
@@ -1175,40 +1201,51 @@ export default function CheckoutPage() {
               {/* Cart items preview */}
               <div className="max-h-72 overflow-y-auto space-y-3.5 pr-1 divide-y divide-neutral-100">
                 {cart.map((ci) => {
-                  const modelObj =
-                    ci.selectedModel && ci.product?.models
-                      ? ci.product.models.find(
-                          (m) =>
-                            m.name.toLowerCase() === ci.selectedModel?.toLowerCase() ||
-                            m.id === ci.selectedModel
-                        )
-                      : null;
-                  const effectivePrice = modelObj
-                    ? getModelEffectivePrice(ci.product, modelObj, customerTier)
-                    : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, customerTier));
+                  const isDeal = ci.itemType === 'DEAL';
+                  let effectivePrice: number;
+
+                  if (isDeal) {
+                    effectivePrice = Number(ci.dealPrice ?? ci.selectedPrice ?? ci.product?.price ?? 0);
+                  } else {
+                    const modelObj =
+                      ci.selectedModel && ci.product?.models
+                        ? ci.product.models.find(
+                            (m) =>
+                              m.name.toLowerCase() === ci.selectedModel?.toLowerCase() ||
+                              m.id === ci.selectedModel
+                          )
+                        : null;
+                    effectivePrice = modelObj
+                      ? getModelEffectivePrice(ci.product, modelObj, customerTier)
+                      : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, customerTier));
+                  }
+
                   const lineTotal = effectivePrice * ci.quantity;
-                  const validImage =
-                    ci.selectedImage ||
-                    (modelObj?.images && modelObj.images.length > 0 ? getValidImageSrc(modelObj.images) : undefined) ||
-                    getValidImageSrc(ci.product?.images);
+                  const validImage = ci.selectedImage || getValidImageSrc(ci.product?.images);
+                  const itemName = isDeal ? (ci.dealName || ci.product?.name) : ci.product?.name;
+
                   return (
                     <div key={ci.id} className="pt-3.5 first:pt-0 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="relative w-12 h-14 rounded-xl overflow-hidden bg-neutral-100 shrink-0 border border-neutral-200/60 flex items-center justify-center">
                           {validImage ? (
-                            <Image
+                            <img
                               src={validImage}
-                              alt={ci.product.name}
-                              fill
-                              className="object-cover"
+                              alt={itemName || 'Product'}
+                              className="w-full h-full object-cover"
                             />
                           ) : (
                             <Package className="w-5 h-5 stroke-1 text-neutral-400" />
                           )}
                         </div>
-                        <div>
-                          <p className="text-xs font-bold text-neutral-900 line-clamp-1">
-                            {ci.product.name}
+                        <div className="min-w-0">
+                          {isDeal && (
+                            <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-400 text-neutral-950 uppercase tracking-wider mb-0.5">
+                              Bundle Deal
+                            </span>
+                          )}
+                          <p className="text-xs font-bold text-neutral-900 truncate">
+                            {itemName}
                           </p>
                           <p className="text-[10px] text-neutral-400">
                             Qty: {ci.quantity}
@@ -1218,7 +1255,7 @@ export default function CheckoutPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <span className="text-xs font-mono font-bold text-neutral-950">
                           {formatPrice(lineTotal)}
                         </span>

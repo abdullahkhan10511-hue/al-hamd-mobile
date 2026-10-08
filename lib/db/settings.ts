@@ -160,8 +160,22 @@ export function getStoreSettings(): StoreSettings {
   };
 
   // Ensure official business information
-  if (base.storeName === 'AL-HAMD-MOBILE' || base.storeName === 'AL·HAMD' || !base.storeName) {
+  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
+  if (!base.storeName || legacyStoreNames.includes(base.storeName.trim())) {
     base.storeName = 'AL-HAMD MOBILE ACCESSORIES';
+  }
+
+  if (base.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
+    base.websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+  }
+  if (base.seo?.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.seo?.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
+    base.seo.websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+  }
+  if (base.seo?.metaTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan') {
+    base.seo.metaTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+  }
+  if (base.seo?.searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
+    base.seo.searchEngineTitle = 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories Online';
   }
 
   // SEO & Branding Defaults and Fallbacks

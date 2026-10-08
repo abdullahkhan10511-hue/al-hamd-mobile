@@ -139,6 +139,25 @@ export interface OrderItem {
   selectedModel?: string;
   image: string;
   total: number;
+  // Deals extension
+  itemType?: 'PRODUCT' | 'DEAL';
+  dealId?: string;
+  dealName?: string;
+  dealPrice?: number;
+  dealProducts?: {
+    productId: string;
+    modelId?: string;
+    productName: string;
+    modelName?: string;
+    quantity: number;
+    shopStock?: number;
+    price?: number;
+    image?: string;
+    sku?: string;
+  }[];
+  // Backorder / stock shortage tracking
+  fulfilledQuantity?: number;
+  backorderedQuantity?: number;
 }
 
 export type CustomerType = 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE';
@@ -224,6 +243,8 @@ export interface Order {
   voidedBy?: string;
   voidedAt?: string;
   voidReason?: string;
+  hasBackorder?: boolean;
+  stockStatus?: 'IN_STOCK' | 'PARTIAL_STOCK' | 'BACKORDER';
   createdAt: string;
   updatedAt: string;
 }
@@ -288,20 +309,40 @@ export interface NavigationItem {
   isExternal?: boolean;
 }
 
-export interface Banner {
+export interface DealProductItem {
   id: string;
-  title: string;
-  subtitle: string;
+  dealId?: string;
+  productId: string;
+  modelId?: string;
+  productName: string;
+  modelName?: string;
+  sku?: string;
+  image?: string;
+  category?: string;
+  brand?: string;
+  price: number;
+  shopStock: number;
+  sortOrder: number;
+}
+
+export interface Deal {
+  id: string;
+  name: string;
+  slug: string;
   description?: string;
-  image: string;
-  mobileImage?: string;
-  buttonText: string;
-  buttonLink: string;
+  image?: string;
+  dealPrice?: number;
+  originalPrice?: number;
+  discountAmount?: number;
+  discountPercentage?: number;
   startDate?: string;
   endDate?: string;
-  countdownEndTime?: string;
   status: 'active' | 'inactive';
+  showOnHomepage: boolean;
   displayOrder: number;
+  products: DealProductItem[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FlashSaleConfig {
@@ -342,7 +383,7 @@ export interface HomepageVideo {
 }
 
 export interface HomepageSection {
-  id: string; // 'hero' | 'trust' | 'categories' | 'new-arrivals' | 'best-sellers' | 'promo-banners' | 'final-trust'
+  id: string; // 'hero' | 'trust' | 'categories' | 'new-arrivals' | 'best-sellers' | 'deals' | 'promo-banners' | 'final-trust'
   name: string;
   enabled: boolean;
   order: number;

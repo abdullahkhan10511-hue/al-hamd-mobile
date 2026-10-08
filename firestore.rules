@@ -81,8 +81,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 7. PROMOTION BANNERS: Read by public, Write by ADMIN ONLY (Manager restricted)
-    match /banners/{bannerId} {
+    // 7. PROMOTIONAL DEALS: Read by public, Write by ADMIN ONLY (Manager restricted)
+    match /deals/{dealId} {
       allow read: if true;
       allow write: if isAdmin();
     }

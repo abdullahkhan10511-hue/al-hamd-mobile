@@ -279,13 +279,36 @@ export default function A4BillTemplate({
               return (
                 <tr key={idx} className="align-top">
                   <td className="py-3.5 pr-4">
-                    <p className="font-bold text-neutral-950 text-xs">{item.productName}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.itemType === 'DEAL' && (
+                        <span className="inline-block px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-indigo-100 text-indigo-700 tracking-wider">
+                          Deal Bundle
+                        </span>
+                      )}
+                      <p className="font-bold text-neutral-950 text-xs">
+                        {item.itemType === 'DEAL' ? (item.dealName || item.productName) : item.productName}
+                      </p>
+                    </div>
                     {item.sku && (
                       <p className="text-[10px] font-mono text-neutral-500 mt-0.5">SKU: {item.sku}</p>
                     )}
+                    {item.itemType === 'DEAL' && item.dealProducts && item.dealProducts.length > 0 && (
+                      <div className="mt-1.5 pl-2 border-l-2 border-indigo-200 space-y-0.5 text-[11px] text-neutral-600">
+                        <span className="font-semibold text-neutral-700 block text-[10px] uppercase">Included Products:</span>
+                        {item.dealProducts.map((dp, pIdx) => (
+                          <div key={pIdx} className="flex items-center gap-1">
+                            <span>•</span>
+                            <span>{dp.productName}</span>
+                            <span className="text-neutral-400 font-mono text-[10px]">({dp.quantity || 1}x)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="py-3.5 px-3 text-neutral-700">
-                    {variantDetails ? (
+                    {item.itemType === 'DEAL' ? (
+                      <span className="text-xs font-semibold text-indigo-600">Special Bundle Deal</span>
+                    ) : variantDetails ? (
                       <span className="font-medium text-neutral-800">{variantDetails}</span>
                     ) : (
                       <span className="text-neutral-400">—</span>

@@ -316,8 +316,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const updateQuantity = (val: number) => {
     if (!product) return;
-    const maxAvailable = Math.max(1, maxStock);
-    const clamped = Math.min(maxAvailable, Math.max(1, Math.round(val)));
+    const clamped = Math.max(1, Math.round(val));
     setQuantity(clamped);
     setQuantityInput(String(clamped));
   };
@@ -338,17 +337,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
     if (isNaN(parsed)) return;
 
     if (!product) return;
-    const maxAvailable = Math.max(1, maxStock);
 
     if (parsed === 0) {
       setQuantity(1);
       setQuantityInput('1');
-      return;
-    }
-
-    if (parsed > maxAvailable) {
-      setQuantity(maxAvailable);
-      setQuantityInput(String(maxAvailable));
       return;
     }
 
@@ -358,13 +350,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const handleQuantityInputBlur = () => {
     if (!product) return;
-    const maxAvailable = Math.max(1, maxStock);
     if (!quantityInput || isNaN(parseInt(quantityInput, 10))) {
       setQuantity(1);
       setQuantityInput('1');
     } else {
       const parsed = parseInt(quantityInput, 10);
-      const clamped = Math.min(maxAvailable, Math.max(1, parsed));
+      const clamped = Math.max(1, parsed);
       setQuantity(clamped);
       setQuantityInput(String(clamped));
     }
@@ -372,8 +363,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const handleIncrement = () => {
     if (!product) return;
-    const maxAvailable = Math.max(1, maxStock);
-    updateQuantity(Math.min(maxAvailable, quantity + 1));
+    updateQuantity(quantity + 1);
   };
 
   const handleDecrement = () => {
@@ -476,7 +466,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   const isFavorited = isInWishlist(product.id);
   const isOutOfStock = maxStock <= 0;
-  const canAddToCart = !isOutOfStock && (!isModelRequired || Boolean(selectedModel));
+  const canAddToCart = !isModelRequired || Boolean(selectedModel);
 
   // Pricing calculations
   const customerTier = isSuperWholesale
@@ -921,29 +911,22 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               </div>
             )}
 
-            {/* Stock Warning Notice */}
+            {/* Stock Availability Notice */}
             {totalStock <= 0 ? (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                <span>
-                  {selectedModelObj ? `${selectedModelObj.name} is currently out of stock.` : 'Currently out of stock.'}
-                </span>
-              </div>
-            ) : maxStock <= 0 ? (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 <span>
-                  Available at physical shop. Out of warehouse stock for online delivery.
+                  Available on Backorder (Ships as soon as restocked)
                 </span>
               </div>
-            ) : maxStock > 0 && maxStock <= 5 ? (
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
+            ) : (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>
-                  Only {maxStock} left in warehouse stock - order soon!
+                  In Stock
                 </span>
               </div>
-            ) : null}
+            )}
 
             {/* Quantity Stepper & Add to Bag / Buy Now Buttons */}
             <div className="space-y-3 pt-2">
@@ -953,7 +936,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                   <button
                     type="button"
                     onClick={handleDecrement}
-                    disabled={isOutOfStock || quantity <= 1}
+                    disabled={quantity <= 1}
                     aria-label="Decrease quantity"
                     className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-700 hover:bg-white hover:text-neutral-950 transition-colors cursor-pointer disabled:opacity-30 select-none"
                   >
@@ -966,17 +949,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     value={quantityInput}
                     onChange={handleQuantityInputChange}
                     onBlur={handleQuantityInputBlur}
-                    disabled={isOutOfStock}
                     aria-label="Product quantity"
                     className="w-12 text-center font-mono text-sm font-bold text-neutral-950 bg-transparent border-none outline-none focus:ring-0 select-all p-0"
-                  >
-                  </input>
+                  />
                   <button
                     type="button"
                     onClick={handleIncrement}
-                    disabled={isOutOfStock || quantity >= maxStock}
                     aria-label="Increase quantity"
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-700 hover:bg-white hover:text-neutral-950 transition-colors cursor-pointer disabled:opacity-30 select-none"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-700 hover:bg-white hover:text-neutral-950 transition-colors cursor-pointer select-none"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -995,10 +975,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>
-                    {isOutOfStock
-                      ? 'Unavailable'
-                      : isModelRequired && !selectedModel
+                    {isModelRequired && !selectedModel
                       ? 'Select a Model'
+                      : totalStock <= 0
+                      ? 'Backorder / Add to Bag'
                       : 'Add to Bag'}
                   </span>
                 </button>
@@ -1017,10 +997,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               >
                 <Zap className={`w-4 h-4 ${!canAddToCart ? 'fill-neutral-400' : 'fill-white'}`} />
                 <span>
-                  {isOutOfStock
-                    ? 'Unavailable'
-                    : isModelRequired && !selectedModel
+                  {isModelRequired && !selectedModel
                     ? 'Select a Model'
+                    : totalStock <= 0
+                    ? 'Order on Backorder'
                     : 'Buy It Now'}
                 </span>
               </button>

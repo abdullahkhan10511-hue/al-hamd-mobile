@@ -48,6 +48,8 @@ interface OrderRow extends RowDataPacket {
   promo_discount_value: number | string | null;
   promo_discount_amount: number | string | null;
   promo_details: any;
+  has_backorder?: number | boolean | null;
+  stock_status?: string | null;
   voided_by: string | null;
   voided_at: string | null;
   void_reason: string | null;
@@ -71,6 +73,52 @@ interface OrderItemRow extends RowDataPacket {
   selected_model: string | null;
   image: string | null;
   total: number | string;
+  item_type?: 'PRODUCT' | 'DEAL' | null;
+  deal_id?: string | null;
+  deal_details?: any;
+  fulfilled_quantity?: number | string | null;
+  backordered_quantity?: number | string | null;
+}
+
+let orderItemsSchemaChecked = false;
+async function ensureOrderItemsDealSchema(conn: any) {
+  if (orderItemsSchemaChecked) return;
+  try {
+    const [cols] = await conn.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'order_items' AND COLUMN_NAME IN ('item_type', 'deal_id', 'deal_details', 'fulfilled_quantity', 'backordered_quantity')`
+    );
+    const existing = new Set(((cols as any[]) || []).map((c: any) => c.COLUMN_NAME));
+    if (!existing.has('item_type')) {
+      await conn.query(`ALTER TABLE order_items ADD COLUMN item_type VARCHAR(20) DEFAULT 'PRODUCT'`);
+    }
+    if (!existing.has('deal_id')) {
+      await conn.query(`ALTER TABLE order_items ADD COLUMN deal_id VARCHAR(100) NULL`);
+    }
+    if (!existing.has('deal_details')) {
+      await conn.query(`ALTER TABLE order_items ADD COLUMN deal_details LONGTEXT NULL`);
+    }
+    if (!existing.has('fulfilled_quantity')) {
+      await conn.query(`ALTER TABLE order_items ADD COLUMN fulfilled_quantity INT NULL`);
+    }
+    if (!existing.has('backordered_quantity')) {
+      await conn.query(`ALTER TABLE order_items ADD COLUMN backordered_quantity INT NULL`);
+    }
+
+    const [orderCols] = await conn.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'orders' AND COLUMN_NAME IN ('has_backorder', 'stock_status')`
+    );
+    const existingOrderCols = new Set(((orderCols as any[]) || []).map((c: any) => c.COLUMN_NAME));
+    if (!existingOrderCols.has('has_backorder')) {
+      await conn.query(`ALTER TABLE orders ADD COLUMN has_backorder TINYINT(1) DEFAULT 0`);
+    }
+    if (!existingOrderCols.has('stock_status')) {
+      await conn.query(`ALTER TABLE orders ADD COLUMN stock_status VARCHAR(50) DEFAULT 'IN_STOCK'`);
+    }
+
+    orderItemsSchemaChecked = true;
+  } catch (err) {
+    console.warn('[orders.repo] ensureOrderItemsDealSchema notice:', err);
+  }
 }
 
 function parseJsonField<T>(field: any, fallback: T): T {
@@ -84,21 +132,33 @@ function parseJsonField<T>(field: any, fallback: T): T {
 }
 
 function mapRowsToOrder(orderRow: OrderRow, itemRows: OrderItemRow[]): Order {
-  const items: OrderItem[] = itemRows.map((it) => ({
-    productId: it.product_id,
-    productName: it.product_name,
-    slug: it.slug || '',
-    sku: it.sku,
-    price: Number(it.price),
-    originalPrice: it.original_price !== null ? Number(it.original_price) : undefined,
-    discountPercentage: it.discount_percentage !== null ? Number(it.discount_percentage) : undefined,
-    quantity: Number(it.quantity),
-    selectedSize: it.selected_size || undefined,
-    selectedColor: it.selected_color || undefined,
-    selectedModel: it.selected_model || undefined,
-    image: it.image || 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=300&auto=format&fit=crop',
-    total: Number(it.total),
-  }));
+  const items: OrderItem[] = itemRows.map((it) => {
+    const details = it.deal_details ? parseJsonField<any>(it.deal_details, {}) : {};
+    const isDeal = it.item_type === 'DEAL' || !!it.deal_id || !!details.dealId;
+
+    return {
+      productId: it.product_id,
+      productName: it.product_name,
+      slug: it.slug || '',
+      sku: it.sku,
+      price: Number(it.price),
+      originalPrice: it.original_price !== null ? Number(it.original_price) : undefined,
+      discountPercentage: it.discount_percentage !== null ? Number(it.discount_percentage) : undefined,
+      quantity: Number(it.quantity),
+      selectedSize: it.selected_size || undefined,
+      selectedColor: it.selected_color || undefined,
+      selectedModel: it.selected_model || undefined,
+      image: it.image || 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=300&auto=format&fit=crop',
+      total: Number(it.total),
+      itemType: isDeal ? 'DEAL' : 'PRODUCT',
+      dealId: it.deal_id || details.dealId || undefined,
+      dealName: details.dealName || (isDeal ? it.product_name : undefined),
+      dealPrice: details.dealPrice !== undefined ? Number(details.dealPrice) : (isDeal ? Number(it.price) : undefined),
+      dealProducts: details.dealProducts || undefined,
+      fulfilledQuantity: it.fulfilled_quantity !== null && it.fulfilled_quantity !== undefined ? Number(it.fulfilled_quantity) : undefined,
+      backorderedQuantity: it.backordered_quantity !== null && it.backordered_quantity !== undefined ? Number(it.backordered_quantity) : undefined,
+    };
+  });
 
   return {
     id: orderRow.id,
@@ -149,6 +209,8 @@ function mapRowsToOrder(orderRow: OrderRow, itemRows: OrderItemRow[]): Order {
     promoDiscountValue: orderRow.promo_discount_value !== null ? Number(orderRow.promo_discount_value) : undefined,
     promoDiscountAmount: orderRow.promo_discount_amount !== null ? Number(orderRow.promo_discount_amount) : undefined,
     promoDetails: parseJsonField<any>(orderRow.promo_details, undefined),
+    hasBackorder: Boolean(orderRow.has_backorder),
+    stockStatus: (orderRow.stock_status as any) || (Boolean(orderRow.has_backorder) ? 'BACKORDER' : 'IN_STOCK'),
     voidedBy: orderRow.voided_by || undefined,
     voidedAt: orderRow.voided_at || undefined,
     voidReason: orderRow.void_reason || undefined,
@@ -278,16 +340,123 @@ export async function createOrderInDb(
   }
 ): Promise<Order> {
   return withTransaction(async (conn) => {
+    // 0. Ensure schema supports deals
+    await ensureOrderItemsDealSchema(conn);
+
     // 1. Generate IDs if not provided
     const orderId = orderData.id || (await generateNextOrderIdInDb());
     const invoiceNumber = orderData.invoiceNumber || (await generateNextInvoiceNumberInDb());
 
     // 2. Validate and adjust stock for each item in the order according to authoritative rules:
+    // - DEAL BUNDLE ITEMS deduct from SHOP STOCK ONLY (products.shop_stock / product_models.shop_stock) for all bundled products.
     // - ONLINE WEBSITE ORDERS deduct from WAREHOUSE STOCK (products.stock / product_models.stock) ONLY. Shop stock is UNCHANGED.
     // - POS / WALK-IN ORDERS deduct from SHOP STOCK (products.shop_stock / product_models.shop_stock) ONLY. Warehouse stock is UNCHANGED.
     const isPosOrder = orderData.orderSource === 'POS' || orderData.orderType === 'walk_in';
 
     for (const item of orderData.items) {
+      if (item.itemType === 'DEAL') {
+        // DEAL ITEM: Bundle backed specifically by Shop Inventory
+        // Must validate and atomically deduct required Shop Inventory for all bundled products
+        const dealProducts = item.dealProducts && item.dealProducts.length > 0
+          ? item.dealProducts
+          : [{ productId: item.productId, productName: item.productName, quantity: 1, modelId: item.selectedModel, modelName: item.selectedModel }];
+
+        for (const dp of dealProducts) {
+          const neededQty = (dp.quantity || 1) * item.quantity;
+          const [pRows] = await conn.query<RowDataPacket[]>(
+            'SELECT id, name, sku, stock, shop_stock FROM products WHERE id = ? LIMIT 1 FOR UPDATE',
+            [dp.productId]
+          );
+
+          if (!pRows || pRows.length === 0) {
+            throw new Error(`Deal product "${dp.productName}" (ID: ${dp.productId}) was not found.`);
+          }
+
+          const product = pRows[0];
+          let availableShopStock = Number(product.shop_stock || 0);
+
+          if (dp.modelId || dp.modelName) {
+            const mId = String(dp.modelId || dp.modelName);
+            const [mRows] = await conn.query<RowDataPacket[]>(
+              'SELECT id, stock, shop_stock, name FROM product_models WHERE product_id = ? AND (name = ? OR id = ?) LIMIT 1 FOR UPDATE',
+              [dp.productId, mId, mId] as any[]
+            );
+            if (mRows && mRows.length > 0) {
+              availableShopStock = Number(mRows[0].shop_stock || 0);
+              if (availableShopStock < neededQty) {
+                throw new Error(
+                  `Deal "${item.dealName || item.productName}" cannot be purchased: Insufficient shop stock for "${dp.productName} (${mRows[0].name || mId})". Available: ${availableShopStock}, required: ${neededQty}.`
+                );
+              }
+              const newModelShopStock = availableShopStock - neededQty;
+              await conn.execute(
+                'UPDATE product_models SET shop_stock = ? WHERE id = ?',
+                [newModelShopStock, mRows[0].id]
+              );
+              // Recalculate parent product shop_stock
+              const [parentShop] = await conn.query<RowDataPacket[]>(
+                'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
+                [dp.productId]
+              );
+              const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+              await conn.execute(
+                'UPDATE products SET shop_stock = ? WHERE id = ?',
+                [newParentShopStock, dp.productId]
+              );
+
+              await conn.execute(
+                `INSERT INTO inventory_logs (
+                  id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+                ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+                [
+                  `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                  dp.productId,
+                  `${product.name} (${mRows[0].name || mId}) [Shop Stock]`,
+                  product.sku,
+                  -neededQty,
+                  availableShopStock,
+                  newModelShopStock,
+                  `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
+                ]
+              );
+              continue;
+            }
+          }
+
+          // Product-level shop stock deduction
+          if (availableShopStock < neededQty) {
+            throw new Error(
+              `Deal "${item.dealName || item.productName}" cannot be purchased: Insufficient shop stock for "${dp.productName}". Available: ${availableShopStock}, required: ${neededQty}.`
+            );
+          }
+
+          const newShopStock = availableShopStock - neededQty;
+          await conn.execute(
+            'UPDATE products SET shop_stock = ? WHERE id = ?',
+            [newShopStock, dp.productId]
+          );
+
+          await conn.execute(
+            `INSERT INTO inventory_logs (
+              id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+            ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+            [
+              `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              dp.productId,
+              `${product.name} [Shop Stock]`,
+              product.sku,
+              -neededQty,
+              availableShopStock,
+              newShopStock,
+              `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
+            ]
+          );
+        }
+        (item as any).fulfilledQuantity = item.quantity;
+        (item as any).backorderedQuantity = 0;
+        continue;
+      }
+
       const [pRows] = await conn.query<RowDataPacket[]>(
         'SELECT id, name, sku, stock, shop_stock FROM products WHERE id = ? LIMIT 1 FOR UPDATE',
         [item.productId]
@@ -348,6 +517,8 @@ export async function createOrderInDb(
                 orderData.cashierEmail || 'pos-counter',
               ]
             );
+            (item as any).fulfilledQuantity = item.quantity;
+            (item as any).backorderedQuantity = 0;
             continue;
           }
         }
@@ -381,6 +552,8 @@ export async function createOrderInDb(
             orderData.cashierEmail || 'pos-counter',
           ]
         );
+        (item as any).fulfilledQuantity = item.quantity;
+        (item as any).backorderedQuantity = 0;
       } else {
         // ONLINE ORDER -> Deduct from WAREHOUSE STOCK ONLY
         let availableWarehouseStock = Number(product.stock || 0);
@@ -392,12 +565,13 @@ export async function createOrderInDb(
           );
           if (mRows && mRows.length > 0) {
             availableWarehouseStock = Number(mRows[0].stock || 0);
-            if (availableWarehouseStock < item.quantity) {
-              throw new Error(
-                `Insufficient warehouse stock for "${product.name} (${item.selectedModel})". Available: ${availableWarehouseStock}, requested: ${item.quantity}.`
-              );
-            }
-            const newModelStock = availableWarehouseStock - item.quantity;
+            const safeAvailable = Math.max(0, availableWarehouseStock);
+            const fulfilledQty = Math.min(item.quantity, safeAvailable);
+            const backorderedQty = Math.max(0, item.quantity - fulfilledQty);
+            (item as any).fulfilledQuantity = fulfilledQty;
+            (item as any).backorderedQuantity = backorderedQty;
+
+            const newModelStock = Math.max(0, availableWarehouseStock - fulfilledQty);
             await conn.execute(
               'UPDATE product_models SET stock = ? WHERE id = ?',
               [newModelStock, mRows[0].id]
@@ -414,55 +588,65 @@ export async function createOrderInDb(
             );
 
             // Inventory log for Online order warehouse deduction
-            await conn.execute(
-              `INSERT INTO inventory_logs (
-                id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-              ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
-              [
-                `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                item.productId,
-                `${product.name} (${item.selectedModel}) [Warehouse Stock]`,
-                item.sku || product.sku,
-                -item.quantity,
-                availableWarehouseStock,
-                newModelStock,
-                `Online Order #${orderId}: Warehouse stock deducted (${item.selectedModel})`,
-              ]
-            );
+            if (fulfilledQty > 0) {
+              await conn.execute(
+                `INSERT INTO inventory_logs (
+                  id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+                ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+                [
+                  `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                  item.productId,
+                  `${product.name} (${item.selectedModel}) [Warehouse Stock]`,
+                  item.sku || product.sku,
+                  -fulfilledQty,
+                  availableWarehouseStock,
+                  newModelStock,
+                  `Online Order #${orderId}: Warehouse stock deducted (${item.selectedModel})${backorderedQty > 0 ? ` (Fulfilled: ${fulfilledQty}/${item.quantity}, Backordered: ${backorderedQty})` : ''}`,
+                ]
+              );
+            }
             continue;
           }
         }
 
         // Product-level Online warehouse deduction
-        if (availableWarehouseStock < item.quantity) {
-          throw new Error(
-            `Insufficient warehouse stock for "${product.name}". Available: ${availableWarehouseStock}, requested: ${item.quantity}.`
-          );
-        }
+        const safeAvailable = Math.max(0, availableWarehouseStock);
+        const fulfilledQty = Math.min(item.quantity, safeAvailable);
+        const backorderedQty = Math.max(0, item.quantity - fulfilledQty);
+        (item as any).fulfilledQuantity = fulfilledQty;
+        (item as any).backorderedQuantity = backorderedQty;
 
-        const newWarehouseStock = availableWarehouseStock - item.quantity;
+        const newWarehouseStock = Math.max(0, availableWarehouseStock - fulfilledQty);
         await conn.execute(
           'UPDATE products SET stock = ? WHERE id = ?',
           [newWarehouseStock, item.productId]
         );
 
-        await conn.execute(
-          `INSERT INTO inventory_logs (
-            id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-          ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
-          [
-            `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            item.productId,
-            `${product.name} [Warehouse Stock]`,
-            item.sku || product.sku,
-            -item.quantity,
-            availableWarehouseStock,
-            newWarehouseStock,
-            `Online Order #${orderId}: Warehouse stock deducted`,
-          ]
-        );
+        if (fulfilledQty > 0) {
+          await conn.execute(
+            `INSERT INTO inventory_logs (
+              id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+            ) VALUES (?, ?, ?, ?, 'ORDER_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+            [
+              `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              item.productId,
+              `${product.name} [Warehouse Stock]`,
+              item.sku || product.sku,
+              -fulfilledQty,
+              availableWarehouseStock,
+              newWarehouseStock,
+              `Online Order #${orderId}: Warehouse stock deducted${backorderedQty > 0 ? ` (Fulfilled: ${fulfilledQty}/${item.quantity}, Backordered: ${backorderedQty})` : ''}`,
+            ]
+          );
+        }
       }
     }
+
+    const hasBackorder = orderData.items.some((it) => (it.backorderedQuantity ?? 0) > 0);
+    const allBackordered = orderData.items.every((it) => (it.fulfilledQuantity ?? 0) === 0);
+    const stockStatus = hasBackorder
+      ? (allBackordered ? 'BACKORDER' : 'PARTIAL_STOCK')
+      : 'IN_STOCK';
 
     // 3. Insert order record
     await conn.execute(
@@ -475,6 +659,7 @@ export async function createOrderInDb(
         status, notes, order_source, cashier_id, cashier_name, cashier_email,
         amount_paid, change_given, pos_discount_type, pos_discount_value, pos_discount_reason,
         promo_code, promo_discount_type, promo_discount_value, promo_discount_amount, promo_details,
+        has_backorder, stock_status,
         created_at, updated_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
@@ -485,6 +670,7 @@ export async function createOrderInDb(
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?,
         NOW(), NOW()
       )`,
       [
@@ -531,17 +717,30 @@ export async function createOrderInDb(
         orderData.promoDiscountValue !== undefined ? orderData.promoDiscountValue : null,
         orderData.promoDiscountAmount !== undefined ? orderData.promoDiscountAmount : null,
         orderData.promoDetails ? JSON.stringify(orderData.promoDetails) : null,
+        hasBackorder ? 1 : 0,
+        stockStatus,
       ]
     );
 
     // 4. Insert order items
     for (const item of orderData.items) {
+      const isDeal = item.itemType === 'DEAL';
+      const dealDetailsJson = isDeal
+        ? JSON.stringify({
+            dealId: item.dealId,
+            dealName: item.dealName,
+            dealPrice: item.dealPrice,
+            dealProducts: item.dealProducts,
+          })
+        : null;
+
       await conn.execute(
         `INSERT INTO order_items (
           order_id, product_id, product_name, slug, sku,
           price, original_price, discount_percentage, quantity,
-          selected_size, selected_color, selected_model, image, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          selected_size, selected_color, selected_model, image, total,
+          item_type, deal_id, deal_details, fulfilled_quantity, backordered_quantity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           item.productId,
@@ -557,6 +756,11 @@ export async function createOrderInDb(
           item.selectedModel || null,
           item.image || null,
           item.total,
+          isDeal ? 'DEAL' : 'PRODUCT',
+          item.dealId || null,
+          dealDetailsJson,
+          item.fulfilledQuantity !== undefined ? item.fulfilledQuantity : item.quantity,
+          item.backorderedQuantity !== undefined ? item.backorderedQuantity : 0,
         ]
       );
     }
@@ -698,11 +902,58 @@ export async function voidOrderInDb(
     );
 
     // Restock items safely to their original fulfillment inventory:
+    // - DEAL BUNDLE items restore SHOP STOCK ONLY for all bundled items
     // - POS orders restore SHOP STOCK ONLY (Warehouse stock is untouched)
     // - ONLINE orders restore WAREHOUSE STOCK ONLY (Shop stock is untouched)
     const isPosOrder = existing.orderSource === 'POS' || existing.orderType === 'walk_in';
 
     for (const item of existing.items) {
+      if (item.itemType === 'DEAL') {
+        const dealProducts = item.dealProducts && item.dealProducts.length > 0
+          ? item.dealProducts
+          : [{ productId: item.productId, productName: item.productName, quantity: 1, modelId: item.selectedModel, modelName: item.selectedModel }];
+
+        for (const dp of dealProducts) {
+          const restoreQty = (dp.quantity || 1) * item.quantity;
+          await conn.execute(
+            'UPDATE products SET shop_stock = shop_stock + ? WHERE id = ?',
+            [restoreQty, dp.productId]
+          );
+          if (dp.modelId || dp.modelName) {
+            const mId = String(dp.modelId || dp.modelName);
+            await conn.execute(
+              'UPDATE product_models SET shop_stock = shop_stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
+              [restoreQty, dp.productId, mId, mId] as any[]
+            );
+            const [parentShop] = await conn.query<RowDataPacket[]>(
+              'SELECT SUM(shop_stock) as total_shop FROM product_models WHERE product_id = ?',
+              [dp.productId]
+            );
+            const newParentShopStock = parentShop && parentShop.length > 0 ? Number(parentShop[0].total_shop) || 0 : 0;
+            await conn.execute(
+              'UPDATE products SET shop_stock = ? WHERE id = ?',
+              [newParentShopStock, dp.productId]
+            );
+          }
+
+          await conn.execute(
+            `INSERT INTO inventory_logs (
+              id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+            ) VALUES (?, ?, ?, ?, 'DEAL_RESTOCK', ?, 0, 0, ?, ?, NOW())`,
+            [
+              `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              dp.productId,
+              `${dp.productName} [Shop Stock]`,
+              `SKU-${dp.productId}`,
+              restoreQty,
+              `Void Order #${id}: Restored ${restoreQty} unit(s) to shop stock for Deal "${item.dealName || item.productName}". Reason: ${reason}`,
+              voidedBy,
+            ]
+          );
+        }
+        continue;
+      }
+
       if (isPosOrder) {
         // Restore Shop Stock
         await conn.execute(
@@ -740,41 +991,47 @@ export async function voidOrderInDb(
           ]
         );
       } else {
-        // Restore Warehouse Stock
-        await conn.execute(
-          'UPDATE products SET stock = stock + ? WHERE id = ?',
-          [item.quantity, item.productId]
-        );
-        if (item.selectedModel) {
+        // Restore Warehouse Stock ONLY up to what was actually fulfilled/deducted
+        const restoreQty = item.fulfilledQuantity !== undefined && item.fulfilledQuantity !== null
+          ? Number(item.fulfilledQuantity)
+          : Number(item.quantity);
+
+        if (restoreQty > 0) {
           await conn.execute(
-            'UPDATE product_models SET stock = stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
-            [item.quantity, item.productId, item.selectedModel, item.selectedModel]
+            'UPDATE products SET stock = stock + ? WHERE id = ?',
+            [restoreQty, item.productId]
           );
-          const [parentStock] = await conn.query<RowDataPacket[]>(
-            'SELECT SUM(stock) as total_stock FROM product_models WHERE product_id = ?',
-            [item.productId]
-          );
-          const newParentStock = parentStock && parentStock.length > 0 ? Number(parentStock[0].total_stock) || 0 : 0;
+          if (item.selectedModel) {
+            await conn.execute(
+              'UPDATE product_models SET stock = stock + ? WHERE product_id = ? AND (name = ? OR id = ?)',
+              [restoreQty, item.productId, item.selectedModel, item.selectedModel]
+            );
+            const [parentStock] = await conn.query<RowDataPacket[]>(
+              'SELECT SUM(stock) as total_stock FROM product_models WHERE product_id = ?',
+              [item.productId]
+            );
+            const newParentStock = parentStock && parentStock.length > 0 ? Number(parentStock[0].total_stock) || 0 : 0;
+            await conn.execute(
+              'UPDATE products SET stock = ? WHERE id = ?',
+              [newParentStock, item.productId]
+            );
+          }
+
           await conn.execute(
-            'UPDATE products SET stock = ? WHERE id = ?',
-            [newParentStock, item.productId]
+            `INSERT INTO inventory_logs (
+              id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+            ) VALUES (?, ?, ?, ?, 'RESTOCK', ?, 0, 0, ?, ?, NOW())`,
+            [
+              `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              item.productId,
+              `${item.productName}${item.selectedModel ? ` (${item.selectedModel})` : ''} [Warehouse Stock]`,
+              item.sku,
+              restoreQty,
+              `Void Online Order #${id}: Restored ${restoreQty} unit(s) to warehouse stock. Reason: ${reason}`,
+              voidedBy,
+            ]
           );
         }
-
-        await conn.execute(
-          `INSERT INTO inventory_logs (
-            id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-          ) VALUES (?, ?, ?, ?, 'RESTOCK', ?, 0, 0, ?, ?, NOW())`,
-          [
-            `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            item.productId,
-            `${item.productName}${item.selectedModel ? ` (${item.selectedModel})` : ''} [Warehouse Stock]`,
-            item.sku,
-            item.quantity,
-            `Void Online Order #${id}: Restored ${item.quantity} unit(s) to warehouse stock. Reason: ${reason}`,
-            voidedBy,
-          ]
-        );
       }
     }
 

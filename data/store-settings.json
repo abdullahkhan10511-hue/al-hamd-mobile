@@ -1,8 +1,8 @@
 {
-  "storeName": "AL-HAMD SHOP",
+  "storeName": "AL-HAMD MOBILE ACCESSORIES",
   "storeTagline": "Quality Mobile Accessories & Everyday Smartphone Essentials",
   "logoUrl": "/uploads/branding/logo_1791116748644_download.jpg",
-  "faviconUrl": "/uploads/branding/favicon_1791116789478_download.jpg",
+  "faviconUrl": "/favicon.ico",
   "email": "support@alhamd-mobile.com",
   "phone": "+92 343 2200995",
   "address": "Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan",
@@ -62,11 +62,11 @@
       }
     ]
   },
-  "websiteTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
+  "websiteTitle": "AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan",
   "canonicalUrl": "https://alhamdshop.com",
   "ogImageUrl": "/uploads/branding/og_1791116795475_download.jpg",
   "seo": {
-    "metaTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
+    "metaTitle": "AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan",
     "metaDescription": "Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.",
     "keywords": [
       "mobile accessories pakistan",
@@ -76,13 +76,13 @@
       "earbuds",
       "screen protectors",
       "magsafe",
-      "al-hamd"
+      "al-hamd mobile accessories"
     ],
-    "websiteTitle": "AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan",
-    "searchEngineTitle": "AL-HAMD SHOP | Premium Mobile Accessories Online",
+    "websiteTitle": "AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan",
+    "searchEngineTitle": "AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories Online",
     "searchEngineDescription": "Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.",
     "canonicalUrl": "https://alhamdshop.com",
-    "faviconUrl": "/uploads/branding/favicon_1791116789478_download.jpg",
+    "faviconUrl": "/favicon.ico",
     "logoUrl": "/uploads/branding/logo_1791116748644_download.jpg",
     "ogImageUrl": "/uploads/branding/og_1791116795475_download.jpg"
   },

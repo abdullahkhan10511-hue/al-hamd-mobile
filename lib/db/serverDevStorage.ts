@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Product, Category, ProductMediaItem, ProductModelVariant } from '@/types';
-import { Brand, ShopBill, ShopBillItem } from '@/types/admin';
+import { Brand, ShopBill, ShopBillItem, Deal, DealProductItem } from '@/types/admin';
 import { seedProducts, seedBrands } from './seed';
 import { categories as initialCategories } from '@/data/categories';
 import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
@@ -26,6 +26,7 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const DEV_PRODUCTS_FILE = path.join(DATA_DIR, 'dev-products.json');
 const DEV_CATEGORIES_FILE = path.join(DATA_DIR, 'dev-categories.json');
 const DEV_BRANDS_FILE = path.join(DATA_DIR, 'dev-brands.json');
+const DEV_DEALS_FILE = path.join(DATA_DIR, 'dev-deals.json');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -792,4 +793,191 @@ export async function voidDevShopBill(
   }).catch(() => {});
 
   return bill;
+}
+
+// ==========================================
+// DEALS DEV STORAGE
+// ==========================================
+
+export function getDevDeals(): Deal[] {
+  assertDevOnly('getDevDeals');
+  const deals = readJsonFile<Deal[]>(DEV_DEALS_FILE, []);
+  return deals.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+}
+
+export function getDevDealById(id: string): Deal | null {
+  assertDevOnly('getDevDealById');
+  const deals = getDevDeals();
+  return deals.find((d) => d.id === id || d.slug === id) || null;
+}
+
+export async function insertDevDeal(
+  data: Partial<Deal>,
+  adminEmail = 'admin@alhamd.com'
+): Promise<Deal> {
+  assertDevOnly('insertDevDeal');
+  const deals = getDevDeals();
+  const name = (data.name || '').trim();
+  if (!name) throw new Error('Deal Name is required.');
+
+  const id = data.id || `deal-${Date.now()}`;
+  const slug =
+    data.slug ||
+    `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')}-${Date.now().toString(36)}`;
+
+  const cleanProducts: DealProductItem[] = Array.isArray(data.products)
+    ? data.products.map((p, idx) => ({
+        id: p.id || `dp-${Date.now()}-${idx}`,
+        dealId: id,
+        productId: p.productId,
+        modelId: p.modelId,
+        productName: p.productName,
+        modelName: p.modelName,
+        sku: p.sku,
+        image: p.image,
+        category: p.category,
+        brand: p.brand,
+        price: Number(p.price || 0),
+        shopStock: Number(p.shopStock || 0),
+        sortOrder: p.sortOrder !== undefined ? p.sortOrder : idx + 1,
+      }))
+    : [];
+
+  const newDeal: Deal = {
+    id,
+    name,
+    slug,
+    description: (data.description || '').trim(),
+    image: data.image || '',
+    dealPrice: data.dealPrice !== undefined ? Number(data.dealPrice) : undefined,
+    originalPrice: data.originalPrice !== undefined ? Number(data.originalPrice) : undefined,
+    discountAmount: data.discountAmount !== undefined ? Number(data.discountAmount) : undefined,
+    discountPercentage: data.discountPercentage !== undefined ? Number(data.discountPercentage) : undefined,
+    startDate: data.startDate || '',
+    endDate: data.endDate || '',
+    status: data.status || 'active',
+    showOnHomepage: data.showOnHomepage !== undefined ? Boolean(data.showOnHomepage) : true,
+    displayOrder: data.displayOrder !== undefined ? Number(data.displayOrder) : deals.length + 1,
+    products: cleanProducts,
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const existingIndex = deals.findIndex((d) => d.id === id);
+  if (existingIndex >= 0) {
+    deals[existingIndex] = newDeal;
+  } else {
+    deals.push(newDeal);
+  }
+
+  writeJsonFile(DEV_DEALS_FILE, deals);
+
+  await logActivity({
+    adminEmail,
+    action: 'CREATE_DEAL',
+    target: newDeal.name,
+    details: `Created promotional deal "${newDeal.name}" (${newDeal.products.length} products)`,
+  }).catch(() => {});
+
+  return newDeal;
+}
+
+export async function updateDevDeal(
+  id: string,
+  data: Partial<Deal>,
+  adminEmail = 'admin@alhamd.com'
+): Promise<Deal> {
+  assertDevOnly('updateDevDeal');
+  const deals = getDevDeals();
+  const existing = deals.find((d) => d.id === id);
+  if (!existing) {
+    throw new Error(`Deal with ID "${id}" not found.`);
+  }
+
+  const name = (data.name !== undefined ? data.name : existing.name).trim();
+  const slug = data.slug || existing.slug;
+  const description = data.description !== undefined ? data.description : existing.description;
+  const image = data.image !== undefined ? data.image : existing.image;
+  const dealPrice = data.dealPrice !== undefined ? data.dealPrice : existing.dealPrice;
+  const originalPrice = data.originalPrice !== undefined ? data.originalPrice : existing.originalPrice;
+  const discountAmount = data.discountAmount !== undefined ? data.discountAmount : existing.discountAmount;
+  const discountPercentage = data.discountPercentage !== undefined ? data.discountPercentage : existing.discountPercentage;
+  const startDate = data.startDate !== undefined ? data.startDate : existing.startDate;
+  const endDate = data.endDate !== undefined ? data.endDate : existing.endDate;
+  const status = data.status || existing.status;
+  const showOnHomepage = data.showOnHomepage !== undefined ? data.showOnHomepage : existing.showOnHomepage;
+  const displayOrder = data.displayOrder !== undefined ? data.displayOrder : existing.displayOrder;
+
+  let products = existing.products;
+  if (Array.isArray(data.products)) {
+    products = data.products.map((p, idx) => ({
+      id: p.id || `dp-${Date.now()}-${idx}`,
+      dealId: id,
+      productId: p.productId,
+      modelId: p.modelId,
+      productName: p.productName,
+      modelName: p.modelName,
+      sku: p.sku,
+      image: p.image,
+      category: p.category,
+      brand: p.brand,
+      price: Number(p.price || 0),
+      shopStock: Number(p.shopStock || 0),
+      sortOrder: p.sortOrder !== undefined ? p.sortOrder : idx + 1,
+    }));
+  }
+
+  const updatedDeal: Deal = {
+    ...existing,
+    name,
+    slug,
+    description,
+    image,
+    dealPrice,
+    originalPrice,
+    discountAmount,
+    discountPercentage,
+    startDate,
+    endDate,
+    status,
+    showOnHomepage,
+    displayOrder,
+    products,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const idx = deals.findIndex((d) => d.id === id);
+  deals[idx] = updatedDeal;
+  writeJsonFile(DEV_DEALS_FILE, deals);
+
+  await logActivity({
+    adminEmail,
+    action: 'UPDATE_DEAL',
+    target: updatedDeal.name,
+    details: `Updated promotional deal "${updatedDeal.name}"`,
+  }).catch(() => {});
+
+  return updatedDeal;
+}
+
+export async function deleteDevDeal(
+  id: string,
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  assertDevOnly('deleteDevDeal');
+  const deals = getDevDeals();
+  const existing = deals.find((d) => d.id === id);
+  if (!existing) return false;
+
+  const filtered = deals.filter((d) => d.id !== id);
+  writeJsonFile(DEV_DEALS_FILE, filtered);
+
+  await logActivity({
+    adminEmail,
+    action: 'DELETE_DEAL',
+    target: existing.name,
+    details: `Deleted promotional deal "${existing.name}"`,
+  }).catch(() => {});
+
+  return true;
 }

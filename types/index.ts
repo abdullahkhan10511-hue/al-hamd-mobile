@@ -146,6 +146,25 @@ export interface CartItem {
   selectedModelId?: string;
   selectedPrice?: number;
   selectedImage?: string;
+  // Deals extension
+  itemType?: 'PRODUCT' | 'DEAL';
+  dealId?: string;
+  dealName?: string;
+  dealPrice?: number;
+  dealOriginalPrice?: number;
+  dealProducts?: {
+    productId: string;
+    modelId?: string;
+    productName: string;
+    modelName?: string;
+    quantity: number;
+    shopStock?: number;
+    price?: number;
+    image?: string;
+    sku?: string;
+  }[];
+  fulfilledQuantity?: number;
+  backorderedQuantity?: number;
 }
 
 export interface FilterState {

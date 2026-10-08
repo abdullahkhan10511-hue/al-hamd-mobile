@@ -786,6 +786,81 @@ export async function adjustStock(
   return true;
 }
 
+export async function adjustShopStock(
+  productId: string,
+  quantityChange: number,
+  reason: string,
+  adminEmail = 'admin@alhamd.com',
+  modelIdOrName?: string
+): Promise<boolean> {
+  const products = getProducts();
+  const product = products.find((p) => p.id === productId);
+  if (!product) return false;
+
+  let modelAdjusted = false;
+  let modelSku = product.sku;
+  let loggedName = `${product.name} [Shop Stock]`;
+  let previousShopStock = product.shopStock || 0;
+  let newModelShopStock = 0;
+
+  if (modelIdOrName && product.models && Array.isArray(product.models)) {
+    const model = product.models.find(
+      (m) =>
+        m.name.toLowerCase() === modelIdOrName.toLowerCase() ||
+        m.id === modelIdOrName
+    );
+    if (model) {
+      const prevModelShopStock = model.shopStock !== undefined ? model.shopStock : (product.shopStock || 0);
+      model.shopStock = Math.max(0, prevModelShopStock + quantityChange);
+      newModelShopStock = model.shopStock;
+      modelAdjusted = true;
+      modelSku = model.sku || product.sku;
+      loggedName = `${product.name} (${model.name}) [Shop Stock]`;
+      previousShopStock = prevModelShopStock;
+
+      const totalModelShopStock = product.models.reduce((sum, m) => sum + (m.shopStock ?? 0), 0);
+      product.shopStock = totalModelShopStock;
+    }
+  }
+
+  if (!modelAdjusted) {
+    const prevShop = product.shopStock || 0;
+    product.shopStock = Math.max(0, prevShop + quantityChange);
+  }
+
+  await persistCollection(COLLECTION_KEY, products);
+
+  if (typeof window !== 'undefined') {
+    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shopStock: product.shopStock, models: product.models }),
+    }).catch(() => {});
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: products },
+      })
+    );
+  }
+
+  await recordInventoryLog({
+    productId: product.id,
+    productName: loggedName,
+    sku: modelSku,
+    previousStock: previousShopStock,
+    changeAmount: quantityChange,
+    newStock: modelAdjusted ? newModelShopStock : (product.shopStock || 0),
+    reason,
+    adminEmail,
+  });
+
+  return true;
+}
+
+
 export async function setModelStock(
   productId: string,
   modelIdOrName: string,

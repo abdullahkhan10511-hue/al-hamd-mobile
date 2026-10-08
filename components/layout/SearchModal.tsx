@@ -405,7 +405,7 @@ export function SearchModal() {
                                 )}
                                 {product.stock > 0 ? (
                                   <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                                    In Stock ({product.stock})
+                                    In Stock
                                   </span>
                                 ) : (
                                   <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 border border-neutral-200">

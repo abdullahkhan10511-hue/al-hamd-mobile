@@ -92,8 +92,12 @@ export default function CartPage() {
             <div className="border border-neutral-200/80 rounded-3xl overflow-hidden divide-y divide-neutral-100">
               {cart.map((item) => {
                 const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
+                const isDeal = item.itemType === 'DEAL';
                 let unitPrice: number;
-                if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
+
+                if (isDeal) {
+                  unitPrice = item.dealPrice ?? item.selectedPrice ?? item.product?.price ?? 0;
+                } else if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
                   const modelObj = item.product.models.find(
                     (m) => m.name.toLowerCase() === item.selectedModel!.toLowerCase() || m.id === item.selectedModel
                   );
@@ -107,8 +111,11 @@ export default function CartPage() {
                 }
 
                 const lineTotal = unitPrice * item.quantity;
-                const isWholesaleActive = (isWholesale || isSuperWholesale) && item.product.wholesalePrice && Number(item.product.wholesalePrice) > 0;
+                const isWholesaleActive = !isDeal && (isWholesale || isSuperWholesale) && item.product.wholesalePrice && Number(item.product.wholesalePrice) > 0;
                 const validImage = item.selectedImage || getValidImageSrc(item.product?.images);
+                const itemHref = isDeal ? `/deals/${item.dealId || item.product.slug.replace(/^deal-/, '')}` : `/product/${item.product.slug}`;
+                const itemName = isDeal ? (item.dealName || item.product.name) : item.product.name;
+
                 return (
                   <div
                     key={item.id}
@@ -116,15 +123,14 @@ export default function CartPage() {
                   >
                     <div className="flex items-center gap-4">
                       <Link
-                        href={`/product/${item.product.slug}`}
+                        href={itemHref}
                         className="relative w-20 h-24 rounded-2xl overflow-hidden bg-neutral-100 shrink-0 border border-neutral-200/60 flex items-center justify-center"
                       >
                         {validImage ? (
-                          <Image
+                          <img
                             src={validImage}
-                            alt={item.product.name || 'Product'}
-                            fill
-                            className="object-cover"
+                            alt={itemName || 'Product'}
+                            className="w-full h-full object-cover"
                           />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 text-neutral-400 p-2 text-center">
@@ -134,21 +140,35 @@ export default function CartPage() {
                         )}
                       </Link>
                       <div>
-                        <span className="text-[11px] font-semibold text-neutral-400 uppercase">
-                          {item.product.brand}
-                        </span>
-                        <Link href={`/product/${item.product.slug}`}>
+                        {isDeal ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-neutral-950 uppercase tracking-wider mb-1">
+                            Bundle Deal
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-neutral-400 uppercase">
+                            {item.product.brand}
+                          </span>
+                        )}
+                        <Link href={itemHref}>
                           <h3 className="text-sm sm:text-base font-bold text-neutral-950 hover:text-neutral-600">
-                            {item.product.name}
+                            {itemName}
                           </h3>
                         </Link>
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 mt-1">
-                          {item.selectedModel && <span className="font-semibold text-neutral-800">Model: {item.selectedModel}</span>}
-                          {item.selectedModel && (item.selectedColor || item.selectedSize) && <span>•</span>}
-                          {item.selectedColor && <span>Color: {item.selectedColor}</span>}
-                          {item.selectedColor && item.selectedSize && <span>•</span>}
-                          {item.selectedSize && <span>Size: {item.selectedSize}</span>}
-                        </div>
+                        {isDeal ? (
+                          Array.isArray(item.dealProducts) && item.dealProducts.length > 0 && (
+                            <p className="text-xs text-neutral-500 mt-1 line-clamp-1">
+                              Includes: {item.dealProducts.map((p) => p.productName).join(' + ')}
+                            </p>
+                          )
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 mt-1">
+                            {item.selectedModel && <span className="font-semibold text-neutral-800">Model: {item.selectedModel}</span>}
+                            {item.selectedModel && (item.selectedColor || item.selectedSize) && <span>•</span>}
+                            {item.selectedColor && <span>Color: {item.selectedColor}</span>}
+                            {item.selectedColor && item.selectedSize && <span>•</span>}
+                            {item.selectedSize && <span>Size: {item.selectedSize}</span>}
+                          </div>
+                        )}
                         {isWholesaleActive && (
                           <div className="mt-1 flex items-center gap-1.5">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-neutral-900 text-white uppercase tracking-wider">

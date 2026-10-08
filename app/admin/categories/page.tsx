@@ -470,208 +470,213 @@ export default function AdminCategoriesPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
-              className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-neutral-200 space-y-5"
+              className="bg-white rounded-3xl max-w-lg w-full max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col shadow-2xl border border-neutral-200 overflow-hidden my-auto"
             >
-              <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              {/* Fixed Modal Header */}
+              <div className="flex items-center justify-between p-5 sm:px-7 sm:py-5 border-b border-neutral-100 shrink-0 bg-white z-10">
                 <h3 className="text-base font-bold text-neutral-950 uppercase tracking-tight">
                   {isCreating ? 'Add New Category' : `Edit Category: ${isEditing?.name}`}
                 </h3>
                 <button
                   onClick={closeFormModal}
                   disabled={isSaving}
-                  className="p-1 text-neutral-400 hover:text-neutral-900 transition-colors cursor-pointer disabled:opacity-50"
+                  className="p-1 text-neutral-400 hover:text-neutral-900 transition-colors cursor-pointer disabled:opacity-50 rounded-lg hover:bg-neutral-100"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {errorMessage && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleSave} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-semibold text-neutral-700 block mb-1">Category Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="e.g. MagSafe Wallets & Accessories"
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white text-neutral-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-neutral-700 block mb-1">Slug URL *</label>
-                  <input
-                    type="text"
-                    required
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="e.g. magsafe-accessories"
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-neutral-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-neutral-700 block mb-1">Description</label>
-                  <textarea
-                    rows={2}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Brief description for category card and collection page..."
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900"
-                  />
-                </div>
-
-                {/* Category Image: URL OR Upload from Gallery */}
-                <div className="space-y-3.5 p-3.5 bg-neutral-50/80 border border-neutral-200 rounded-2xl">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-neutral-800 block text-xs">
-                      Category Image *
-                    </label>
-                    {image ? (
-                      <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        {image.startsWith('/uploads/') || image.startsWith('uploads/')
-                          ? 'Uploaded from Device'
-                          : 'URL Image Ready'}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
-                        URL or Upload required
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-neutral-500 leading-snug">
-                    Use either <strong className="text-neutral-700">Image URL</strong> OR <strong className="text-neutral-700">Upload from Gallery / Device</strong> — any one is enough.
-                  </p>
-
-                  {/* Immediate Image Preview */}
-                  {image ? (
-                    <div className="flex items-center gap-3 p-2.5 bg-white border border-neutral-200 rounded-xl shadow-2xs">
-                      <div className="relative w-20 h-24 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 shadow-2xs shrink-0 flex items-center justify-center">
-                        <img
-                          src={image}
-                          alt="Category Preview"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src =
-                              'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop';
-                          }}
-                        />
-                      </div>
-
-                      <div className="space-y-2 flex-1 min-w-0">
-                        <div className="text-[11px] text-neutral-600 font-mono truncate" title={image}>
-                          {image.startsWith('/uploads/') ? image.split('/').pop() : image}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={isUploading || isSaving}
-                            onClick={() => fileInputRef.current?.click()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>{isUploading ? 'Uploading...' : 'Change / Replace Image'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isUploading || isSaving}
-                            onClick={handleRemoveImage}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Remove Image</span>
-                          </button>
-                        </div>
-                      </div>
+              {/* Form Container with Scrollable Body and Pinned Footer */}
+              <form onSubmit={handleSave} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="overflow-y-auto flex-1 p-5 sm:px-7 py-4 space-y-4 text-xs scrollbar-thin">
+                  {errorMessage && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{errorMessage}</span>
                     </div>
-                  ) : null}
+                  )}
 
-                  {/* Option 1: Image URL */}
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold text-neutral-600">
-                      Option 1: Image URL
-                    </label>
+                  <div>
+                    <label className="font-semibold text-neutral-700 block mb-1">Category Name *</label>
                     <input
                       type="text"
-                      inputMode="url"
-                      value={urlInput}
-                      onChange={(e) => handleUrlChange(e.target.value)}
-                      placeholder="Paste image link, e.g. https://images.unsplash.com/..."
-                      className="w-full p-2 text-[11px] rounded-xl border border-neutral-200 bg-white font-mono text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+                      required
+                      value={name}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      placeholder="e.g. MagSafe Wallets & Accessories"
+                      className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white text-neutral-900"
                     />
                   </div>
 
-                  <div className="relative flex items-center justify-center py-0.5">
-                    <div className="border-t border-neutral-200 w-full" />
-                    <span className="bg-neutral-50 px-2 text-[10px] uppercase font-bold text-neutral-400 absolute">
-                      OR
-                    </span>
-                  </div>
-
-                  {/* Option 2: Upload from Gallery */}
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-semibold text-neutral-600">
-                      Option 2: Upload from Gallery / Device
-                    </label>
-                    <button
-                      type="button"
-                      disabled={isUploading || isSaving}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2 px-3 bg-white hover:bg-neutral-100 border border-neutral-200 hover:border-neutral-300 rounded-xl text-neutral-800 text-xs font-semibold shadow-2xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-neutral-600" />
-                      <span>{isUploading ? 'Uploading Image...' : 'Upload from Gallery / Device'}</span>
-                    </button>
+                  <div>
+                    <label className="font-semibold text-neutral-700 block mb-1">Slug URL *</label>
                     <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                      onChange={handleImageUpload}
-                      className="hidden"
+                      type="text"
+                      required
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      placeholder="e.g. magsafe-accessories"
+                      className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-neutral-900"
                     />
-                    <p className="text-[10px] text-neutral-400 text-center">
-                      Accepts JPG, JPEG, PNG, WEBP (Max 15MB)
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-neutral-700 block mb-1">Description</label>
+                    <textarea
+                      rows={2}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Brief description for category card and collection page..."
+                      className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900"
+                    />
+                  </div>
+
+                  {/* Category Image: URL OR Upload from Gallery */}
+                  <div className="space-y-3.5 p-3.5 bg-neutral-50/80 border border-neutral-200 rounded-2xl">
+                    <div className="flex items-center justify-between">
+                      <label className="font-bold text-neutral-800 block text-xs">
+                        Category Image *
+                      </label>
+                      {image ? (
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          {image.startsWith('/uploads/') || image.startsWith('uploads/')
+                            ? 'Uploaded from Device'
+                            : 'URL Image Ready'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                          URL or Upload required
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-neutral-500 leading-snug">
+                      Use either <strong className="text-neutral-700">Image URL</strong> OR <strong className="text-neutral-700">Upload from Gallery / Device</strong> — any one is enough.
                     </p>
+
+                    {/* Immediate Image Preview */}
+                    {image ? (
+                      <div className="flex items-center gap-3 p-2.5 bg-white border border-neutral-200 rounded-xl shadow-2xs">
+                        <div className="relative w-20 h-24 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 shadow-2xs shrink-0 flex items-center justify-center">
+                          <img
+                            src={image}
+                            alt="Category Preview"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop';
+                            }}
+                          />
+                        </div>
+
+                        <div className="space-y-2 flex-1 min-w-0">
+                          <div className="text-[11px] text-neutral-600 font-mono truncate" title={image}>
+                            {image.startsWith('/uploads/') ? image.split('/').pop() : image}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={isUploading || isSaving}
+                              onClick={() => fileInputRef.current?.click()}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{isUploading ? 'Uploading...' : 'Change / Replace Image'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isUploading || isSaving}
+                              onClick={handleRemoveImage}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove Image</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Option 1: Image URL */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-neutral-600">
+                        Option 1: Image URL
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="url"
+                        value={urlInput}
+                        onChange={(e) => handleUrlChange(e.target.value)}
+                        placeholder="Paste image link, e.g. https://images.unsplash.com/..."
+                        className="w-full p-2 text-[11px] rounded-xl border border-neutral-200 bg-white font-mono text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+                      />
+                    </div>
+
+                    <div className="relative flex items-center justify-center py-0.5">
+                      <div className="border-t border-neutral-200 w-full" />
+                      <span className="bg-neutral-50 px-2 text-[10px] uppercase font-bold text-neutral-400 absolute">
+                        OR
+                      </span>
+                    </div>
+
+                    {/* Option 2: Upload from Gallery */}
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold text-neutral-600">
+                        Option 2: Upload from Gallery / Device
+                      </label>
+                      <button
+                        type="button"
+                        disabled={isUploading || isSaving}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full py-2 px-3 bg-white hover:bg-neutral-100 border border-neutral-200 hover:border-neutral-300 rounded-xl text-neutral-800 text-xs font-semibold shadow-2xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-neutral-600" />
+                        <span>{isUploading ? 'Uploading Image...' : 'Upload from Gallery / Device'}</span>
+                      </button>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                      <p className="text-[10px] text-neutral-400 text-center">
+                        Accepts JPG, JPEG, PNG, WEBP (Max 15MB)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-neutral-700 block mb-1">Status</label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as any)}
+                      className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900"
+                    >
+                      <option value="active">Active (Visible on storefront)</option>
+                      <option value="inactive">Inactive (Hidden)</option>
+                      <option value="archived">Archived (Hidden)</option>
+                    </select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="font-semibold text-neutral-700 block mb-1">Status</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900"
-                  >
-                    <option value="active">Active (Visible on storefront)</option>
-                    <option value="inactive">Inactive (Hidden)</option>
-                    <option value="archived">Archived (Hidden)</option>
-                  </select>
-                </div>
-
-                <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-2">
+                {/* Fixed Footer Action Buttons */}
+                <div className="p-4 sm:px-7 sm:py-4 border-t border-neutral-100 bg-neutral-50/70 flex items-center justify-end gap-2 shrink-0">
                   <button
                     type="button"
                     disabled={isSaving}
                     onClick={closeFormModal}
-                    className="px-4 py-2 rounded-full border border-neutral-200 text-neutral-700 font-semibold hover:bg-neutral-50 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="px-4 py-2 rounded-full border border-neutral-200 text-neutral-700 font-semibold hover:bg-white transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     Cancel
                   </button>

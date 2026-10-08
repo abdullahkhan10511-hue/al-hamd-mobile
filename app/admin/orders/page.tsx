@@ -437,11 +437,20 @@ export default function AdminOrdersPage() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className="font-medium text-neutral-700">
-                        {order.items.reduce((sum, item) => sum + item.quantity, 0)} pcs
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-neutral-700">
+                          {order.items.reduce((sum, item) => sum + item.quantity, 0)} pcs
+                        </span>
+                        {(order.hasBackorder || order.stockStatus === 'PARTIAL_STOCK' || order.stockStatus === 'BACKORDER') && (
+                          <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            Backorder
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-neutral-400 truncate max-w-[140px]">
-                        {order.items[0]?.productName}
+                        {order.items[0]?.itemType === 'DEAL'
+                          ? `[Deal] ${order.items[0]?.dealName || order.items[0]?.productName}`
+                          : order.items[0]?.productName}
                         {order.items.length > 1 && ` +${order.items.length - 1} more`}
                       </div>
                     </td>

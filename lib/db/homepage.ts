@@ -3,7 +3,6 @@ import {
   HeroConfig,
   FlashSaleConfig,
   TrustBenefitItem,
-  Banner,
   FloatingProductConfig,
 } from '@/types/admin';
 import {
@@ -20,18 +19,28 @@ const SECTIONS_KEY = 'homepage_sections';
 const HERO_KEY = 'homepage_hero';
 const FLASH_SALE_KEY = 'homepage_flash_sale';
 const TRUST_BENEFITS_KEY = 'homepage_trust_benefits';
-const BANNERS_KEY = 'homepage_banners';
 
 // Homepage Sections & Order
 export function getHomepageSections(): HomepageSection[] {
   const rawList = getStoredCollection(SECTIONS_KEY, seedHomepageSections)
-    .map((s) => (s.id === 'hero' ? { ...s, name: 'Full-Screen Video Hero' } : s));
+    .map((s) => {
+      if (s.id === 'hero') return { ...s, name: 'Full-Screen Video Hero' };
+      if (s.id === 'promo-banners') return { ...s, id: 'deals', name: 'Special Deals & Bundles' };
+      return s;
+    });
 
   // Ensure 'brands' section is present if upgrading an existing cached collection
   if (!rawList.some((s) => s.id === 'brands')) {
     const catSection = rawList.find((s) => s.id === 'categories');
     const brandOrder = catSection ? catSection.order + 0.5 : 3.5;
     rawList.push({ id: 'brands', name: 'Shop by Brands', enabled: true, order: brandOrder });
+  }
+
+  // Ensure 'deals' section is present if upgrading an existing cached collection
+  if (!rawList.some((s) => s.id === 'deals')) {
+    const bsSection = rawList.find((s) => s.id === 'best-sellers');
+    const dealsOrder = bsSection ? bsSection.order + 0.5 : 6.5;
+    rawList.push({ id: 'deals', name: 'Special Deals & Bundles', enabled: true, order: dealsOrder });
   }
 
   return rawList.sort((a, b) => a.order - b.order);
@@ -224,14 +233,6 @@ export async function updateTrustBenefits(
   });
 }
 
-// Promotional Banners - Re-exported from unified banners DB module
-export { getBanners, saveBanner, deleteBanner, toggleBannerStatus } from './banners';
-export async function updateBanners(banners: Banner[], adminEmail = 'admin@alhamd.com'): Promise<void> {
-  await persistCollection(BANNERS_KEY, banners);
-  await logActivity({
-    adminEmail,
-    action: 'Updated Promotional Banners',
-    target: 'Banners Collection',
-  });
-}
+// Promotional Deals - Re-exported from unified deals DB module
+export { getDeals, saveDeal, deleteDeal, toggleDealStatus } from './deals';
 

@@ -190,7 +190,7 @@ export default function AdminInquiriesPage() {
               Customer Support Desk
             </span>
             <span className="text-xs text-neutral-500 font-mono">
-              AL-HAMD SHOP
+              AL-HAMD MOBILE ACCESSORIES
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight flex items-center gap-2">

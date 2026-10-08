@@ -41,6 +41,7 @@ import {
   Crown,
   Video,
   MessageSquare,
+  Zap,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import { getNotifications, markNotificationAsRead } from '@/lib/db/notifications';
@@ -78,7 +79,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['orders.view', 'products.view'] },
   { label: 'Home Page Videos', href: '/admin/homepage-videos', icon: Video, permissions: ['content.homepage', 'content.media'] },
   { label: 'Homepage Control', href: '/admin/homepage', icon: Sparkles, permission: 'content.homepage' },
-  { label: 'Promotional Banners', href: '/admin/banners', icon: ImageIcon, permissions: ['promotions.view', 'content.banners'] },
+  { label: 'Deals', href: '/admin/deals', icon: Zap, permissions: ['deals.view', 'deals.manage', 'promotions.view', 'promotions.add', 'content.deals'] },
   { label: 'Promo Codes', href: '/admin/promo-codes', icon: TicketPercent, permissions: ['promotions.view', 'promotions.add', 'promotions.edit'] },
   { label: 'Navigation Menu', href: '/admin/navigation', icon: MenuIcon, permission: 'content.navigation' },
   // Media & Asset Library hidden from navigation per workflow requirements (page & files preserved at /admin/media)

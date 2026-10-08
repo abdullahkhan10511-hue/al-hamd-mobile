@@ -6,7 +6,6 @@ import {
   HeroConfig,
   AnnouncementItem,
   NavigationItem,
-  Banner,
   FlashSaleConfig,
   TrustBenefitItem,
   StoreSettings,
@@ -55,7 +54,7 @@ export const seedHomepageSections: HomepageSection[] = [
   { id: 'brands', name: 'Shop by Brands', enabled: true, order: 4 },
   { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 5 },
   { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 6 },
-  { id: 'promo-banners', name: 'Promotional Banners & Flash Sale', enabled: true, order: 7 },
+  { id: 'deals', name: 'Special Deals & Bundles', enabled: true, order: 7 },
   { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 8 },
 ];
 
@@ -136,49 +135,13 @@ export const seedNavigation: NavigationItem[] = [
   { id: 'nav-5', label: 'Categories', href: '/categories', displayOrder: 5, visible: true },
   { id: 'nav-6', label: 'About', href: '/about', displayOrder: 6, visible: true },
   { id: 'nav-7', label: 'Contact', href: '/contact', displayOrder: 7, visible: true },
+  { id: 'nav-8', label: 'Deals', href: '/deals', displayOrder: 8, visible: true },
 ];
 
 // Target countdown 60 hours ahead from today
 const futureDate = new Date();
 futureDate.setHours(futureDate.getHours() + 63);
 futureDate.setMinutes(futureDate.getMinutes() + 45);
-
-export const seedBanners: Banner[] = [
-  {
-    id: 'banner-1',
-    title: 'Up To 50% Off',
-    subtitle: 'Power & Audio Flash Sale',
-    description: 'Limited edition seasonal archive. Grab your favorites before allocation expires.',
-    image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?q=80&w=1200&auto=format&fit=crop',
-    buttonText: 'Shop Flash Deals',
-    buttonLink: '/shop?filter=sale',
-    status: 'active',
-    displayOrder: 1,
-    countdownEndTime: futureDate.toISOString(),
-  },
-  {
-    id: 'banner-2',
-    title: 'Up To 50% Off',
-    subtitle: 'Fast Charge Flash Sale',
-    description: 'High-speed GaN wall chargers, braided 100W cables, and wireless power stations at limited promotional pricing.',
-    image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop',
-    buttonText: 'Shop Chargers',
-    buttonLink: '/shop?category=chargers',
-    status: 'active',
-    displayOrder: 2,
-  },
-  {
-    id: 'banner-3',
-    title: 'MagSafe & Wireless',
-    subtitle: 'New Collection',
-    description: 'Explore precision magnetic armor cases, 3-in-1 desktop charging docks, and rugged drop-tested smartphone essentials.',
-    image: 'https://images.unsplash.com/photo-1586105251261-72a756497a11?q=80&w=1200&auto=format&fit=crop',
-    buttonText: 'Shop Collection',
-    buttonLink: '/new-arrivals',
-    status: 'active',
-    displayOrder: 3,
-  },
-];
 
 export const seedFlashSaleConfig: FlashSaleConfig = {
   enabled: true,

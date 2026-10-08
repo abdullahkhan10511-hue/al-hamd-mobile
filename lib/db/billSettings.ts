@@ -112,7 +112,7 @@ export function getBillSettings(): BillSettings {
     },
   };
 
-  if (base.storeName === 'AL-HAMD-MOBILE' || base.storeName === 'AL·HAMD') {
+  if (base.storeName === 'AL-HAMD-MOBILE' || base.storeName === 'AL·HAMD' || base.storeName === 'AL-HAMD SHOP' || base.storeName === 'AL-HAMD-SHOP' || !base.storeName) {
     base.storeName = 'AL-HAMD MOBILE ACCESSORIES';
   }
   if (!base.phone || base.phone.includes('+92 300 1234567')) {

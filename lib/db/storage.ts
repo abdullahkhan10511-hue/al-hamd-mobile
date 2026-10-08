@@ -46,15 +46,6 @@ function isStaleMockData(key: string, data: any): boolean {
         (c.email === 'hamza.khan@gmail.com' || c.email === 'ayesha.malik@outlook.com')
     );
   }
-  if (key === 'homepage_banners') {
-    return data.some(
-      (b: any) =>
-        b &&
-        b.id === 'banner-1' &&
-        typeof b.image === 'string' &&
-        b.image.includes('photo-1556905055-8f358a7a47b2')
-    );
-  }
   return false;
 }
 

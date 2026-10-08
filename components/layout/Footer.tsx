@@ -111,7 +111,9 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
   }
 
   // Official Business Details
-  const officialStoreName = currentSettings?.storeName?.trim() || initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
+  const rawOfficialStoreName = currentSettings?.storeName?.trim() || initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+  const officialStoreName = legacyStoreNames.includes(rawOfficialStoreName) ? 'AL-HAMD MOBILE ACCESSORIES' : rawOfficialStoreName;
   const officialDescription =
     currentSettings?.footerDescription?.trim() ||
     'Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.';
@@ -138,16 +140,6 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 pb-12">
           {/* Column 1: BRAND / ABOUT & REAL CONTACT DETAILS */}
           <div className="space-y-4">
-            {currentSettings?.logoUrl ? (
-              <img
-                src={currentSettings.logoUrl}
-                alt={currentSettings.storeName || officialStoreName}
-                className="h-8 w-auto max-w-[150px] object-contain mb-2 brightness-0 invert"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-            ) : null}
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">
               {currentSettings?.storeName || officialStoreName}
             </h3>

@@ -150,19 +150,37 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
   const socialLinks = parseJsonField(r.social_links, seedStoreSettings.socialLinks);
   const keywords = parseJsonField<string[]>(r.seo_keywords, seedStoreSettings.seo.keywords);
 
-  const websiteTitle = r.website_title || r.seo_meta_title || seedStoreSettings.seo.metaTitle;
+  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
+  const rawStoreName = r.store_name?.trim();
+  const storeName = (!rawStoreName || legacyStoreNames.includes(rawStoreName))
+    ? 'AL-HAMD MOBILE ACCESSORIES'
+    : rawStoreName;
+
+  let websiteTitle = r.website_title || r.seo_meta_title || seedStoreSettings.seo.metaTitle;
+  if (websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
+    websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+  }
+
   const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
   const ogImageUrl = r.og_image_url || undefined;
-  const searchEngineTitle = r.search_engine_title || websiteTitle;
+  let searchEngineTitle = r.search_engine_title || websiteTitle;
+  if (searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
+    searchEngineTitle = 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories Online';
+  }
   const searchEngineDescription = r.search_engine_description || r.seo_meta_description || seedStoreSettings.seo.metaDescription;
 
+  const rawFavicon = r.favicon_url || seedStoreSettings.faviconUrl;
+  const isDedicatedFavicon = (url: string | null | undefined) =>
+    Boolean(url && !url.includes('logo_') && !url.includes('favicon_1791116789478_download.jpg') && (url.endsWith('.ico') || url.includes('favicon')));
+  const faviconUrl = isDedicatedFavicon(rawFavicon) ? rawFavicon! : '/favicon.ico';
+
   return {
-    storeName: r.store_name,
+    storeName,
     storeTagline: r.store_tagline || seedStoreSettings.storeTagline,
     websiteTitle,
     canonicalUrl,
     logoUrl: r.logo_url || undefined,
-    faviconUrl: r.favicon_url || seedStoreSettings.faviconUrl,
+    faviconUrl,
     ogImageUrl,
     email: r.email,
     phone: r.phone,
@@ -187,7 +205,7 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
       searchEngineDescription,
       canonicalUrl,
       logoUrl: r.seo_logo_url || r.logo_url || undefined,
-      faviconUrl: r.seo_favicon_url || r.favicon_url || seedStoreSettings.faviconUrl,
+      faviconUrl: isDedicatedFavicon(r.seo_favicon_url) ? r.seo_favicon_url! : faviconUrl,
       ogImageUrl,
     },
     footerDescription: r.footer_description || seedStoreSettings.footerDescription,

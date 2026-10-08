@@ -28,31 +28,29 @@ import {
   getFlashSaleConfig,
   updateFlashSaleConfig,
 } from '@/lib/db/homepage';
-import { getBanners, saveBanner, deleteBanner, toggleBannerStatus } from '@/lib/db/banners';
+import { getDeals, toggleDealStatus } from '@/lib/db/deals';
 import { getProducts } from '@/lib/db/products';
 import { uploadMediaFile } from '@/lib/db/media';
-import { HomepageSection, HeroConfig, FloatingProductConfig, FlashSaleConfig, Banner } from '@/types/admin';
+import { HomepageSection, HeroConfig, FloatingProductConfig, FlashSaleConfig, Deal } from '@/types/admin';
 
 export default function HomepageControlPage() {
   const [sections, setSections] = useState<HomepageSection[]>(getHomepageSections());
   const [heroConfig, setHeroConfig] = useState<HeroConfig>(getHeroConfig());
   const [floatingProducts, setFloatingProducts] = useState<FloatingProductConfig[]>(getFloatingProducts());
   const [flashSale, setFlashSale] = useState<FlashSaleConfig>(getFlashSaleConfig());
-  const [banners, setBanners] = useState<Banner[]>([]);
-  const [editingBanner, setEditingBanner] = useState<Partial<Banner> | null>(null);
-  const [deleteTargetBanner, setDeleteTargetBanner] = useState<Banner | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [activeTab, setActiveTab] = useState<'sections' | 'flash' | 'preview'>('sections');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  const loadBanners = () => {
-    setBanners(getBanners());
+  const loadDeals = () => {
+    setDeals(getDeals());
   };
 
   useEffect(() => {
-    loadBanners();
+    loadDeals();
     const handleUpdate = () => {
-      loadBanners();
+      loadDeals();
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
@@ -181,7 +179,7 @@ export default function HomepageControlPage() {
       <div className="flex items-center gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap pb-px">
         {[
           { id: 'sections', label: 'Section Reordering & Visibility' },
-          { id: 'flash', label: 'Banner Management & Flash Sale' },
+          { id: 'flash', label: 'Deals & Promotional Campaigns' },
           { id: 'preview', label: 'Live Storefront Preview' },
         ].map((tab) => (
           <button
@@ -280,344 +278,123 @@ export default function HomepageControlPage() {
 
 
 
-      {/* 2. Banner Management & Flash Sale */}
-
+      {/* 2. Deals Management & Promotional Campaigns */}
       {activeTab === 'flash' && (
         <div className="bg-white rounded-3xl border border-neutral-200/80 p-6 sm:p-8 shadow-xs space-y-6">
           <div className="border-b border-neutral-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight">
-                Banner Management & Flash Sale Deals
+                Deals Showcase & Campaigns
               </h2>
               <p className="text-xs text-neutral-500">
-                Manage all promotional banners, hero discount cards, and flash sale countdown timers (all {banners.length} active/inactive banners).
+                Manage all promotional product deals, bundles, and shop-inventory campaigns (all {deals.length} deals configured).
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Link
-                href="/admin/banners"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold text-neutral-700 transition-colors"
+                href="/admin/deals"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition-colors"
               >
-                <span>Full Studio</span>
+                <span>Full Deals Studio</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </Link>
-              <button
-                onClick={() =>
-                  setEditingBanner({
-                    title: '',
-                    subtitle: '',
-                    description: '',
-                    image: '',
-                    buttonText: 'Shop Now',
-                    buttonLink: '/shop',
-                    status: 'active',
-                    displayOrder: banners.length + 1,
-                    countdownEndTime: '',
-                  })
-                }
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Banner</span>
-              </button>
             </div>
           </div>
 
-          {/* Banners List Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {banners.map((banner) => (
-              <div
-                key={banner.id}
-                className="bg-neutral-50/70 rounded-2xl border border-neutral-200 overflow-hidden flex flex-col justify-between"
+          {deals.length === 0 ? (
+            <div className="py-12 text-center bg-neutral-50 rounded-2xl border border-dashed border-neutral-200 p-6">
+              <p className="text-sm font-semibold text-neutral-700">No deals created yet</p>
+              <p className="text-xs text-neutral-500 mt-1">Create promotional deals bundled with Shop Inventory products.</p>
+              <Link
+                href="/admin/deals"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-neutral-900 text-white text-xs font-semibold rounded-xl hover:bg-neutral-800 transition-colors"
               >
-                <div className="h-40 relative overflow-hidden bg-neutral-900 group">
-                  <img
-                    src={banner.image}
-                    alt={banner.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 flex flex-col justify-end text-white">
-                    {banner.subtitle && (
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
-                        {banner.subtitle}
-                      </span>
-                    )}
-                    <h4 className="text-base font-bold line-clamp-1">{banner.title}</h4>
-                    {banner.countdownEndTime && (
-                      <div className="flex items-center gap-1 text-[10px] text-rose-300 font-mono mt-0.5">
-                        <Clock className="w-3 h-3" />
-                        <span>Countdown Timer Set</span>
+                <Plus className="w-4 h-4" />
+                <span>Go to Deals & Make a Deal</span>
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {deals.map((deal) => (
+                <div
+                  key={deal.id}
+                  className="bg-neutral-50/70 rounded-2xl border border-neutral-200 overflow-hidden flex flex-col justify-between"
+                >
+                  <div className="h-40 relative overflow-hidden bg-neutral-900 group">
+                    {deal.image ? (
+                      <img
+                        src={deal.image}
+                        alt={deal.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-950 flex items-center justify-center p-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Deal Bundle</span>
+                          <p className="text-sm font-bold text-white mt-1">{deal.name}</p>
+                        </div>
                       </div>
                     )}
-                  </div>
-
-                  <div className="absolute top-2.5 right-2.5">
-                    <button
-                      onClick={async () => {
-                        await toggleBannerStatus(banner.id);
-                        loadBanners();
-                      }}
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 backdrop-blur-md cursor-pointer transition-colors ${
-                        banner.status === 'active'
-                          ? 'bg-emerald-500/90 hover:bg-emerald-600 text-white'
-                          : 'bg-neutral-800/90 hover:bg-neutral-900 text-neutral-300'
-                      }`}
-                    >
-                      {banner.status === 'active' ? (
-                        <>
-                          <Eye className="w-3 h-3" /> Live
-                        </>
-                      ) : (
-                        <>
-                          <EyeOff className="w-3 h-3" /> Hidden
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-4 space-y-3 text-xs flex-1 flex flex-col justify-between">
-                  <div className="space-y-1 text-neutral-600">
-                    <p className="line-clamp-2">{banner.description || 'No description provided.'}</p>
-                    <div className="flex items-center gap-2 pt-1 font-mono text-[11px] text-neutral-500">
-                      <span>Link:</span>
-                      <span className="text-neutral-800 font-semibold truncate max-w-[200px]">{banner.buttonLink}</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
-                    <span className="text-[11px] font-mono text-neutral-400">Order: #{banner.displayOrder}</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="absolute top-2.5 right-2.5">
                       <button
-                        onClick={() => setEditingBanner({ ...banner })}
-                        className="p-1.5 text-neutral-600 hover:text-neutral-950 hover:bg-white rounded-lg transition-colors cursor-pointer"
-                        title="Edit Banner"
+                        onClick={async () => {
+                          await toggleDealStatus(deal.id);
+                          loadDeals();
+                        }}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 backdrop-blur-md cursor-pointer transition-colors ${
+                          deal.status === 'active'
+                            ? 'bg-emerald-500/90 hover:bg-emerald-600 text-white'
+                            : 'bg-neutral-800/90 hover:bg-neutral-900 text-neutral-300'
+                        }`}
                       >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTargetBanner(banner)}
-                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Banner"
-                      >
-                        <Trash2 className="w-4 h-4" />
+                        {deal.status === 'active' ? (
+                          <>
+                            <Eye className="w-3 h-3" /> Live
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="w-3 h-3" /> Hidden
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          {/* Delete Confirmation Modal */}
-          {deleteTargetBanner && (
-            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                    <Trash2 className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-neutral-900">Delete Promotional Banner</h3>
-                    <p className="text-xs text-neutral-600 mt-1">
-                      Are you sure you want to delete &quot;{deleteTargetBanner.title}&quot;? It will be removed immediately from the Home Page.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-neutral-100 flex items-center justify-end gap-2 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTargetBanner(null)}
-                    className="px-4 py-2 border border-neutral-200 text-neutral-600 rounded-xl hover:bg-neutral-50 transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await deleteBanner(deleteTargetBanner.id);
-                      setDeleteTargetBanner(null);
-                      loadBanners();
-                    }}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-colors cursor-pointer"
-                  >
-                    Confirm Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Edit / Create Banner Modal */}
-          {editingBanner && (
-            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden max-h-[90vh] flex flex-col">
-                <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
-                  <h3 className="font-bold text-neutral-900 text-sm">
-                    {editingBanner.id ? 'Edit Promotional Banner' : 'New Promotional Banner'}
-                  </h3>
-                  <button
-                    onClick={() => setEditingBanner(null)}
-                    className="text-neutral-400 hover:text-neutral-700 cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!editingBanner.title?.trim()) {
-                      alert('Please provide a banner title.');
-                      return;
-                    }
-                    if (!editingBanner.image?.trim()) {
-                      alert('Please provide a banner image URL.');
-                      return;
-                    }
-                    await saveBanner(editingBanner as Banner);
-                    setEditingBanner(null);
-                    loadBanners();
-                  }}
-                  className="p-6 overflow-y-auto space-y-4 text-xs"
-                >
-                  <div>
-                    <label className="block font-semibold text-neutral-700 mb-1">Banner Title</label>
-                    <input
-                      type="text"
-                      required
-                      value={editingBanner.title || ''}
-                      onChange={(e) => setEditingBanner({ ...editingBanner, title: e.target.value })}
-                      placeholder="e.g., Up To 70% Off"
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-neutral-700 mb-1">Subtitle / Badge</label>
-                    <input
-                      type="text"
-                      value={editingBanner.subtitle || ''}
-                      onChange={(e) => setEditingBanner({ ...editingBanner, subtitle: e.target.value })}
-                      placeholder="e.g., Flash Sale"
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-neutral-700 mb-1">Description</label>
-                    <textarea
-                      rows={2}
-                      value={editingBanner.description || ''}
-                      onChange={(e) => setEditingBanner({ ...editingBanner, description: e.target.value })}
-                      placeholder="Promotional copy..."
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-neutral-700 mb-1">Banner Image URL</label>
-                    <input
-                      type="url"
-                      required
-                      value={editingBanner.image || ''}
-                      onChange={(e) => setEditingBanner({ ...editingBanner, image: e.target.value })}
-                      placeholder="https://images.unsplash.com/..."
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-mono text-[11px]"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-neutral-700 mb-1">Button Text</label>
-                      <input
-                        type="text"
-                        value={editingBanner.buttonText || 'Shop Now'}
-                        onChange={(e) => setEditingBanner({ ...editingBanner, buttonText: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900"
-                      />
+                  <div className="p-4 space-y-3 text-xs flex-1 flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-neutral-900 text-sm">{deal.name}</h4>
+                      <p className="line-clamp-2 text-neutral-500">{deal.description || 'No description provided.'}</p>
+                      <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
+                        <span className="text-neutral-900 font-bold">
+                          {deal.dealPrice ? `Rs. ${deal.dealPrice.toLocaleString()}` : 'Special Price'}
+                        </span>
+                        {deal.originalPrice && (
+                          <span className="line-through text-neutral-400">Rs. {deal.originalPrice.toLocaleString()}</span>
+                        )}
+                        {deal.discountPercentage ? (
+                          <span className="text-emerald-600 font-semibold text-[10px] bg-emerald-50 px-1.5 py-0.5 rounded">
+                            {deal.discountPercentage}% OFF
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-[11px] text-neutral-400">
+                        {deal.products?.length || 0} product{deal.products?.length === 1 ? '' : 's'} included
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-semibold text-neutral-700 mb-1">Button Link</label>
-                      <input
-                        type="text"
-                        value={editingBanner.buttonLink || '/shop'}
-                        onChange={(e) => setEditingBanner({ ...editingBanner, buttonLink: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900"
-                      />
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-neutral-700 mb-1">Display Order</label>
-                      <input
-                        type="number"
-                        value={editingBanner.displayOrder ?? 1}
-                        onChange={(e) =>
-                          setEditingBanner({ ...editingBanner, displayOrder: parseInt(e.target.value, 10) || 1 })
-                        }
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-neutral-700 mb-1">Status</label>
-                      <select
-                        value={editingBanner.status || 'active'}
-                        onChange={(e) =>
-                          setEditingBanner({ ...editingBanner, status: e.target.value as 'active' | 'inactive' })
-                        }
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium"
+                    <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
+                      <span className="text-[11px] font-mono text-neutral-400">Order: #{deal.displayOrder}</span>
+                      <Link
+                        href="/admin/deals"
+                        className="text-xs font-semibold text-neutral-700 hover:text-neutral-950 flex items-center gap-1"
                       >
-                        <option value="active">Active (Visible)</option>
-                        <option value="inactive">Inactive (Hidden)</option>
-                      </select>
+                        <span>Edit in Studio</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block font-semibold text-neutral-700 mb-1">
-                      Countdown End Date & Time (Optional)
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={
-                        editingBanner.countdownEndTime
-                          ? editingBanner.countdownEndTime.slice(0, 16)
-                          : ''
-                      }
-                      onChange={(e) =>
-                        setEditingBanner({
-                          ...editingBanner,
-                          countdownEndTime: e.target.value ? new Date(e.target.value).toISOString() : undefined,
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-mono"
-                    />
-                  </div>
-
-                  <div className="pt-3 border-t border-neutral-200 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingBanner(null)}
-                      className="px-4 py-2 border border-neutral-200 text-neutral-600 rounded-xl font-semibold cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl font-semibold shadow-sm cursor-pointer"
-                    >
-                      Save Banner
-                    </button>
-                  </div>
-                </form>
-              </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

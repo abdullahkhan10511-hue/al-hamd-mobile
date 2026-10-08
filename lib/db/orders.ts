@@ -2,7 +2,7 @@ import { Customer, Order, OrderStatus, PaymentStatus } from '@/types/admin';
 import { seedOrders } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { adjustStock, getProductById, getProductBySlug } from './products';
+import { adjustStock, adjustShopStock, getProductById, getProductBySlug } from './products';
 import { addNotification } from './notifications';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -167,6 +167,55 @@ export async function createOrder(
   // 2. Validate stock and securely recalculate items against verified database prices
   let calculatedSubtotal = 0;
   const validatedItems = orderData.items.map((item) => {
+    // Deal Item handling
+    if (item.itemType === 'DEAL') {
+      const dealUnitPrice = Number(item.dealPrice ?? item.price ?? 0);
+      const lineTotal = dealUnitPrice * item.quantity;
+      calculatedSubtotal += lineTotal;
+
+      // Validate Shop Stock for every bundled product
+      if (Array.isArray(item.dealProducts) && item.dealProducts.length > 0) {
+        for (const dp of item.dealProducts) {
+          const liveProduct = getProductById(dp.productId);
+          let currentShopStock = dp.shopStock ?? 0;
+
+          if (liveProduct) {
+            if (dp.modelId && liveProduct.models && Array.isArray(liveProduct.models)) {
+              const mObj = liveProduct.models.find(
+                (m) => m.id === dp.modelId || m.name.toLowerCase() === dp.modelName?.toLowerCase()
+              );
+              if (mObj && mObj.shopStock !== undefined) {
+                currentShopStock = mObj.shopStock;
+              }
+            } else if (liveProduct.shopStock !== undefined) {
+              currentShopStock = liveProduct.shopStock;
+            }
+          }
+
+          const requiredTotal = (dp.quantity || 1) * item.quantity;
+          if (currentShopStock < requiredTotal) {
+            throw new Error(
+              `Deal "${item.dealName || item.productName}" is currently unavailable because "${dp.productName}${dp.modelName ? ` (${dp.modelName})` : ''}" is out of stock in Shop Inventory.`
+            );
+          }
+        }
+      }
+
+      return {
+        ...item,
+        price: dealUnitPrice,
+        originalPrice: item.originalPrice ?? dealUnitPrice,
+        total: lineTotal,
+        itemType: 'DEAL' as const,
+        dealId: item.dealId || item.productId.replace(/^deal-/, ''),
+        dealName: item.dealName || item.productName,
+        dealPrice: dealUnitPrice,
+        dealProducts: item.dealProducts || [],
+        fulfilledQuantity: item.quantity,
+        backorderedQuantity: 0,
+      };
+    }
+
     const product = getProductById(item.productId) || (item.slug ? getProductBySlug(item.slug) : undefined);
     const modelObj =
       item.selectedModel && product?.models
@@ -181,11 +230,9 @@ export async function createOrder(
       ? (modelObj.stock !== undefined ? modelObj.stock : (product?.stock ?? 0))
       : (product?.stock ?? 0);
 
-    if (product && availableStock <= 0) {
-      throw new Error(
-        `Product "${item.productName || 'Item'}${item.selectedModel ? ` (${item.selectedModel})` : ''}" is currently out of stock.`
-      );
-    }
+    const safeAvailable = Math.max(0, availableStock);
+    const fulfilledQty = Math.min(item.quantity, safeAvailable);
+    const backorderedQty = Math.max(0, item.quantity - fulfilledQty);
 
     // Determine authorized base price
     let basePrice: number;
@@ -209,6 +256,9 @@ export async function createOrder(
       originalPrice: basePrice,
       discountPercentage: undefined,
       total: lineTotal,
+      itemType: 'PRODUCT' as const,
+      fulfilledQuantity: fulfilledQty,
+      backorderedQuantity: backorderedQty,
     };
   });
 
@@ -254,6 +304,12 @@ export async function createOrder(
   const shipping = orderData.shipping || 0;
   const grandTotal = Math.max(0, subtotal - totalDiscount + shipping);
 
+  const hasBackorder = validatedItems.some((it) => (it.backorderedQuantity ?? 0) > 0);
+  const allBackordered = validatedItems.every((it) => (it.fulfilledQuantity ?? 0) === 0);
+  const stockStatus = hasBackorder
+    ? (allBackordered ? 'BACKORDER' : 'PARTIAL_STOCK')
+    : 'IN_STOCK';
+
   const newOrder: Order = {
     ...orderData,
     orderType:
@@ -282,6 +338,8 @@ export async function createOrder(
     subtotal,
     discount: totalDiscount,
     total: grandTotal,
+    hasBackorder,
+    stockStatus,
     status: orderData.status || 'Confirmed',
     promoCode: promoDetails?.code,
     promoDiscountType: promoDetails?.discountType,
@@ -341,7 +399,24 @@ export async function createOrder(
   // Automatically deduct stock for ordered products
   for (const item of newOrder.items) {
     try {
-      await adjustStock(item.productId, -item.quantity, `Order placed #${newOrder.id}`, 'system', item.selectedModel);
+      if (item.itemType === 'DEAL' && Array.isArray(item.dealProducts)) {
+        // Deal purchases deduct from SHOP STOCK ONLY (Warehouse stock is untouched)
+        for (const dp of item.dealProducts) {
+          const neededQty = (dp.quantity || 1) * item.quantity;
+          await adjustShopStock(
+            dp.productId,
+            -neededQty,
+            `Online Order #${newOrder.id}: Deal [${item.dealName || item.productName}] Shop stock deducted`,
+            'system',
+            dp.modelId || dp.modelName
+          );
+        }
+      } else {
+        const deductQty = item.fulfilledQuantity !== undefined ? item.fulfilledQuantity : item.quantity;
+        if (deductQty > 0) {
+          await adjustStock(item.productId, -deductQty, `Order placed #${newOrder.id}`, 'system', item.selectedModel);
+        }
+      }
     } catch (e) {
       console.warn('Stock adjustment warning:', e);
     }
@@ -433,6 +508,34 @@ export async function updateOrderStatus(
     ...(paymentStatus ? { paymentStatus } : {}),
     updatedAt: new Date().toISOString(),
   };
+
+  // Restore stock safely if order is newly cancelled
+  if (status === 'Cancelled' && prevStatus !== 'Cancelled') {
+    for (const item of current.items) {
+      try {
+        if (item.itemType === 'DEAL' && Array.isArray(item.dealProducts)) {
+          // Restore Shop Stock for Deal bundled items (warehouse stock untouched)
+          for (const dp of item.dealProducts) {
+            const restoreQty = (dp.quantity || 1) * item.quantity;
+            await adjustShopStock(
+              dp.productId,
+              restoreQty,
+              `Cancelled Order #${orderId}: Deal [${item.dealName || item.productName}] Shop stock restored`,
+              adminEmail,
+              dp.modelId || dp.modelName
+            );
+          }
+        } else {
+          const restoreQty = item.fulfilledQuantity !== undefined ? item.fulfilledQuantity : item.quantity;
+          if (restoreQty > 0) {
+            await adjustStock(item.productId, restoreQty, `Cancelled Order #${orderId}`, adminEmail, item.selectedModel);
+          }
+        }
+      } catch (e) {
+        console.warn('Restock warning on order cancellation:', e);
+      }
+    }
+  }
 
   await persistCollection(COLLECTION_KEY, orders);
 
