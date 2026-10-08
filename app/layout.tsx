@@ -63,14 +63,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const rawSiteName =
     (settings.storeName && typeof settings.storeName === 'string' && settings.storeName.trim()) || '';
-  const siteName =
-    !rawSiteName ||
-    rawSiteName === 'AL-HAMD-SHOP' ||
-    rawSiteName === 'AL-HAMD SHOP' ||
-    rawSiteName === 'AL-HAMD-MOBILE' ||
-    rawSiteName === 'AL·HAMD'
-      ? 'AL-HAMD MOBILE ACCESSORIES'
-      : rawSiteName;
+  const siteName = rawSiteName || 'AL-HAMD MOBILE ACCESSORIES';
 
   // Primary Website / Browser Title from Admin SEO settings
   const websiteTitle =

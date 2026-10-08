@@ -7,6 +7,7 @@ import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb } from '@/lib/db/repositories/settings';
 import { normalizeCanonicalUrl } from '@/lib/db/settings';
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -106,7 +107,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = getAdminSession(request) || getSessionUser(request);
     const authHeader = request.headers.get('authorization');
 
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {

@@ -150,22 +150,19 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
   const socialLinks = parseJsonField(r.social_links, seedStoreSettings.socialLinks);
   const keywords = parseJsonField<string[]>(r.seo_keywords, seedStoreSettings.seo.keywords);
 
-  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
-  const rawStoreName = r.store_name?.trim();
-  const storeName = (!rawStoreName || legacyStoreNames.includes(rawStoreName))
-    ? 'AL-HAMD MOBILE ACCESSORIES'
-    : rawStoreName;
+  const rawStoreName = r.store_name !== undefined && r.store_name !== null ? r.store_name.trim() : '';
+  const storeName = rawStoreName || (r.logo_url ? '' : 'AL-HAMD MOBILE ACCESSORIES');
 
   let websiteTitle = r.website_title || r.seo_meta_title || seedStoreSettings.seo.metaTitle;
   if (websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+    websiteTitle = `${storeName || 'AL-HAMD MOBILE ACCESSORIES'} | Best Mobile Accessories in Pakistan`;
   }
 
   const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
   const ogImageUrl = r.og_image_url || undefined;
   let searchEngineTitle = r.search_engine_title || websiteTitle;
   if (searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
-    searchEngineTitle = 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories Online';
+    searchEngineTitle = `${storeName || 'AL-HAMD MOBILE ACCESSORIES'} | Premium Mobile Accessories Online`;
   }
   const searchEngineDescription = r.search_engine_description || r.seo_meta_description || seedStoreSettings.seo.metaDescription;
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AnnouncementItem, NavigationItem, StoreSettings } from '@/types/admin';
 import {
   getAnnouncements,
@@ -14,7 +15,7 @@ import {
   createNavigationItem,
   deleteNavigationItem,
 } from '@/lib/db/navigation';
-import { getStoreSettings, updateStoreSettings } from '@/lib/db/settings';
+import { getStoreSettings, updateStoreSettings, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { uploadImage } from '@/lib/db/media';
 import {
   Compass,
@@ -35,6 +36,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminNavigationPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'announcements' | 'header' | 'settings'>('announcements');
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [navItems, setNavItems] = useState<NavigationItem[]>([]);
@@ -60,6 +62,10 @@ export default function AdminNavigationPage() {
 
   useEffect(() => {
     loadData();
+
+    syncStoreSettingsFromApi().then((fresh) => {
+      if (fresh) setStoreSettings(fresh);
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);
@@ -199,6 +205,7 @@ export default function AdminNavigationPage() {
         setStoreSettings(updated);
         await updateStoreSettings(updated);
         notify('Store logo uploaded & saved successfully');
+        router.refresh();
       }
     } catch (err: any) {
       console.error(err);
@@ -222,13 +229,21 @@ export default function AdminNavigationPage() {
     setStoreSettings(updated);
     await updateStoreSettings(updated);
     notify('Header logo removed. Brand name remains active.');
+    router.refresh();
   };
 
   const handleSaveStoreSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeSettings) return;
-    await updateStoreSettings(storeSettings);
-    notify('Header brand settings saved successfully');
+    try {
+      const saved = await updateStoreSettings(storeSettings);
+      setStoreSettings(saved);
+      notify('Header brand settings saved successfully');
+      router.refresh();
+    } catch (err: any) {
+      console.error('Failed to save header settings:', err);
+      alert('Failed to save header brand settings. Please try again.');
+    }
   };
 
   return (

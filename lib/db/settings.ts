@@ -2,6 +2,7 @@ import { StoreSettings, SocialLinksSettings, SocialAccountConfig } from '@/types
 import { seedStoreSettings } from './seed';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -159,23 +160,22 @@ export function getStoreSettings(): StoreSettings {
     },
   };
 
-  // Ensure official business information
-  const legacyStoreNames = ['AL-HAMD-MOBILE', 'AL·HAMD', 'AL-HAMD SHOP', 'AL-HAMD-SHOP', 'AL-HAMD SHOP ACCESSORIES'];
-  if (!base.storeName || legacyStoreNames.includes(base.storeName.trim())) {
+  // Ensure official business information fallback
+  if (base.storeName === undefined || base.storeName === null || (!base.storeName.trim() && !base.logoUrl)) {
     base.storeName = 'AL-HAMD MOBILE ACCESSORIES';
   }
 
   if (base.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    base.websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+    base.websiteTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
   }
   if (base.seo?.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.seo?.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    base.seo.websiteTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+    base.seo.websiteTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
   }
   if (base.seo?.metaTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan') {
-    base.seo.metaTitle = 'AL-HAMD MOBILE ACCESSORIES | Best Mobile Accessories in Pakistan';
+    base.seo.metaTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
   }
   if (base.seo?.searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
-    base.seo.searchEngineTitle = 'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories Online';
+    base.seo.searchEngineTitle = `${base.storeName} | Premium Mobile Accessories Online`;
   }
 
   // SEO & Branding Defaults and Fallbacks
@@ -325,11 +325,24 @@ export async function updateStoreSettings(
 
   // Sync to server storage and database via API
   if (typeof window !== 'undefined') {
-    fetch('/api/admin/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    }).catch(() => {});
+    try {
+      const authHeaders = getAdminAuthHeaders();
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setLocal(SETTINGS_KEY, data.settings, true);
+        }
+      } else {
+        console.warn('POST /api/admin/settings returned status:', res.status);
+      }
+    } catch (apiErr) {
+      console.warn('API error updating store settings:', apiErr);
+    }
   }
 
   // Attempt Firestore sync with non-destructive merge
