@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { saveMediaBuffer } from '@/lib/mediaStorage';
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -52,7 +53,7 @@ const DANGEROUS_EXTENSIONS = new Set([
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = getAdminSession(request) || getSessionUser(request);
     const authHeader = request.headers.get('authorization');
 
     if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {

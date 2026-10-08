@@ -1,5 +1,6 @@
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 export interface MediaItem {
   id: string;
@@ -66,17 +67,26 @@ export async function uploadMediaFile(
     const isCategory = targetFolderOrEmail === 'categories' || targetFolderOrEmail === 'category';
     const isBrand = targetFolderOrEmail === 'brands' || targetFolderOrEmail === 'brand';
     const isDeal = targetFolderOrEmail === 'deals' || targetFolderOrEmail === 'deal';
+    const isBranding = targetFolderOrEmail === 'branding';
 
     let uploadEndpoint = '/api/admin/products/upload';
     if (isCategory) uploadEndpoint = '/api/admin/categories/upload';
     else if (isBrand) uploadEndpoint = '/api/admin/brands/upload';
     else if (isDeal) uploadEndpoint = '/api/admin/deals/upload';
+    else if (isBranding) uploadEndpoint = '/api/admin/settings/upload';
 
     const formData = new FormData();
     formData.append('file', file);
+    if (isBranding) {
+      formData.append('type', 'logo');
+    }
+
+    const authHeaders = { ...getAdminAuthHeaders() } as Record<string, string>;
+    delete authHeaders['Content-Type'];
 
     const res = await fetch(uploadEndpoint, {
       method: 'POST',
+      headers: authHeaders,
       body: formData,
     });
 

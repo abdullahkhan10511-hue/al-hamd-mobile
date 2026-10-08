@@ -16,7 +16,7 @@ import {
   deleteNavigationItem,
 } from '@/lib/db/navigation';
 import { getStoreSettings, updateStoreSettings, syncStoreSettingsFromApi } from '@/lib/db/settings';
-import { uploadImage } from '@/lib/db/media';
+import { uploadImage, getMediaItems, MediaItem } from '@/lib/db/media';
 import {
   Compass,
   Megaphone,
@@ -33,6 +33,9 @@ import {
   Settings,
   Upload,
   Image as ImageIcon,
+  Search,
+  RotateCcw,
+  FolderOpen,
 } from 'lucide-react';
 
 export default function AdminNavigationPage() {
@@ -41,9 +44,12 @@ export default function AdminNavigationPage() {
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [navItems, setNavItems] = useState<NavigationItem[]>([]);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [initialStoreSettings, setInitialStoreSettings] = useState<StoreSettings | null>(null);
 
-  // Logo upload state & ref
+  // Logo upload state & ref & gallery picker state
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Announcement Modal/Editor State
@@ -57,14 +63,19 @@ export default function AdminNavigationPage() {
   const loadData = () => {
     setAnnouncements(getAnnouncements());
     setNavItems(getNavigation());
-    setStoreSettings(getStoreSettings());
+    const current = getStoreSettings();
+    setStoreSettings(current);
+    setInitialStoreSettings((prev) => prev || current);
   };
 
   useEffect(() => {
     loadData();
 
     syncStoreSettingsFromApi().then((fresh) => {
-      if (fresh) setStoreSettings(fresh);
+      if (fresh) {
+        setStoreSettings(fresh);
+        setInitialStoreSettings(fresh);
+      }
     }).catch(() => {});
 
     const handleUpdate = () => loadData();
@@ -186,9 +197,9 @@ export default function AdminNavigationPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-    if (!validTypes.includes(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name)) {
-      alert('Please upload a valid image file (JPG, JPEG, PNG, or WEBP).');
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/svg+xml'];
+    if (!validTypes.includes(file.type) && !/\.(jpe?g|png|webp|svg|ico)$/i.test(file.name)) {
+      alert('Please upload a valid image file (JPG, JPEG, PNG, WEBP, or SVG).');
       return;
     }
 
@@ -196,16 +207,13 @@ export default function AdminNavigationPage() {
     try {
       const url = await uploadImage(file, 'branding');
       if (storeSettings) {
-        // Data safety: explicitly preserve storeName and all existing fields
+        // Data safety: preserve existing storeName and preview the new logo
         const updated: StoreSettings = {
           ...storeSettings,
           logoUrl: url,
-          storeName: storeSettings.storeName || '',
         };
         setStoreSettings(updated);
-        await updateStoreSettings(updated);
-        notify('Store logo uploaded & saved successfully');
-        router.refresh();
+        notify('Store logo uploaded & preview active. Click "Save Header Identity" to commit changes.');
       }
     } catch (err: any) {
       console.error(err);
@@ -218,18 +226,21 @@ export default function AdminNavigationPage() {
     }
   };
 
-  const handleRemoveLogo = async () => {
+  const handleRemoveLogo = () => {
     if (!storeSettings) return;
-    // Data safety: explicitly preserve storeName and all existing fields
     const updated: StoreSettings = {
       ...storeSettings,
       logoUrl: '',
-      storeName: storeSettings.storeName || '',
     };
     setStoreSettings(updated);
-    await updateStoreSettings(updated);
-    notify('Header logo removed. Brand name remains active.');
-    router.refresh();
+    notify('Header logo removed from preview. Click "Save Header Identity" to commit changes.');
+  };
+
+  const handleResetSettings = () => {
+    if (initialStoreSettings) {
+      setStoreSettings(initialStoreSettings);
+      notify('Header Identity reverted to last saved state.');
+    }
   };
 
   const handleSaveStoreSettings = async (e: React.FormEvent) => {
@@ -238,6 +249,7 @@ export default function AdminNavigationPage() {
     try {
       const saved = await updateStoreSettings(storeSettings);
       setStoreSettings(saved);
+      setInitialStoreSettings(saved);
       notify('Header brand settings saved successfully');
       router.refresh();
     } catch (err: any) {
@@ -245,6 +257,19 @@ export default function AdminNavigationPage() {
       alert('Failed to save header brand settings. Please try again.');
     }
   };
+
+  const hasUnsavedChanges = Boolean(
+    initialStoreSettings && storeSettings && (
+      storeSettings.storeName !== initialStoreSettings.storeName ||
+      storeSettings.logoUrl !== initialStoreSettings.logoUrl ||
+      storeSettings.storeTagline !== initialStoreSettings.storeTagline
+    )
+  );
+
+  const galleryItems = getMediaItems();
+  const filteredGalleryItems = galleryItems.filter((m) =>
+    !mediaSearchQuery.trim() || m.name.toLowerCase().includes(mediaSearchQuery.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -586,7 +611,7 @@ export default function AdminNavigationPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block font-semibold text-neutral-700 text-xs">
-                  Website / Brand Name
+                  Website Name / Header Name
                 </label>
                 {storeSettings.storeName && (
                   <button
@@ -602,7 +627,7 @@ export default function AdminNavigationPage() {
                 type="text"
                 value={storeSettings.storeName || ''}
                 onChange={(e) => setStoreSettings({ ...storeSettings, storeName: e.target.value })}
-                placeholder="e.g., AL-HAMD-MOBILE"
+                placeholder="e.g., AL-HAMD MOBILE ACCESSORIES"
                 className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-bold text-sm focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
               />
               <p className="text-[11px] text-neutral-500 mt-1">
@@ -620,7 +645,7 @@ export default function AdminNavigationPage() {
               <input
                 type="file"
                 ref={fileInputRef}
-                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,image/svg+xml"
                 onChange={handleLogoUpload}
                 className="hidden"
               />
@@ -630,7 +655,7 @@ export default function AdminNavigationPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-neutral-700">Configured Logo</span>
                     <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                      Active
+                      Active Preview
                     </span>
                   </div>
 
@@ -646,7 +671,7 @@ export default function AdminNavigationPage() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                       type="button"
                       disabled={isUploadingLogo}
@@ -654,7 +679,17 @@ export default function AdminNavigationPage() {
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingLogo ? 'Uploading...' : 'Change Logo Image'}</span>
+                      <span>{isUploadingLogo ? 'Uploading...' : 'Upload New Image'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => setIsMediaPickerOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>Choose from Gallery</span>
                     </button>
 
                     <button
@@ -676,22 +711,34 @@ export default function AdminNavigationPage() {
                   <div>
                     <p className="font-semibold text-neutral-800 text-xs">No Custom Logo Uploaded</p>
                     <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Upload a transparent PNG, WEBP, or JPG to display beside your brand name.
+                      Upload a transparent PNG, WEBP, SVG, or JPG to display beside your brand name.
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={isUploadingLogo}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl font-semibold text-xs shadow-sm transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>{isUploadingLogo ? 'Uploading...' : 'Upload from Gallery'}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl font-semibold text-xs shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{isUploadingLogo ? 'Uploading...' : 'Upload from Device'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => setIsMediaPickerOpen(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-neutral-100 text-neutral-800 border border-neutral-300 rounded-xl font-semibold text-xs shadow-sm transition-colors cursor-pointer"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      <span>Choose from Gallery</span>
+                    </button>
+                  </div>
 
                   <p className="text-[10px] text-neutral-400">
-                    Accepts JPG, JPEG, PNG, WEBP (Max 5MB)
+                    Accepts JPG, JPEG, PNG, WEBP, SVG (Max 5MB)
                   </p>
                 </div>
               )}
@@ -709,8 +756,19 @@ export default function AdminNavigationPage() {
               />
             </div>
 
-            {/* Submit Button */}
-            <div className="pt-4 border-t border-neutral-200 flex justify-end">
+            {/* Submit / Reset Actions */}
+            <div className="pt-4 border-t border-neutral-200 flex items-center justify-between">
+              {hasUnsavedChanges ? (
+                <button
+                  type="button"
+                  onClick={handleResetSettings}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 hover:bg-neutral-50 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Changes</span>
+                </button>
+              ) : <div />}
+
               <button
                 type="submit"
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl font-semibold text-xs shadow-sm transition-colors cursor-pointer"
@@ -721,6 +779,81 @@ export default function AdminNavigationPage() {
             </div>
           </div>
         </form>
+      )}
+
+      {/* Media Picker Modal for selecting logo from existing assets */}
+      {isMediaPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-neutral-900 text-sm">Select Logo from Media Library</h3>
+                <p className="text-[11px] text-neutral-500">Pick any existing branding or media image to use as your header logo</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(false)}
+                className="text-neutral-400 hover:text-neutral-700 p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-neutral-100 flex items-center gap-2">
+              <Search className="w-4 h-4 text-neutral-400" />
+              <input
+                type="text"
+                value={mediaSearchQuery}
+                onChange={(e) => setMediaSearchQuery(e.target.value)}
+                placeholder="Search media files by name..."
+                className="w-full text-xs text-neutral-900 focus:outline-none"
+              />
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96">
+              {filteredGalleryItems.length > 0 ? (
+                filteredGalleryItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (storeSettings) {
+                        setStoreSettings({ ...storeSettings, logoUrl: item.url });
+                        notify('Logo selected from gallery. Click "Save Header Identity" to publish.');
+                      }
+                      setIsMediaPickerOpen(false);
+                    }}
+                    className={`group relative p-2 border rounded-xl flex flex-col items-center gap-2 hover:border-neutral-900 hover:shadow-xs transition-all cursor-pointer ${
+                      storeSettings?.logoUrl === item.url ? 'border-neutral-900 ring-2 ring-neutral-900 bg-neutral-50' : 'border-neutral-200'
+                    }`}
+                  >
+                    <div className="w-full h-24 bg-neutral-50 rounded-lg flex items-center justify-center overflow-hidden p-2">
+                      <img src={item.url} alt={item.name} className="max-h-full max-w-full object-contain" />
+                    </div>
+                    <span className="text-[10px] font-medium text-neutral-700 truncate w-full text-center">
+                      {item.name}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="col-span-full py-12 text-center text-neutral-400 text-xs">
+                  No images found in media library.
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-neutral-100 bg-neutral-50 flex items-center justify-between text-xs">
+              <span className="text-neutral-500 text-[11px]">{filteredGalleryItems.length} assets available</span>
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(false)}
+                className="px-4 py-1.5 bg-neutral-200 hover:bg-neutral-300 rounded-lg font-medium text-xs text-neutral-800 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Announcement Modal */}

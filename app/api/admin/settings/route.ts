@@ -125,11 +125,14 @@ export async function POST(request: NextRequest) {
     const updated: StoreSettings = {
       ...current,
       ...body,
+      storeName: body.storeName !== undefined ? body.storeName : current.storeName,
+      logoUrl: body.logoUrl !== undefined ? body.logoUrl : current.logoUrl,
       canonicalUrl: normalizedCanonical,
       seo: {
         ...current.seo,
         ...(body.seo || {}),
         canonicalUrl: normalizedCanonical,
+        logoUrl: body.logoUrl !== undefined ? body.logoUrl : (body.seo?.logoUrl !== undefined ? body.seo.logoUrl : current.seo?.logoUrl),
       },
     };
 
