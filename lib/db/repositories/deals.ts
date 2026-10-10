@@ -1,6 +1,11 @@
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Deal, DealProductItem } from '@/types/admin';
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { serverCache } from '@/lib/cache/memoryCache';
+
+export function invalidateDealCache(): void {
+  serverCache.invalidate('deals');
+}
 
 interface DealRow extends RowDataPacket {
   id: string;
@@ -97,26 +102,28 @@ export async function getAllDealsFromDb(): Promise<Deal[]> {
     throw new Error('Database is not configured.');
   }
 
-  const dealRows = await query<DealRow[]>(
-    'SELECT * FROM deals ORDER BY display_order ASC, created_at DESC'
-  );
+  return serverCache.getOrSet('deals:all', async () => {
+    const dealRows = await query<DealRow[]>(
+      'SELECT * FROM deals ORDER BY display_order ASC, created_at DESC'
+    );
 
-  if (!dealRows || dealRows.length === 0) {
-    return [];
-  }
+    if (!dealRows || dealRows.length === 0) {
+      return [];
+    }
 
-  const productRows = await query<DealProductRow[]>(
-    'SELECT * FROM deal_products ORDER BY sort_order ASC'
-  );
+    const productRows = await query<DealProductRow[]>(
+      'SELECT * FROM deal_products ORDER BY sort_order ASC'
+    );
 
-  const productMap = new Map<string, DealProductItem[]>();
-  for (const pRow of productRows) {
-    const list = productMap.get(pRow.deal_id) || [];
-    list.push(mapRowToDealProduct(pRow));
-    productMap.set(pRow.deal_id, list);
-  }
+    const productMap = new Map<string, DealProductItem[]>();
+    for (const pRow of productRows) {
+      const list = productMap.get(pRow.deal_id) || [];
+      list.push(mapRowToDealProduct(pRow));
+      productMap.set(pRow.deal_id, list);
+    }
 
-  return dealRows.map((dRow) => mapRowToDeal(dRow, productMap.get(dRow.id) || []));
+    return dealRows.map((dRow) => mapRowToDeal(dRow, productMap.get(dRow.id) || []));
+  }, 60000);
 }
 
 export async function getDealByIdFromDb(id: string): Promise<Deal | null> {
@@ -124,21 +131,23 @@ export async function getDealByIdFromDb(id: string): Promise<Deal | null> {
     throw new Error('Database is not configured.');
   }
 
-  const dealRows = await query<DealRow[]>(
-    'SELECT * FROM deals WHERE id = ? LIMIT 1',
-    [id]
-  );
+  return serverCache.getOrSet(`deals:id:${id}`, async () => {
+    const dealRows = await query<DealRow[]>(
+      'SELECT * FROM deals WHERE id = ? LIMIT 1',
+      [id]
+    );
 
-  if (!dealRows || dealRows.length === 0) {
-    return null;
-  }
+    if (!dealRows || dealRows.length === 0) {
+      return null;
+    }
 
-  const productRows = await query<DealProductRow[]>(
-    'SELECT * FROM deal_products WHERE deal_id = ? ORDER BY sort_order ASC',
-    [id]
-  );
+    const productRows = await query<DealProductRow[]>(
+      'SELECT * FROM deal_products WHERE deal_id = ? ORDER BY sort_order ASC',
+      [id]
+    );
 
-  return mapRowToDeal(dealRows[0], productRows.map(mapRowToDealProduct));
+    return mapRowToDeal(dealRows[0], productRows.map(mapRowToDealProduct));
+  }, 60000);
 }
 
 export async function getDealBySlugFromDb(slug: string): Promise<Deal | null> {
@@ -146,21 +155,23 @@ export async function getDealBySlugFromDb(slug: string): Promise<Deal | null> {
     throw new Error('Database is not configured.');
   }
 
-  const dealRows = await query<DealRow[]>(
-    'SELECT * FROM deals WHERE slug = ? OR id = ? LIMIT 1',
-    [slug, slug]
-  );
+  return serverCache.getOrSet(`deals:slug:${slug}`, async () => {
+    const dealRows = await query<DealRow[]>(
+      'SELECT * FROM deals WHERE slug = ? OR id = ? LIMIT 1',
+      [slug, slug]
+    );
 
-  if (!dealRows || dealRows.length === 0) {
-    return null;
-  }
+    if (!dealRows || dealRows.length === 0) {
+      return null;
+    }
 
-  const productRows = await query<DealProductRow[]>(
-    'SELECT * FROM deal_products WHERE deal_id = ? ORDER BY sort_order ASC',
-    [dealRows[0].id]
-  );
+    const productRows = await query<DealProductRow[]>(
+      'SELECT * FROM deal_products WHERE deal_id = ? ORDER BY sort_order ASC',
+      [dealRows[0].id]
+    );
 
-  return mapRowToDeal(dealRows[0], productRows.map(mapRowToDealProduct));
+    return mapRowToDeal(dealRows[0], productRows.map(mapRowToDealProduct));
+  }, 60000);
 }
 
 export async function insertDealToDb(data: Partial<Deal>): Promise<Deal> {
@@ -240,6 +251,7 @@ export async function insertDealToDb(data: Partial<Deal>): Promise<Deal> {
       }
     }
 
+    invalidateDealCache();
     return {
       id,
       name,
@@ -355,6 +367,7 @@ export async function updateDealInDb(id: string, data: Partial<Deal>): Promise<D
       updatedProducts = existing.products;
     }
 
+    invalidateDealCache();
     return {
       id,
       name,
@@ -383,6 +396,7 @@ export async function deleteDealFromDb(id: string): Promise<boolean> {
   }
 
   const result = await execute('DELETE FROM deals WHERE id = ?', [id]);
+  invalidateDealCache();
   return result.affectedRows > 0;
 }
 
@@ -391,31 +405,33 @@ export async function getActiveDealsFromDb(): Promise<Deal[]> {
     throw new Error('Database is not configured.');
   }
 
-  const dealRows = await query<DealRow[]>(
-    `SELECT * FROM deals
-     WHERE status = 'active'
-       AND (start_date IS NULL OR start_date <= NOW())
-       AND (end_date IS NULL OR end_date >= NOW())
-     ORDER BY display_order ASC, created_at DESC`
-  );
+  return serverCache.getOrSet('deals:active', async () => {
+    const dealRows = await query<DealRow[]>(
+      `SELECT * FROM deals
+       WHERE status = 'active'
+         AND (start_date IS NULL OR start_date <= NOW())
+         AND (end_date IS NULL OR end_date >= NOW())
+       ORDER BY display_order ASC, created_at DESC`
+    );
 
-  if (!dealRows || dealRows.length === 0) {
-    return [];
-  }
+    if (!dealRows || dealRows.length === 0) {
+      return [];
+    }
 
-  const dealIds = dealRows.map((d) => d.id);
-  const placeholders = dealIds.map(() => '?').join(',');
-  const productRows = await query<DealProductRow[]>(
-    `SELECT * FROM deal_products WHERE deal_id IN (${placeholders}) ORDER BY sort_order ASC`,
-    dealIds
-  );
+    const dealIds = dealRows.map((d) => d.id);
+    const placeholders = dealIds.map(() => '?').join(',');
+    const productRows = await query<DealProductRow[]>(
+      `SELECT * FROM deal_products WHERE deal_id IN (${placeholders}) ORDER BY sort_order ASC`,
+      dealIds
+    );
 
-  const productMap = new Map<string, DealProductItem[]>();
-  for (const pRow of productRows) {
-    const list = productMap.get(pRow.deal_id) || [];
-    list.push(mapRowToDealProduct(pRow));
-    productMap.set(pRow.deal_id, list);
-  }
+    const productMap = new Map<string, DealProductItem[]>();
+    for (const pRow of productRows) {
+      const list = productMap.get(pRow.deal_id) || [];
+      list.push(mapRowToDealProduct(pRow));
+      productMap.set(pRow.deal_id, list);
+    }
 
-  return dealRows.map((dRow) => mapRowToDeal(dRow, productMap.get(dRow.id) || []));
+    return dealRows.map((dRow) => mapRowToDeal(dRow, productMap.get(dRow.id) || []));
+  }, 60000);
 }

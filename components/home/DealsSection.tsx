@@ -12,6 +12,7 @@ const HOMEPAGE_DEALS_LIMIT = 2;
 
 export function DealsSection() {
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [selectedDealForModal, setSelectedDealForModal] = useState<Deal | null>(null);
 
   const loadData = () => {
@@ -20,13 +21,14 @@ export function DealsSection() {
       .filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d))
       .sort((a, b) => (a.displayOrder || 1) - (b.displayOrder || 1));
     setDeals(list);
+    setIsLoaded(true);
   };
 
   useEffect(() => {
     loadData();
 
     // Fetch fresh active deals from public API
-    fetch('/api/deals?homepage=true', { cache: 'no-store' })
+    fetch('/api/deals?homepage=true')
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.deals)) {
@@ -37,8 +39,11 @@ export function DealsSection() {
             setDeals(activeList);
           }
         }
+        setIsLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setIsLoaded(true);
+      });
 
     syncDealsFromApi().then(() => loadData());
 
@@ -51,6 +56,27 @@ export function DealsSection() {
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
+
+  if (!isLoaded) {
+    return (
+      <section id="deals" className="py-12 sm:py-16 bg-neutral-950 text-white relative overflow-hidden min-h-[360px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="flex items-center justify-between gap-4 mb-6 sm:mb-8 pb-4 border-b border-neutral-900">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-neutral-800 animate-pulse" />
+              <div className="h-6 w-32 bg-neutral-800 rounded-md animate-pulse" />
+            </div>
+            <div className="h-8 w-24 bg-neutral-800 rounded-full animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="h-64 bg-neutral-900/80 rounded-3xl border border-neutral-800 animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (deals.length === 0) {
     return null;

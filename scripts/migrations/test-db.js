@@ -75,7 +75,7 @@ async function testDatabase() {
         const [countRes] = await conn.query(`SELECT COUNT(*) as c FROM \`${t}\``);
         const count = countRes[0].c;
         console.log(`${t.padEnd(27, ' ')} | ${String(count).padStart(12, ' ')}`);
-      } catch (err) {
+      } catch {
         console.log(`${t.padEnd(27, ' ')} |  [Error reading count]`);
       }
     }

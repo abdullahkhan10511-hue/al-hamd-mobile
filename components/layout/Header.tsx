@@ -123,7 +123,7 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
   const hasLogo = Boolean(currentSettings?.logoUrl && currentSettings.logoUrl.trim());
   const fallbackStoreName = initialSettings?.storeName !== undefined && initialSettings.storeName.trim()
     ? initialSettings.storeName.trim()
-    : 'AL-HAMD MOBILE ACCESSORIES';
+    : 'AL-HAMD SHOP';
   const rawStoreName = currentSettings?.storeName !== undefined
     ? currentSettings.storeName.trim()
     : fallbackStoreName;
@@ -131,9 +131,10 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
   const logoUrl = currentSettings?.logoUrl?.trim();
 
   const browserTitle =
-    currentSettings?.websiteTitle ||
-    currentSettings?.seo?.websiteTitle ||
-    currentSettings?.seo?.metaTitle ||
+    currentSettings?.seo?.searchEngineTitle?.trim() ||
+    currentSettings?.websiteTitle?.trim() ||
+    currentSettings?.seo?.websiteTitle?.trim() ||
+    currentSettings?.seo?.metaTitle?.trim() ||
     (storeName ? `${storeName} | Mobile Accessories in Pakistan` : '');
 
   // Sync document title on client only for home page if not set

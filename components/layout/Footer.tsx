@@ -111,8 +111,8 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
   }
 
   // Official Business Details
-  const rawOfficialStoreName = currentSettings?.storeName?.trim() || initialSettings?.storeName?.trim() || 'AL-HAMD MOBILE ACCESSORIES';
-  const officialStoreName = rawOfficialStoreName || 'AL-HAMD MOBILE ACCESSORIES';
+  const rawOfficialStoreName = currentSettings?.storeName?.trim() || initialSettings?.storeName?.trim() || 'AL-HAMD SHOP';
+  const officialStoreName = rawOfficialStoreName || 'AL-HAMD SHOP';
   const officialDescription =
     currentSettings?.footerDescription?.trim() ||
     'Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.';

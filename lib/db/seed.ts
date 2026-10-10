@@ -164,7 +164,7 @@ export const seedTrustBenefits: TrustBenefitItem[] = [
 ];
 
 export const seedStoreSettings: StoreSettings = {
-  storeName: 'AL-HAMD MOBILE ACCESSORIES',
+  storeName: 'AL-HAMD SHOP',
   storeTagline: 'Quality Mobile Accessories & Everyday Smartphone Essentials',
   logoUrl: '',
   faviconUrl: '/favicon.ico',
@@ -195,15 +195,15 @@ export const seedStoreSettings: StoreSettings = {
       whatsapp: true,
     },
   },
-  websiteTitle: 'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
+  websiteTitle: 'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
   canonicalUrl: 'https://alhamdshop.com',
   ogImageUrl: '',
   seo: {
-    metaTitle: 'AL-HAMD MOBILE ACCESSORIES | Quality Mobile Accessories Pakistan',
+    metaTitle: 'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
     metaDescription: 'Shop quality smartphone cases, screen protectors, fast chargers, power banks, earbuds, and mobile accessories in Pakistan.',
-    keywords: ['mobile accessories pakistan', 'phone cases', 'fast chargers', 'power banks', 'earbuds', 'screen protectors', 'magsafe', 'al-hamd'],
-    websiteTitle: 'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
-    searchEngineTitle: 'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
+    keywords: ['mobile accessories pakistan', 'phone cases', 'fast chargers', 'power banks', 'earbuds', 'screen protectors', 'magsafe', 'al-hamd shop'],
+    websiteTitle: 'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
+    searchEngineTitle: 'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
     searchEngineDescription: 'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.',
     canonicalUrl: 'https://alhamdshop.com',
     faviconUrl: '/favicon.ico',

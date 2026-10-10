@@ -2,6 +2,11 @@ import { query, execute, isDbConfigured } from '../mysql';
 import { Brand } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
 import { ensureSafeMediaUrl } from '../serverMedia';
+import { serverCache } from '@/lib/cache/memoryCache';
+
+export function invalidateBrandCache(): void {
+  serverCache.invalidate('brands');
+}
 
 interface BrandRow extends RowDataPacket {
   id: string;
@@ -80,39 +85,41 @@ export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
     throw new Error('Database is not configured.');
   }
 
-  await ensureBrandOrderSchema().catch(() => {});
+  return serverCache.getOrSet(`brands:all:${activeOnly}`, async () => {
+    await ensureBrandOrderSchema().catch(() => {});
 
-  const whereClause = activeOnly ? "WHERE b.status = 'active'" : '';
-  try {
-    const rows = await query<BrandRow[]>(
-      `SELECT b.*,
-        (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
-       FROM brands b
-       ${whereClause}
-       ORDER BY b.sort_order ASC, b.name ASC`
-    );
+    const whereClause = activeOnly ? "WHERE b.status = 'active'" : '';
+    try {
+      const rows = await query<BrandRow[]>(
+        `SELECT b.*,
+          (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+         FROM brands b
+         ${whereClause}
+         ORDER BY b.sort_order ASC, b.name ASC`
+      );
 
-    if (!rows || rows.length === 0) {
-      return [];
+      if (!rows || rows.length === 0) {
+        return [];
+      }
+
+      return rows.map(mapRowToBrand);
+    } catch {
+      // Fallback if sort_order column does not exist yet
+      const rows = await query<BrandRow[]>(
+        `SELECT b.*,
+          (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+         FROM brands b
+         ${whereClause}
+         ORDER BY b.name ASC`
+      );
+
+      if (!rows || rows.length === 0) {
+        return [];
+      }
+
+      return rows.map(mapRowToBrand);
     }
-
-    return rows.map(mapRowToBrand);
-  } catch {
-    // Fallback if sort_order column does not exist yet
-    const rows = await query<BrandRow[]>(
-      `SELECT b.*,
-        (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
-       FROM brands b
-       ${whereClause}
-       ORDER BY b.name ASC`
-    );
-
-    if (!rows || rows.length === 0) {
-      return [];
-    }
-
-    return rows.map(mapRowToBrand);
-  }
+  }, 60000);
 }
 
 /**
@@ -124,15 +131,17 @@ export async function getBrandByIdFromDb(id: string): Promise<Brand | null> {
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<BrandRow[]>(
-    `SELECT b.*,
-      (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
-     FROM brands b WHERE b.id = ? LIMIT 1`,
-    [id]
-  );
+  return serverCache.getOrSet(`brands:id:${id}`, async () => {
+    const rows = await query<BrandRow[]>(
+      `SELECT b.*,
+        (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+       FROM brands b WHERE b.id = ? LIMIT 1`,
+      [id]
+    );
 
-  if (!rows || rows.length === 0) return null;
-  return mapRowToBrand(rows[0]);
+    if (!rows || rows.length === 0) return null;
+    return mapRowToBrand(rows[0]);
+  }, 60000);
 }
 
 /**
@@ -222,6 +231,7 @@ export async function insertBrandToDb(brand: Partial<Brand>): Promise<Brand> {
     );
   }
 
+  invalidateBrandCache();
   return {
     id,
     name,
@@ -278,6 +288,7 @@ export async function updateBrandInDb(id: string, updates: Partial<Brand>): Prom
     );
   }
 
+  invalidateBrandCache();
   const updated = await getBrandByIdFromDb(id);
   return updated || {
     id,
@@ -308,10 +319,12 @@ export async function reorderBrandsInDb(orderedIds: string[]): Promise<boolean> 
     }
   }
 
+  invalidateBrandCache();
   return true;
 }
 
 export async function deleteBrandInDb(id: string): Promise<boolean> {
   const result = await execute('DELETE FROM brands WHERE id = ?', [id]);
+  invalidateBrandCache();
   return result.affectedRows > 0;
 }

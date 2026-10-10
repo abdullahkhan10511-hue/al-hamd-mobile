@@ -33,6 +33,7 @@ import {
   normalizeCanonicalUrl,
   syncStoreSettingsFromApi,
 } from '@/lib/db/settings';
+import { getAdminAuthHeaders } from '@/lib/db/staff';
 
 export default function AdminSeoSettingsPage() {
   const { admin: currentAdmin } = useAdminAuth();
@@ -89,7 +90,7 @@ export default function AdminSeoSettingsPage() {
   }, []);
 
   function populateForm(s: StoreSettings) {
-    const rawSiteName = s.storeName || 'AL-HAMD MOBILE ACCESSORIES';
+    const rawSiteName = s.storeName || 'AL-HAMD SHOP';
     const rawWebsiteTitle = s.websiteTitle || s.seo?.websiteTitle || s.seo?.metaTitle || `${rawSiteName} | Mobile Accessories in Pakistan`;
     const rawMetaDesc = s.seo?.metaDescription || 'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
     
@@ -207,7 +208,7 @@ export default function AdminSeoSettingsPage() {
     try {
       const normalizedCanonical = normalizeCanonicalUrl(canonicalUrl);
 
-      const cleanSiteName = siteName.trim() || 'AL-HAMD MOBILE ACCESSORIES';
+      const cleanSiteName = siteName.trim() || 'AL-HAMD SHOP';
       const cleanWebsiteTitle = websiteTitle.trim();
       const cleanMetaDescription = metaDescription.trim();
 
@@ -242,9 +243,13 @@ export default function AdminSeoSettingsPage() {
       setSettings(saved);
 
       // 2. Direct server verification
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify(saved),
       });
 
@@ -264,7 +269,7 @@ export default function AdminSeoSettingsPage() {
 
   // Computed Live Previews
   const previewSearchTitle = useMemo(() => {
-    return (searchEngineTitle.trim() || websiteTitle.trim() || siteName.trim() || 'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan');
+    return (searchEngineTitle.trim() || websiteTitle.trim() || siteName.trim() || 'AL-HAMD SHOP | Mobile Accessories in Pakistan');
   }, [searchEngineTitle, websiteTitle, siteName]);
 
   const previewSearchDesc = useMemo(() => {
@@ -464,7 +469,7 @@ export default function AdminSeoSettingsPage() {
                 type="text"
                 value={websiteTitle}
                 onChange={(e) => setWebsiteTitle(e.target.value)}
-                placeholder="AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan"
+                placeholder="AL-HAMD SHOP | Mobile Accessories in Pakistan"
                 className="w-full px-3.5 py-2.5 bg-neutral-50/70 border border-neutral-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-normal text-neutral-900 placeholder:text-neutral-400"
               />
               <p className="text-[11px] text-neutral-500">
@@ -481,7 +486,7 @@ export default function AdminSeoSettingsPage() {
                 type="text"
                 value={siteName}
                 onChange={(e) => setSiteName(e.target.value)}
-                placeholder="AL-HAMD MOBILE ACCESSORIES"
+                placeholder="AL-HAMD SHOP"
                 className="w-full px-3.5 py-2.5 bg-neutral-50/70 border border-neutral-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-normal text-neutral-900 placeholder:text-neutral-400"
               />
               <p className="text-[11px] text-neutral-500">
@@ -892,7 +897,7 @@ export default function AdminSeoSettingsPage() {
                 </div>
                 <div className="min-w-0 leading-tight">
                   <div className="text-xs font-medium text-neutral-800 truncate">
-                    {siteName || 'AL-HAMD MOBILE ACCESSORIES'}
+                    {siteName || 'AL-HAMD SHOP'}
                   </div>
                   <div className="text-[11px] text-neutral-500 truncate font-mono">
                     {previewCanonical}

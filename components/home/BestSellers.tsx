@@ -15,6 +15,7 @@ import { formatPrice, getProductImage } from '@/lib/utils';
 
 export function BestSellers() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const loadData = () => {
     const list = getProducts()
@@ -27,11 +28,14 @@ export function BestSellers() {
       )
       .slice(0, 3);
     setProducts(list);
+    setIsLoaded(true);
   };
 
   useEffect(() => {
     loadData();
-    syncProductsFromApi().then(() => loadData()).catch(() => {});
+    syncProductsFromApi().then(() => loadData()).catch(() => {
+      setIsLoaded(true);
+    });
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -41,6 +45,27 @@ export function BestSellers() {
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
+
+  if (!isLoaded) {
+    return (
+      <section className="py-16 sm:py-20 bg-white border-b border-neutral-100 min-h-[480px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-end justify-between mb-8 sm:mb-12">
+            <div>
+              <div className="h-3 w-28 bg-neutral-200/80 rounded-full animate-pulse mb-2" />
+              <div className="h-7 w-44 bg-neutral-200/80 rounded-lg animate-pulse" />
+            </div>
+            <div className="h-4 w-32 bg-neutral-200/60 rounded-full animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="aspect-[4/5] bg-neutral-100 rounded-3xl animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (products.length === 0) return null;
 

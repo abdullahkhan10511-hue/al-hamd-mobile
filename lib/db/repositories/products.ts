@@ -4,6 +4,11 @@ import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
 import { recordInventoryLog } from '@/lib/db/repositories/inventory';
 import { ensureSafeMediaUrls } from '../serverMedia';
+import { serverCache } from '@/lib/cache/memoryCache';
+
+export function invalidateProductCache(): void {
+  serverCache.invalidate('products');
+}
 
 interface ProductRow extends RowDataPacket {
   id: string;
@@ -326,126 +331,128 @@ export async function getAllProductsFromDb(): Promise<(Product & { sku: string; 
     throw new Error('Database is not configured.');
   }
 
-  const productRows = await query<ProductRow[]>(
-    'SELECT * FROM products ORDER BY created_at DESC'
-  );
+  return serverCache.getOrSet('products:all', async () => {
+    const productRows = await query<ProductRow[]>(
+      'SELECT * FROM products ORDER BY created_at DESC'
+    );
 
-  if (!productRows || productRows.length === 0) {
-    return [];
-  }
+    if (!productRows || productRows.length === 0) {
+      return [];
+    }
 
-  const productIds = productRows.map((p) => p.id);
+    const productIds = productRows.map((p) => p.id);
 
-  // Fetch related records in bulk
-  const placeholders = productIds.map(() => '?').join(',');
+    // Fetch related records in bulk
+    const placeholders = productIds.map(() => '?').join(',');
 
-  const [modelsRows, colorsRows, mediaRows, bulkRows, reviewsRows] = await Promise.all([
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_models WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_colors WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_media WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_bulk_pricing WHERE product_id IN (${placeholders}) ORDER BY min_qty ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_reviews WHERE product_id IN (${placeholders}) ORDER BY date DESC`,
-      productIds
-    ),
-  ]);
+    const [modelsRows, colorsRows, mediaRows, bulkRows, reviewsRows] = await Promise.all([
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_models WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_colors WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_media WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_bulk_pricing WHERE product_id IN (${placeholders}) ORDER BY min_qty ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_reviews WHERE product_id IN (${placeholders}) ORDER BY date DESC`,
+        productIds
+      ),
+    ]);
 
-  // Group related by product_id
-  const modelsByProd = new Map<string, ProductModelVariant[]>();
-  for (const m of modelsRows) {
-    const list = modelsByProd.get(m.product_id) || [];
-    list.push({
-      id: m.id,
-      name: m.name,
-      price: Number(m.price),
-      compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
-      wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
-      superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
-      stock: Number(m.stock),
-      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
-      sku: m.sku || undefined,
-      isActive: Boolean(m.is_active),
-      images: parseJsonField<string[]>(m.images, []),
-      videos: parseJsonField<string[]>(m.videos, []),
-    } as any);
-    modelsByProd.set(m.product_id, list);
-  }
+    // Group related by product_id
+    const modelsByProd = new Map<string, ProductModelVariant[]>();
+    for (const m of modelsRows) {
+      const list = modelsByProd.get(m.product_id) || [];
+      list.push({
+        id: m.id,
+        name: m.name,
+        price: Number(m.price),
+        compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
+        wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
+        superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
+        stock: Number(m.stock),
+        shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
+        sku: m.sku || undefined,
+        isActive: Boolean(m.is_active),
+        images: parseJsonField<string[]>(m.images, []),
+        videos: parseJsonField<string[]>(m.videos, []),
+      } as any);
+      modelsByProd.set(m.product_id, list);
+    }
 
-  const colorsByProd = new Map<string, ProductColorVariant[]>();
-  for (const c of colorsRows) {
-    const list = colorsByProd.get(c.product_id) || [];
-    list.push({
-      id: c.id,
-      name: c.name,
-      hex: c.hex || undefined,
-      isActive: Boolean(c.is_active),
-    });
-    colorsByProd.set(c.product_id, list);
-  }
+    const colorsByProd = new Map<string, ProductColorVariant[]>();
+    for (const c of colorsRows) {
+      const list = colorsByProd.get(c.product_id) || [];
+      list.push({
+        id: c.id,
+        name: c.name,
+        hex: c.hex || undefined,
+        isActive: Boolean(c.is_active),
+      });
+      colorsByProd.set(c.product_id, list);
+    }
 
-  const mediaByProd = new Map<string, ProductMediaItem[]>();
-  for (const med of mediaRows) {
-    const list = mediaByProd.get(med.product_id) || [];
-    list.push({
-      id: med.id,
-      url: med.url,
-      type: med.media_type,
-      name: med.name || undefined,
-      size: med.size || undefined,
-    });
-    mediaByProd.set(med.product_id, list);
-  }
+    const mediaByProd = new Map<string, ProductMediaItem[]>();
+    for (const med of mediaRows) {
+      const list = mediaByProd.get(med.product_id) || [];
+      list.push({
+        id: med.id,
+        url: med.url,
+        type: med.media_type,
+        name: med.name || undefined,
+        size: med.size || undefined,
+      });
+      mediaByProd.set(med.product_id, list);
+    }
 
-  const bulkByProd = new Map<string, BulkPricingRule[]>();
-  for (const b of bulkRows) {
-    const list = bulkByProd.get(b.product_id) || [];
-    list.push({
-      id: b.id,
-      minQty: Number(b.min_qty),
-      maxQty: Number(b.max_qty),
-      discountPercentage: Number(b.discount_percentage),
-    });
-    bulkByProd.set(b.product_id, list);
-  }
+    const bulkByProd = new Map<string, BulkPricingRule[]>();
+    for (const b of bulkRows) {
+      const list = bulkByProd.get(b.product_id) || [];
+      list.push({
+        id: b.id,
+        minQty: Number(b.min_qty),
+        maxQty: Number(b.max_qty),
+        discountPercentage: Number(b.discount_percentage),
+      });
+      bulkByProd.set(b.product_id, list);
+    }
 
-  const reviewsByProd = new Map<string, ProductReview[]>();
-  for (const r of reviewsRows) {
-    const list = reviewsByProd.get(r.product_id) || [];
-    list.push({
-      id: r.id,
-      author: r.author,
-      authorEmail: r.author_email || undefined,
-      rating: Number(r.rating),
-      title: r.title || '',
-      comment: r.comment,
-      verified: Boolean(r.verified),
-      date: r.date,
-    });
-    reviewsByProd.set(r.product_id, list);
-  }
+    const reviewsByProd = new Map<string, ProductReview[]>();
+    for (const r of reviewsRows) {
+      const list = reviewsByProd.get(r.product_id) || [];
+      list.push({
+        id: r.id,
+        author: r.author,
+        authorEmail: r.author_email || undefined,
+        rating: Number(r.rating),
+        title: r.title || '',
+        comment: r.comment,
+        verified: Boolean(r.verified),
+        date: r.date,
+      });
+      reviewsByProd.set(r.product_id, list);
+    }
 
-  return productRows.map((row) =>
-    mapRowToProduct(
-      row,
-      modelsByProd.get(row.id) || [],
-      colorsByProd.get(row.id) || [],
-      mediaByProd.get(row.id) || [],
-      bulkByProd.get(row.id) || [],
-      reviewsByProd.get(row.id) || []
-    )
-  );
+    return productRows.map((row) =>
+      mapRowToProduct(
+        row,
+        modelsByProd.get(row.id) || [],
+        colorsByProd.get(row.id) || [],
+        mediaByProd.get(row.id) || [],
+        bulkByProd.get(row.id) || [],
+        reviewsByProd.get(row.id) || []
+      )
+    );
+  }, 60000);
 }
 
 export async function getProductByIdFromDb(id: string): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
@@ -453,82 +460,84 @@ export async function getProductByIdFromDb(id: string): Promise<(Product & { sku
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<ProductRow[]>(
-    'SELECT * FROM products WHERE id = ? LIMIT 1',
-    [id]
-  );
+  return serverCache.getOrSet(`products:id:${id}`, async () => {
+    const rows = await query<ProductRow[]>(
+      'SELECT * FROM products WHERE id = ? LIMIT 1',
+      [id]
+    );
 
-  if (!rows || rows.length === 0) return null;
+    if (!rows || rows.length === 0) return null;
 
-  const [models, colors, media, bulkPricing, reviews] = await Promise.all([
-    query<RowDataPacket[]>(
-      'SELECT * FROM product_models WHERE product_id = ? ORDER BY sort_order ASC',
-      [id]
-    ),
-    query<RowDataPacket[]>(
-      'SELECT * FROM product_colors WHERE product_id = ? ORDER BY sort_order ASC',
-      [id]
-    ),
-    query<RowDataPacket[]>(
-      'SELECT * FROM product_media WHERE product_id = ? ORDER BY sort_order ASC',
-      [id]
-    ),
-    query<RowDataPacket[]>(
-      'SELECT * FROM product_bulk_pricing WHERE product_id = ? ORDER BY min_qty ASC',
-      [id]
-    ),
-    query<RowDataPacket[]>(
-      'SELECT * FROM product_reviews WHERE product_id = ? ORDER BY date DESC',
-      [id]
-    ),
-  ]);
+    const [models, colors, media, bulkPricing, reviews] = await Promise.all([
+      query<RowDataPacket[]>(
+        'SELECT * FROM product_models WHERE product_id = ? ORDER BY sort_order ASC',
+        [id]
+      ),
+      query<RowDataPacket[]>(
+        'SELECT * FROM product_colors WHERE product_id = ? ORDER BY sort_order ASC',
+        [id]
+      ),
+      query<RowDataPacket[]>(
+        'SELECT * FROM product_media WHERE product_id = ? ORDER BY sort_order ASC',
+        [id]
+      ),
+      query<RowDataPacket[]>(
+        'SELECT * FROM product_bulk_pricing WHERE product_id = ? ORDER BY min_qty ASC',
+        [id]
+      ),
+      query<RowDataPacket[]>(
+        'SELECT * FROM product_reviews WHERE product_id = ? ORDER BY date DESC',
+        [id]
+      ),
+    ]);
 
-  return mapRowToProduct(
-    rows[0],
-    models.map((m) => ({
-      id: m.id,
-      name: m.name,
-      price: Number(m.price),
-      compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
-      wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
-      superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
-      stock: Number(m.stock),
-      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
-      sku: m.sku || undefined,
-      isActive: Boolean(m.is_active),
-      images: parseJsonField<string[]>(m.images, []),
-      videos: parseJsonField<string[]>(m.videos, []),
-    } as any)),
-    colors.map((c) => ({
-      id: c.id,
-      name: c.name,
-      hex: c.hex || undefined,
-      isActive: Boolean(c.is_active),
-    })),
-    media.map((med) => ({
-      id: med.id,
-      url: med.url,
-      type: med.media_type,
-      name: med.name || undefined,
-      size: med.size || undefined,
-    })),
-    bulkPricing.map((b) => ({
-      id: b.id,
-      minQty: Number(b.min_qty),
-      maxQty: Number(b.max_qty),
-      discountPercentage: Number(b.discount_percentage),
-    })),
-    reviews.map((r) => ({
-      id: r.id,
-      author: r.author,
-      authorEmail: r.author_email || undefined,
-      rating: Number(r.rating),
-      title: r.title || '',
-      comment: r.comment,
-      verified: Boolean(r.verified),
-      date: r.date,
-    }))
-  );
+    return mapRowToProduct(
+      rows[0],
+      models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        price: Number(m.price),
+        compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
+        wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
+        superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
+        stock: Number(m.stock),
+        shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
+        sku: m.sku || undefined,
+        isActive: Boolean(m.is_active),
+        images: parseJsonField<string[]>(m.images, []),
+        videos: parseJsonField<string[]>(m.videos, []),
+      } as any)),
+      colors.map((c) => ({
+        id: c.id,
+        name: c.name,
+        hex: c.hex || undefined,
+        isActive: Boolean(c.is_active),
+      })),
+      media.map((med) => ({
+        id: med.id,
+        url: med.url,
+        type: med.media_type,
+        name: med.name || undefined,
+        size: med.size || undefined,
+      })),
+      bulkPricing.map((b) => ({
+        id: b.id,
+        minQty: Number(b.min_qty),
+        maxQty: Number(b.max_qty),
+        discountPercentage: Number(b.discount_percentage),
+      })),
+      reviews.map((r) => ({
+        id: r.id,
+        author: r.author,
+        authorEmail: r.author_email || undefined,
+        rating: Number(r.rating),
+        title: r.title || '',
+        comment: r.comment,
+        verified: Boolean(r.verified),
+        date: r.date,
+      }))
+    );
+  }, 60000);
 }
 
 export async function getProductBySlugFromDb(slug: string): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
@@ -536,13 +545,16 @@ export async function getProductBySlugFromDb(slug: string): Promise<(Product & {
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<ProductRow[]>(
-    'SELECT * FROM products WHERE slug = ? LIMIT 1',
-    [slug.trim().toLowerCase()]
-  );
+  const cleanSlug = slug.trim().toLowerCase();
+  return serverCache.getOrSet(`products:slug:${cleanSlug}`, async () => {
+    const rows = await query<ProductRow[]>(
+      'SELECT * FROM products WHERE slug = ? LIMIT 1',
+      [cleanSlug]
+    );
 
-  if (!rows || rows.length === 0) return null;
-  return getProductByIdFromDb(rows[0].id);
+    if (!rows || rows.length === 0) return null;
+    return getProductByIdFromDb(rows[0].id);
+  }, 60000);
 }
 
 export async function insertProductToDb(
@@ -757,6 +769,7 @@ export async function insertProductToDb(
       details: `SKU: ${sku}, Price: Rs. ${finalPrice}, Stock: ${finalStock}`,
     });
 
+    invalidateProductCache();
     return getProductByIdFromDb(id) as Promise<any>;
   });
 }
@@ -946,6 +959,7 @@ export async function updateProductInDb(
       details: `Updated details for SKU: ${sku}`,
     });
 
+    invalidateProductCache();
     return getProductByIdFromDb(id) as Promise<any>;
   });
 }
@@ -966,6 +980,7 @@ export async function deleteProductInDb(
     details: `Permanently removed SKU: ${existing.sku || 'N/A'} (ID: ${id})`,
   });
 
+  invalidateProductCache();
   return true;
 }
 
@@ -1022,6 +1037,7 @@ export async function adjustStockInDb(
       adminEmail,
     });
 
+    invalidateProductCache();
     return { success: true, newStock };
   });
 }

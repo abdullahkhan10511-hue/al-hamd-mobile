@@ -13,7 +13,6 @@ import {
   deleteSuperWholesaleAccount,
   authenticateCustomer
 } from '../lib/db/customers';
-import { Customer } from '../types/admin';
 import { Product, ProductModelVariant } from '../types';
 
 let passed = 0;
@@ -161,7 +160,7 @@ async function runTests() {
   let badAuthFailed = false;
   try {
     await authenticateCustomer(testShopName, 'WrongPassword');
-  } catch (err: any) {
+  } catch {
     badAuthFailed = true;
   }
   assert(badAuthFailed, 'Login with incorrect password throws error and is denied');
@@ -173,7 +172,7 @@ async function runTests() {
   let inactiveAuthFailed = false;
   try {
     await authenticateCustomer(testShopName, testPassword);
-  } catch (err: any) {
+  } catch {
     inactiveAuthFailed = true;
   }
   assert(inactiveAuthFailed, 'Inactive account is denied login');
@@ -192,7 +191,7 @@ async function runTests() {
   let oldPassFailed = false;
   try {
     await authenticateCustomer(testShopName, testPassword);
-  } catch (err: any) {
+  } catch {
     oldPassFailed = true;
   }
   assert(oldPassFailed, 'Old password fails after reset');
@@ -207,7 +206,7 @@ async function runTests() {
   let deletedAuthFailed = false;
   try {
     await authenticateCustomer(testShopName, newPass);
-  } catch (err: any) {
+  } catch {
     deletedAuthFailed = true;
   }
   assert(deletedAuthFailed, 'Deleted account cannot log in');

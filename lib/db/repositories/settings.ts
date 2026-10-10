@@ -2,6 +2,12 @@ import { query, execute, isDbConfigured } from '../mysql';
 import { StoreSettings, BillSettings, BillFieldToggles } from '@/types/admin';
 import { seedStoreSettings } from '../seed';
 import { RowDataPacket } from 'mysql2/promise';
+import { resolveFaviconUrl } from '../settings';
+import { serverCache } from '@/lib/cache/memoryCache';
+
+export function invalidateStoreSettingsCache(): void {
+  serverCache.invalidate('settings');
+}
 
 interface StoreSettingsRow extends RowDataPacket {
   id: number;
@@ -139,88 +145,98 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
     return seedStoreSettings;
   }
 
-  await ensureStoreSettingsColumns();
+  return serverCache.getOrSet('settings:store', async () => {
+    await ensureStoreSettingsColumns();
 
-  const rows = await query<StoreSettingsRow[]>('SELECT * FROM store_settings WHERE id = 1 LIMIT 1');
-  if (!rows || rows.length === 0) {
-    return seedStoreSettings;
-  }
+    const rows = await query<StoreSettingsRow[]>('SELECT * FROM store_settings WHERE id = 1 LIMIT 1');
+    if (!rows || rows.length === 0) {
+      return seedStoreSettings;
+    }
 
-  const r = rows[0];
-  const socialLinks = parseJsonField(r.social_links, seedStoreSettings.socialLinks);
-  const keywords = parseJsonField<string[]>(r.seo_keywords, seedStoreSettings.seo.keywords);
+    const r = rows[0];
+    const socialLinks = parseJsonField(r.social_links, seedStoreSettings.socialLinks);
+    const keywords = parseJsonField<string[]>(r.seo_keywords, seedStoreSettings.seo.keywords);
 
-  const rawStoreName = r.store_name !== undefined && r.store_name !== null ? r.store_name.trim() : '';
-  const storeName = rawStoreName || (r.logo_url ? '' : 'AL-HAMD MOBILE ACCESSORIES');
+    const rawStoreName = r.store_name !== undefined && r.store_name !== null ? r.store_name.trim() : '';
+    const storeName = rawStoreName || 'AL-HAMD SHOP';
 
-  let websiteTitle = r.website_title || r.seo_meta_title || seedStoreSettings.seo.metaTitle;
-  if (websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    websiteTitle = `${storeName || 'AL-HAMD MOBILE ACCESSORIES'} | Best Mobile Accessories in Pakistan`;
-  }
+    const websiteTitle = r.website_title || r.seo_meta_title || `${storeName} | Quality Mobile Accessories Pakistan`;
+    const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
+    const ogImageUrl = r.og_image_url || undefined;
+    const searchEngineTitle = r.search_engine_title || websiteTitle;
+    const searchEngineDescription = r.search_engine_description || r.seo_meta_description || seedStoreSettings.seo.metaDescription;
 
-  const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
-  const ogImageUrl = r.og_image_url || undefined;
-  let searchEngineTitle = r.search_engine_title || websiteTitle;
-  if (searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
-    searchEngineTitle = `${storeName || 'AL-HAMD MOBILE ACCESSORIES'} | Premium Mobile Accessories Online`;
-  }
-  const searchEngineDescription = r.search_engine_description || r.seo_meta_description || seedStoreSettings.seo.metaDescription;
+    const faviconUrl = resolveFaviconUrl(r.favicon_url, r.seo_favicon_url);
 
-  const rawFavicon = r.favicon_url || seedStoreSettings.faviconUrl;
-  const isDedicatedFavicon = (url: string | null | undefined) =>
-    Boolean(url && !url.includes('logo_') && !url.includes('favicon_1791116789478_download.jpg') && (url.endsWith('.ico') || url.includes('favicon')));
-  const faviconUrl = isDedicatedFavicon(rawFavicon) ? rawFavicon! : '/favicon.ico';
-
-  return {
-    storeName,
-    storeTagline: r.store_tagline || seedStoreSettings.storeTagline,
-    websiteTitle,
-    canonicalUrl,
-    logoUrl: r.logo_url || undefined,
-    faviconUrl,
-    ogImageUrl,
-    email: r.email,
-    phone: r.phone,
-    address: r.address,
-    whatsapp: r.whatsapp || undefined,
-    currency: r.currency,
-    currencySymbol: r.currency_symbol,
-    freeShippingThreshold: Number(r.free_shipping_threshold),
-    standardShippingFee: Number(r.standard_shipping_fee),
-    expressShippingFee: Number(r.express_shipping_fee),
-    deliveryMessage: r.delivery_message || undefined,
-    estimatedDeliveryText: r.estimated_delivery_text || undefined,
-    pakistanOnly: Boolean(r.pakistan_only),
-    taxPercentage: Number(r.tax_percentage),
-    socialLinks,
-    seo: {
-      metaTitle: r.seo_meta_title || seedStoreSettings.seo.metaTitle,
-      metaDescription: r.seo_meta_description || seedStoreSettings.seo.metaDescription,
-      keywords,
+    return {
+      storeName,
+      storeTagline: r.store_tagline || seedStoreSettings.storeTagline,
       websiteTitle,
-      searchEngineTitle,
-      searchEngineDescription,
       canonicalUrl,
-      logoUrl: r.seo_logo_url || r.logo_url || undefined,
-      faviconUrl: isDedicatedFavicon(r.seo_favicon_url) ? r.seo_favicon_url! : faviconUrl,
+      logoUrl: r.logo_url || undefined,
+      faviconUrl,
       ogImageUrl,
-    },
-    footerDescription: r.footer_description || seedStoreSettings.footerDescription,
-    businessHours: r.business_hours || seedStoreSettings.businessHours,
-  };
+      email: r.email,
+      phone: r.phone,
+      address: r.address,
+      whatsapp: r.whatsapp || undefined,
+      currency: r.currency,
+      currencySymbol: r.currency_symbol,
+      freeShippingThreshold: Number(r.free_shipping_threshold),
+      standardShippingFee: Number(r.standard_shipping_fee),
+      expressShippingFee: Number(r.express_shipping_fee),
+      deliveryMessage: r.delivery_message || undefined,
+      estimatedDeliveryText: r.estimated_delivery_text || undefined,
+      pakistanOnly: Boolean(r.pakistan_only),
+      taxPercentage: Number(r.tax_percentage),
+      socialLinks,
+      seo: {
+        metaTitle: r.seo_meta_title || websiteTitle,
+        metaDescription: r.seo_meta_description || seedStoreSettings.seo.metaDescription,
+        keywords,
+        websiteTitle,
+        searchEngineTitle,
+        searchEngineDescription,
+        canonicalUrl,
+        logoUrl: r.seo_logo_url || r.logo_url || undefined,
+        faviconUrl,
+        ogImageUrl,
+      },
+      footerDescription: r.footer_description || seedStoreSettings.footerDescription,
+      businessHours: r.business_hours || seedStoreSettings.businessHours,
+    };
+  }, 60000);
 }
 
 export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): Promise<StoreSettings> {
   const current = await getStoreSettingsFromDb();
+  const rawFavicon = resolveFaviconUrl(
+    updates.faviconUrl,
+    updates.seo?.faviconUrl || current.faviconUrl || current.seo?.faviconUrl
+  );
+  const rawLogo = updates.logoUrl !== undefined ? updates.logoUrl : (updates.seo?.logoUrl !== undefined ? updates.seo.logoUrl : current.logoUrl);
+  const rawWebsiteTitle = updates.websiteTitle !== undefined ? updates.websiteTitle : (updates.seo?.websiteTitle !== undefined ? updates.seo.websiteTitle : current.websiteTitle);
+  const rawOgImage = updates.ogImageUrl !== undefined ? updates.ogImageUrl : (updates.seo?.ogImageUrl !== undefined ? updates.seo.ogImageUrl : current.ogImageUrl);
+  const rawCanonical = updates.canonicalUrl !== undefined ? updates.canonicalUrl : (updates.seo?.canonicalUrl !== undefined ? updates.seo.canonicalUrl : current.canonicalUrl);
+  const rawStoreName = updates.storeName !== undefined ? updates.storeName.trim() : current.storeName;
+
   const merged: StoreSettings = {
     ...current,
     ...updates,
-    websiteTitle: updates.websiteTitle !== undefined ? updates.websiteTitle : (updates.seo?.websiteTitle !== undefined ? updates.seo.websiteTitle : current.websiteTitle),
-    canonicalUrl: updates.canonicalUrl !== undefined ? updates.canonicalUrl : (updates.seo?.canonicalUrl !== undefined ? updates.seo.canonicalUrl : current.canonicalUrl),
-    ogImageUrl: updates.ogImageUrl !== undefined ? updates.ogImageUrl : (updates.seo?.ogImageUrl !== undefined ? updates.seo.ogImageUrl : current.ogImageUrl),
+    storeName: rawStoreName,
+    websiteTitle: rawWebsiteTitle,
+    canonicalUrl: rawCanonical,
+    logoUrl: rawLogo,
+    faviconUrl: rawFavicon,
+    ogImageUrl: rawOgImage,
     seo: {
       ...current.seo,
       ...(updates.seo || {}),
+      websiteTitle: rawWebsiteTitle,
+      canonicalUrl: rawCanonical,
+      logoUrl: rawLogo,
+      faviconUrl: rawFavicon,
+      ogImageUrl: rawOgImage,
     },
     socialLinks: {
       ...current.socialLinks,
@@ -320,6 +336,7 @@ export async function updateStoreSettingsInDb(updates: Partial<StoreSettings>): 
     ]
   );
 
+  invalidateStoreSettingsCache();
   return merged;
 }
 

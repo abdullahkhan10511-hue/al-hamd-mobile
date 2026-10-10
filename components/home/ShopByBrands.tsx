@@ -11,6 +11,7 @@ import { Product } from '@/types';
 export function ShopByBrands() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isTouchingRef = useRef(false);
@@ -26,12 +27,17 @@ export function ShopByBrands() {
         (p as any).isActive !== false
     );
     setProducts(prods);
+    setIsLoaded(true);
   }, []);
 
   useEffect(() => {
     loadData();
-    syncBrandsFromApi().then(() => loadData()).catch(() => {});
-    syncProductsFromApi().then(() => loadData()).catch(() => {});
+    syncBrandsFromApi().then(() => loadData()).catch(() => {
+      setIsLoaded(true);
+    });
+    syncProductsFromApi().then(() => loadData()).catch(() => {
+      setIsLoaded(true);
+    });
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -112,6 +118,24 @@ export function ShopByBrands() {
       scrollRef.current.scrollBy({ left: 280, behavior: 'smooth' });
     }
   };
+
+  if (!isLoaded) {
+    return (
+      <section id="brands" className="py-14 sm:py-18 bg-neutral-50/70 border-b border-neutral-100 overflow-hidden min-h-[280px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between mb-8">
+            <div className="h-7 w-48 bg-neutral-200/80 rounded-lg animate-pulse" />
+            <div className="h-4 w-20 bg-neutral-200/60 rounded-full animate-pulse" />
+          </div>
+          <div className="flex gap-4 overflow-hidden">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="w-[160px] sm:w-[190px] h-[180px] shrink-0 bg-neutral-200/60 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (brands.length === 0) {
     return null;

@@ -6,7 +6,7 @@ import { seedStoreSettings } from '@/lib/db/seed';
 import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb } from '@/lib/db/repositories/settings';
-import { normalizeCanonicalUrl } from '@/lib/db/settings';
+import { normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
 import { getAdminSession } from '@/lib/db/adminAuth';
 
 const COOKIE_NAME = 'alhamd_admin_session';
@@ -121,18 +121,32 @@ export async function POST(request: NextRequest) {
     const current = await readServerSettings();
     const rawCanonical = body.canonicalUrl || body.seo?.canonicalUrl || current.canonicalUrl || current.seo?.canonicalUrl;
     const normalizedCanonical = rawCanonical ? normalizeCanonicalUrl(rawCanonical) : 'https://alhamdshop.com';
+    const rawFavicon = resolveFaviconUrl(
+      body.faviconUrl,
+      body.seo?.faviconUrl || current.faviconUrl || current.seo?.faviconUrl
+    );
+    const rawLogo = body.logoUrl !== undefined ? body.logoUrl : (body.seo?.logoUrl !== undefined ? body.seo.logoUrl : current.logoUrl);
+    const rawWebsiteTitle = body.websiteTitle !== undefined ? body.websiteTitle : (body.seo?.websiteTitle !== undefined ? body.seo.websiteTitle : current.websiteTitle);
+    const rawOgImage = body.ogImageUrl !== undefined ? body.ogImageUrl : (body.seo?.ogImageUrl !== undefined ? body.seo.ogImageUrl : current.ogImageUrl);
+    const rawStoreName = body.storeName !== undefined ? body.storeName.trim() : current.storeName;
 
     const updated: StoreSettings = {
       ...current,
       ...body,
-      storeName: body.storeName !== undefined ? body.storeName : current.storeName,
-      logoUrl: body.logoUrl !== undefined ? body.logoUrl : current.logoUrl,
+      storeName: rawStoreName,
+      logoUrl: rawLogo,
+      faviconUrl: rawFavicon,
+      websiteTitle: rawWebsiteTitle,
+      ogImageUrl: rawOgImage,
       canonicalUrl: normalizedCanonical,
       seo: {
         ...current.seo,
         ...(body.seo || {}),
+        websiteTitle: rawWebsiteTitle,
         canonicalUrl: normalizedCanonical,
-        logoUrl: body.logoUrl !== undefined ? body.logoUrl : (body.seo?.logoUrl !== undefined ? body.seo.logoUrl : current.seo?.logoUrl),
+        logoUrl: rawLogo,
+        faviconUrl: rawFavicon,
+        ogImageUrl: rawOgImage,
       },
     };
 
@@ -140,6 +154,7 @@ export async function POST(request: NextRequest) {
 
     try {
       revalidatePath('/', 'layout');
+      revalidatePath('/');
     } catch (revalidateErr) {
       console.warn('revalidatePath notice:', revalidateErr);
     }

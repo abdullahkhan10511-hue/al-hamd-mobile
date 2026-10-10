@@ -4,7 +4,7 @@ import { Providers } from '@/components/Providers';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
-import { getStoreSettings, normalizeCanonicalUrl } from '@/lib/db/settings';
+import { getStoreSettings, normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { StoreSettings } from '@/types/admin';
@@ -30,20 +30,7 @@ async function loadServerSettings(): Promise<StoreSettings> {
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await loadServerSettings();
 
-  // Favicon: authoritative /favicon.ico (do not use website logo or stale uploads)
-  const isDedicatedFavicon = (url?: string | null) => {
-    if (!url || typeof url !== 'string') return false;
-    const trimmed = url.trim();
-    if (!trimmed || trimmed.includes('logo_') || trimmed.includes('favicon_1791116789478_download.jpg')) {
-      return false;
-    }
-    return trimmed.endsWith('.ico') || trimmed.includes('favicon');
-  };
-
-  const customFavicon =
-    (isDedicatedFavicon(settings.faviconUrl) && settings.faviconUrl!.trim()) ||
-    (isDedicatedFavicon(settings.seo?.faviconUrl) && settings.seo!.faviconUrl!.trim()) ||
-    '/favicon.ico';
+  const customFavicon = resolveFaviconUrl(settings.faviconUrl, settings.seo?.faviconUrl);
 
   const defaultOgImage =
     'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop';
@@ -63,7 +50,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const rawSiteName =
     (settings.storeName && typeof settings.storeName === 'string' && settings.storeName.trim()) || '';
-  const siteName = rawSiteName || 'AL-HAMD MOBILE ACCESSORIES';
+  const siteName = rawSiteName || 'AL-HAMD SHOP';
 
   // Primary Website / Browser Title from Admin SEO settings
   const websiteTitle =
@@ -76,9 +63,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const knownSeedTitles = [
     'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories in Pakistan',
     'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
-    'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan',
     'AL-HAMD-SHOP | Mobile Accessories in Pakistan',
-    'AL-HAMD SHOP | Premium Mobile Accessories Online',
   ];
   const rawSearchEngineTitle = settings.seo?.searchEngineTitle?.trim() || '';
   const isSearchTitleStale =
@@ -121,7 +106,7 @@ export async function generateMetadata(): Promise<Metadata> {
           'power banks',
           'wireless chargers',
           'TWS earbuds',
-          'al-hamd mobile accessories',
+          'al-hamd shop',
         ];
 
   return {
@@ -160,12 +145,14 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     icons: {
       icon: [
-        { url: customFavicon, sizes: 'any' },
-        { url: '/icon.png', type: 'image/png', sizes: '192x192' },
+        { url: '/favicon.ico', sizes: 'any' },
+        ...(customFavicon && customFavicon !== '/favicon.ico'
+          ? [{ url: customFavicon, sizes: 'any' }]
+          : []),
       ],
-      shortcut: customFavicon,
+      shortcut: '/favicon.ico',
       apple: [
-        { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+        { url: customFavicon && customFavicon !== '/favicon.ico' ? customFavicon : '/favicon.ico', sizes: '180x180' },
       ],
     },
   };
@@ -178,30 +165,11 @@ export default async function RootLayout({
 }) {
   const settings = await loadServerSettings();
 
-  const isDedicatedFavicon = (url?: string | null) => {
-    if (!url || typeof url !== 'string') return false;
-    const trimmed = url.trim();
-    if (!trimmed || trimmed.includes('logo_') || trimmed.includes('favicon_1791116789478_download.jpg')) {
-      return false;
-    }
-    return trimmed.endsWith('.ico') || trimmed.includes('favicon');
-  };
-
-  const customFavicon =
-    (isDedicatedFavicon(settings.faviconUrl) && settings.faviconUrl!.trim()) ||
-    (isDedicatedFavicon(settings.seo?.faviconUrl) && settings.seo!.faviconUrl!.trim()) ||
-    '/favicon.ico';
+  const customFavicon = resolveFaviconUrl(settings.faviconUrl, settings.seo?.faviconUrl);
 
   const rawSiteName =
     (settings.storeName && typeof settings.storeName === 'string' && settings.storeName.trim()) || '';
-  const siteName =
-    !rawSiteName ||
-    rawSiteName === 'AL-HAMD-SHOP' ||
-    rawSiteName === 'AL-HAMD SHOP' ||
-    rawSiteName === 'AL-HAMD-MOBILE' ||
-    rawSiteName === 'AL·HAMD'
-      ? 'AL-HAMD MOBILE ACCESSORIES'
-      : rawSiteName;
+  const siteName = rawSiteName || 'AL-HAMD SHOP';
 
   const rawLogo =
     (settings.logoUrl && typeof settings.logoUrl === 'string' && settings.logoUrl.trim()) ||
@@ -227,7 +195,7 @@ export default async function RootLayout({
       '@id': `${baseUrl}/#website`,
       name: siteName,
       alternateName: 'AL-HAMD',
-      url: baseUrl,
+      url: `${baseUrl}/`,
     },
     {
       '@context': 'https://schema.org',
@@ -235,7 +203,7 @@ export default async function RootLayout({
       '@id': `${baseUrl}/#organization`,
       name: siteName,
       alternateName: 'AL-HAMD',
-      url: baseUrl,
+      url: `${baseUrl}/`,
       logo: absoluteLogoUrl,
       image: absoluteLogoUrl,
     },
@@ -244,9 +212,6 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full antialiased font-sans" data-scroll-behavior="smooth">
       <head>
-        <link rel="icon" href={customFavicon} sizes="any" />
-        <link rel="icon" href="/icon.png" type="image/png" sizes="192x192" />
-        <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

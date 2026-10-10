@@ -10,6 +10,7 @@ import { Product } from '@/types';
 
 export function NewArrivals() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const loadData = () => {
     const list = getProducts()
@@ -22,11 +23,14 @@ export function NewArrivals() {
       )
       .slice(0, 6);
     setProducts(list);
+    setIsLoaded(true);
   };
 
   useEffect(() => {
     loadData();
-    syncProductsFromApi().then(() => loadData()).catch(() => {});
+    syncProductsFromApi().then(() => loadData()).catch(() => {
+      setIsLoaded(true);
+    });
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -36,6 +40,27 @@ export function NewArrivals() {
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
+
+  if (!isLoaded) {
+    return (
+      <section className="py-16 sm:py-20 bg-neutral-50/50 border-b border-neutral-100 min-h-[420px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-end justify-between mb-8 sm:mb-10">
+            <div>
+              <div className="h-3 w-20 bg-neutral-200/80 rounded-full animate-pulse mb-2" />
+              <div className="h-7 w-40 bg-neutral-200/80 rounded-lg animate-pulse" />
+            </div>
+            <div className="h-4 w-28 bg-neutral-200/60 rounded-full animate-pulse" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 sm:gap-5">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="aspect-[3/4] bg-neutral-200/60 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (products.length === 0) return null;
 

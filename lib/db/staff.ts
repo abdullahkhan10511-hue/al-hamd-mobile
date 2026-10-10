@@ -468,7 +468,7 @@ export async function updateStaffUser(
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Failed to update staff account on server.' };
       }
-    } catch (err: any) {
+    } catch {
       return { success: false, error: 'Network error communicating with staff service.' };
     }
   }
@@ -554,7 +554,7 @@ export async function resetStaffPassword(
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Failed to reset staff password on server.' };
       }
-    } catch (err: any) {
+    } catch {
       return { success: false, error: 'Network error communicating with staff service.' };
     }
   }
@@ -623,7 +623,7 @@ export async function changeAdminSelfPassword(
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Failed to change admin password on server.' };
       }
-    } catch (err: any) {
+    } catch {
       return { success: false, error: 'Network error connecting to password update service.' };
     }
   }
@@ -712,7 +712,7 @@ export async function deleteStaffUser(
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Failed to delete staff account on server.' };
       }
-    } catch (err: any) {
+    } catch {
       return { success: false, error: 'Network error connecting to staff service.' };
     }
   }

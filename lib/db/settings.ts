@@ -44,7 +44,7 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
   const status: Record<string, boolean> = { ...(current.status || {}) };
 
   // Standard platforms
-  STANDARD_SOCIAL_PLATFORMS.forEach(({ platform, defaultUrl }) => {
+  STANDARD_SOCIAL_PLATFORMS.forEach(({ platform }) => {
     // WhatsApp defaults to true; others default to true only if a real non-generic URL is provided
     if (status[platform] === undefined) {
       if (platform === 'whatsapp') {
@@ -107,6 +107,29 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
   };
 }
 
+export function isValidCustomFavicon(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === '/favicon.ico' || trimmed === 'favicon.ico') {
+    return false;
+  }
+  // Exclude website logos or corrupted download files
+  if (trimmed.includes('logo_') || trimmed.includes('favicon_1791116789478_download.jpg')) {
+    return false;
+  }
+  return true;
+}
+
+export function resolveFaviconUrl(
+  primary?: string | null,
+  secondary?: string | null,
+  fallback = '/favicon.ico'
+): string {
+  if (isValidCustomFavicon(primary)) return primary!.trim();
+  if (isValidCustomFavicon(secondary)) return secondary!.trim();
+  return fallback;
+}
+
 export function normalizeCanonicalUrl(url?: string): string {
   if (!url || typeof url !== 'string' || !url.trim()) {
     return 'https://alhamdshop.com';
@@ -161,21 +184,10 @@ export function getStoreSettings(): StoreSettings {
   };
 
   // Ensure official business information fallback
-  if (base.storeName === undefined || base.storeName === null || (!base.storeName.trim() && !base.logoUrl)) {
-    base.storeName = 'AL-HAMD MOBILE ACCESSORIES';
-  }
-
-  if (base.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    base.websiteTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
-  }
-  if (base.seo?.websiteTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan' || base.seo?.websiteTitle === 'AL-HAMD-SHOP | Mobile Accessories in Pakistan') {
-    base.seo.websiteTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
-  }
-  if (base.seo?.metaTitle === 'AL-HAMD SHOP ACCESSORIES | Best Mobile Accessories in Pakistan') {
-    base.seo.metaTitle = `${base.storeName} | Best Mobile Accessories in Pakistan`;
-  }
-  if (base.seo?.searchEngineTitle === 'AL-HAMD SHOP | Premium Mobile Accessories Online') {
-    base.seo.searchEngineTitle = `${base.storeName} | Premium Mobile Accessories Online`;
+  if (base.storeName === undefined || base.storeName === null || !base.storeName.trim()) {
+    base.storeName = 'AL-HAMD SHOP';
+  } else {
+    base.storeName = base.storeName.trim();
   }
 
   // SEO & Branding Defaults and Fallbacks
@@ -192,9 +204,15 @@ export function getStoreSettings(): StoreSettings {
   const searchEngineDescription = base.seo?.searchEngineDescription || metaDescription;
   const ogImageUrl = base.ogImageUrl || base.seo?.ogImageUrl || '';
 
+  const resolvedFavicon = resolveFaviconUrl(
+    base.faviconUrl,
+    base.seo?.faviconUrl || serverSaved?.faviconUrl || serverSaved?.seo?.faviconUrl
+  );
+
   base.websiteTitle = websiteTitle;
   base.canonicalUrl = canonicalUrl;
   base.ogImageUrl = ogImageUrl;
+  base.faviconUrl = resolvedFavicon;
   base.seo = {
     ...base.seo,
     websiteTitle,
@@ -204,7 +222,7 @@ export function getStoreSettings(): StoreSettings {
     metaDescription,
     metaTitle: base.seo?.metaTitle || websiteTitle,
     logoUrl: base.seo?.logoUrl || base.logoUrl || '',
-    faviconUrl: base.seo?.faviconUrl || base.faviconUrl || '/favicon.ico',
+    faviconUrl: resolvedFavicon,
     ogImageUrl,
   };
 
@@ -299,27 +317,31 @@ export async function updateStoreSettings(
   adminEmail = 'admin@alhamd.com'
 ): Promise<StoreSettings> {
   const current = getStoreSettings();
+  const resolvedFavicon = resolveFaviconUrl(
+    settings.faviconUrl,
+    settings.seo?.faviconUrl || current.faviconUrl || current.seo?.faviconUrl
+  );
+
   const updated: StoreSettings = {
     ...current,
     ...settings,
+    storeName: settings.storeName !== undefined ? settings.storeName.trim() : current.storeName,
     websiteTitle: settings.websiteTitle !== undefined ? settings.websiteTitle : (settings.seo?.websiteTitle !== undefined ? settings.seo.websiteTitle : current.websiteTitle),
     canonicalUrl: settings.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.canonicalUrl) : (settings.seo?.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.seo.canonicalUrl) : current.canonicalUrl),
     ogImageUrl: settings.ogImageUrl !== undefined ? settings.ogImageUrl : (settings.seo?.ogImageUrl !== undefined ? settings.seo.ogImageUrl : current.ogImageUrl),
+    faviconUrl: resolvedFavicon,
+    logoUrl: settings.logoUrl !== undefined ? settings.logoUrl : (settings.seo?.logoUrl !== undefined ? settings.seo.logoUrl : current.logoUrl),
     seo: {
       ...current.seo,
       ...(settings.seo || {}),
+      websiteTitle: settings.websiteTitle !== undefined ? settings.websiteTitle : (settings.seo?.websiteTitle !== undefined ? settings.seo.websiteTitle : current.seo?.websiteTitle || current.websiteTitle),
+      canonicalUrl: settings.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.canonicalUrl) : (settings.seo?.canonicalUrl !== undefined ? normalizeCanonicalUrl(settings.seo.canonicalUrl) : current.seo?.canonicalUrl || current.canonicalUrl),
+      ogImageUrl: settings.ogImageUrl !== undefined ? settings.ogImageUrl : (settings.seo?.ogImageUrl !== undefined ? settings.seo.ogImageUrl : current.seo?.ogImageUrl || current.ogImageUrl),
+      logoUrl: settings.logoUrl !== undefined ? settings.logoUrl : (settings.seo?.logoUrl !== undefined ? settings.seo.logoUrl : current.seo?.logoUrl || current.logoUrl),
+      faviconUrl: resolvedFavicon,
     },
     socialLinks: settings.socialLinks ? normalizeSocialLinks({ ...current.socialLinks, ...settings.socialLinks }) : current.socialLinks,
   };
-
-  // Keep seo mirror properties aligned
-  if (updated.seo) {
-    if (settings.websiteTitle) updated.seo.websiteTitle = settings.websiteTitle;
-    if (settings.canonicalUrl) updated.seo.canonicalUrl = normalizeCanonicalUrl(settings.canonicalUrl);
-    if (settings.ogImageUrl !== undefined) updated.seo.ogImageUrl = settings.ogImageUrl;
-    if (settings.logoUrl !== undefined) updated.seo.logoUrl = settings.logoUrl;
-    if (settings.faviconUrl !== undefined) updated.seo.faviconUrl = settings.faviconUrl;
-  }
 
   setLocal(SETTINGS_KEY, updated);
 
@@ -357,7 +379,7 @@ export async function updateStoreSettings(
         setDoc(docRef, updated, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 1500)),
       ]);
-    } catch (e) {
+    } catch {
       // Offline or permission restriction; local persistence is already guaranteed
     }
   }

@@ -121,7 +121,7 @@ export async function persistCollection<T>(collectionName: string, items: T[], s
         setDoc(docRef, { items, updatedAt: new Date().toISOString() }, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 1500)),
       ]);
-    } catch (e) {
+    } catch {
       // Offline or permission restriction; local persistence is already guaranteed
     }
   }
@@ -162,7 +162,7 @@ export function subscribeToKey<T>(key: string, callback: (value: T) => void): ()
         const parsed = JSON.parse(e.newValue);
         memoryCache[key] = parsed;
         callback(parsed);
-      } catch (err) {}
+      } catch {}
     }
   });
 

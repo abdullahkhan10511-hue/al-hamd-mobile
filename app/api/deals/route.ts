@@ -32,11 +32,18 @@ export async function GET(request: NextRequest) {
       deals = deals.filter((d: any) => d && d.showOnHomepage);
     }
 
-    return NextResponse.json({
-      success: true,
-      deals,
-      count: deals.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        deals,
+        count: deals.length,
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('Error fetching deals:', error);
     return NextResponse.json(

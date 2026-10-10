@@ -34,22 +34,46 @@ export const seedHomepageVideos: HomepageVideo[] = [
 ];
 
 let hasSyncedHomepageVideosFromApi = false;
-export async function syncHomepageVideosFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
+export async function syncHomepageVideosFromApi(): Promise<HomepageVideo[]> {
+  if (typeof window === 'undefined') return [];
   try {
-    const res = await fetch('/api/admin/homepage-videos', { cache: 'no-store' });
+    // 1. Fetch public dedicated endpoint first
+    let res = await fetch('/api/homepage-videos', { cache: 'no-store' });
+    // Fallback to admin endpoint if public route returns non-OK
+    if (!res.ok) {
+      res = await fetch('/api/admin/homepage-videos', { cache: 'no-store' });
+    }
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.videos) && data.videos.length > 0) {
-        await persistCollection(COLLECTION_KEY, data.videos);
+      const list: HomepageVideo[] = Array.isArray(data.videos)
+        ? data.videos
+        : Array.isArray(data.items)
+        ? data.items
+        : [];
+
+      if (data.success && list.length > 0) {
+        // Sort before persisting
+        list.sort((a, b) => {
+          const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
+          if (orderDiff !== 0) return orderDiff;
+          const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return timeB - timeA;
+        });
+
+        await persistCollection(COLLECTION_KEY, list);
         window.dispatchEvent(
           new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: data.videos },
+            detail: { key: COLLECTION_KEY, value: list },
           })
         );
+        return list;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Failed to sync homepage videos from API:', err);
+  }
+  return [];
 }
 
 /**
@@ -61,7 +85,13 @@ export function getHomepageVideos(): HomepageVideo[] {
     syncHomepageVideosFromApi().catch(() => {});
   }
   const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, seedHomepageVideos);
-  return items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  return items.sort((a, b) => {
+    const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
+    if (orderDiff !== 0) return orderDiff;
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return timeB - timeA;
+  });
 }
 
 /**
@@ -154,6 +184,14 @@ export async function toggleHomepageVideoStatus(
   await persistCollection(COLLECTION_KEY, current);
   await syncWithServer(current);
 
+  try {
+    await fetch('/api/admin/homepage-videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', id, updates: { active } }),
+    });
+  } catch {}
+
   await logActivity({
     adminEmail,
     action: active ? 'Activated Homepage Video' : 'Deactivated Homepage Video',
@@ -193,6 +231,14 @@ export async function reorderHomepageVideos(
   await persistCollection(COLLECTION_KEY, reordered);
   await syncWithServer(reordered);
 
+  try {
+    await fetch('/api/admin/homepage-videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reorder', orderedIds }),
+    });
+  } catch {}
+
   await logActivity({
     adminEmail,
     action: 'Reordered Homepage Videos',
@@ -221,6 +267,14 @@ export async function deleteHomepageVideo(
 
   await persistCollection(COLLECTION_KEY, filtered);
   await syncWithServer(filtered);
+
+  try {
+    await fetch('/api/admin/homepage-videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id }),
+    });
+  } catch {}
 
   // If local uploaded video, call server cleanup
   if (target.url && target.url.startsWith('/uploads/videos/')) {

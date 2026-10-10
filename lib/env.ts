@@ -20,6 +20,7 @@ export function allowDevMockFallback(): boolean {
   }
   // If running on server with DB configured, do not use mock fallback
   if (typeof window === 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { isDbConfigured } = require('./db/mysql');
     if (isDbConfigured()) return false;
   }

@@ -39,7 +39,7 @@ export async function getAllHomepageVideosFromDb(): Promise<HomepageVideo[]> {
   }
 
   const rows = await query<HomepageVideoRow[]>(
-    'SELECT * FROM homepage_videos ORDER BY display_order ASC, created_at ASC'
+    'SELECT * FROM homepage_videos ORDER BY display_order ASC, updated_at DESC, created_at ASC'
   );
 
   return rows.map(mapRowToVideo);
@@ -51,7 +51,7 @@ export async function getActiveHomepageVideosFromDb(): Promise<HomepageVideo[]> 
   }
 
   const rows = await query<HomepageVideoRow[]>(
-    'SELECT * FROM homepage_videos WHERE active = 1 ORDER BY display_order ASC'
+    'SELECT * FROM homepage_videos WHERE active = 1 ORDER BY display_order ASC, updated_at DESC, created_at ASC'
   );
 
   return rows.map(mapRowToVideo);

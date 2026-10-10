@@ -66,6 +66,21 @@ export default function HomepageVideosPage() {
   useEffect(() => {
     loadData();
 
+    // Fetch authoritative list directly from API on mount
+    fetch('/api/admin/homepage-videos', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data.items)
+          ? data.items
+          : Array.isArray(data.videos)
+          ? data.videos
+          : [];
+        if (data.success && list.length > 0) {
+          setVideos(list);
+        }
+      })
+      .catch(() => {});
+
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);

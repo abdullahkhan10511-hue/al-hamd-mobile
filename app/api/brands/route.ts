@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       { success: true, count: brands.length, brands },
       {
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
         },
       }
     );

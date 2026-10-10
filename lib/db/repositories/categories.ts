@@ -4,6 +4,11 @@ import { RowDataPacket } from 'mysql2/promise';
 import { logActivity } from '@/lib/db/repositories/activity';
 import { deduplicateCategoriesById } from '@/lib/utils';
 import { ensureSafeMediaUrl } from '../serverMedia';
+import { serverCache } from '@/lib/cache/memoryCache';
+
+export function invalidateCategoryCache(): void {
+  serverCache.invalidate('categories');
+}
 
 interface CategoryRow extends RowDataPacket {
   id: string;
@@ -39,11 +44,12 @@ export async function getAllCategoriesFromDb(): Promise<Category[]> {
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<CategoryRow[]>(
-    'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
-  );
-
-  return deduplicateCategoriesById(rows.map(mapRowToCategory));
+  return serverCache.getOrSet('categories:all', async () => {
+    const rows = await query<CategoryRow[]>(
+      'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
+    );
+    return deduplicateCategoriesById(rows.map(mapRowToCategory));
+  }, 60000);
 }
 
 export async function getCategoryByIdFromDb(id: string): Promise<Category | null> {
@@ -51,13 +57,15 @@ export async function getCategoryByIdFromDb(id: string): Promise<Category | null
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<CategoryRow[]>(
-    'SELECT * FROM categories WHERE id = ? LIMIT 1',
-    [id]
-  );
+  return serverCache.getOrSet(`categories:id:${id}`, async () => {
+    const rows = await query<CategoryRow[]>(
+      'SELECT * FROM categories WHERE id = ? LIMIT 1',
+      [id]
+    );
 
-  if (!rows || rows.length === 0) return null;
-  return mapRowToCategory(rows[0]);
+    if (!rows || rows.length === 0) return null;
+    return mapRowToCategory(rows[0]);
+  }, 60000);
 }
 
 export async function getCategoryBySlugFromDb(slug: string): Promise<Category | null> {
@@ -65,13 +73,16 @@ export async function getCategoryBySlugFromDb(slug: string): Promise<Category | 
     throw new Error('Database is not configured.');
   }
 
-  const rows = await query<CategoryRow[]>(
-    'SELECT * FROM categories WHERE slug = ? LIMIT 1',
-    [slug.trim().toLowerCase()]
-  );
+  const cleanSlug = slug.trim().toLowerCase();
+  return serverCache.getOrSet(`categories:slug:${cleanSlug}`, async () => {
+    const rows = await query<CategoryRow[]>(
+      'SELECT * FROM categories WHERE slug = ? LIMIT 1',
+      [cleanSlug]
+    );
 
-  if (!rows || rows.length === 0) return null;
-  return mapRowToCategory(rows[0]);
+    if (!rows || rows.length === 0) return null;
+    return mapRowToCategory(rows[0]);
+  }, 60000);
 }
 
 export async function insertCategoryToDb(
@@ -102,6 +113,7 @@ export async function insertCategoryToDb(
     details: `Slug: ${slug} (ID: ${id})`,
   });
 
+  invalidateCategoryCache();
   return (await getCategoryByIdFromDb(id))!;
 }
 
@@ -140,6 +152,7 @@ export async function updateCategoryInDb(
     details: `Updated Category details for slug: ${slug}`,
   });
 
+  invalidateCategoryCache();
   return (await getCategoryByIdFromDb(id))!;
 }
 
@@ -159,5 +172,6 @@ export async function deleteCategoryInDb(
     details: `Permanently removed category (Slug: ${existing.slug})`,
   });
 
+  invalidateCategoryCache();
   return true;
 }

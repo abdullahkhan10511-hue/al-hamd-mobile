@@ -34,7 +34,7 @@ export async function GET() {
       { success: true, count: uniqueCategories.length, categories: uniqueCategories },
       {
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
         },
       }
     );

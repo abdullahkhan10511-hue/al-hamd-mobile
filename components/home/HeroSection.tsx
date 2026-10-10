@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX, ChevronDown, Sparkles } from 'lucide-react';
-import { getActiveHomepageVideos } from '@/lib/db/homepageVideos';
+import { getActiveHomepageVideos, syncHomepageVideosFromApi } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export function HeroSection() {
@@ -16,24 +16,54 @@ export function HeroSection() {
   const videoRefA = useRef<HTMLVideoElement | null>(null);
   const videoRefB = useRef<HTMLVideoElement | null>(null);
   const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
+  const [isSlowOrDataSaver, setIsSlowOrDataSaver] = useState(false);
 
-  const loadData = () => {
-    const list = getActiveHomepageVideos();
-    setVideos(list);
-    setHasError(false);
-    if (list.length > 0 && currentIndex >= list.length) {
-      setCurrentIndex(0);
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      const conn = (navigator as any).connection;
+      if (conn?.saveData || conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g') {
+        setIsSlowOrDataSaver(true);
+      }
+    }
+  }, []);
+
+  const loadData = (customList?: HomepageVideo[]) => {
+    const list = customList ? customList.filter((v) => v.active) : getActiveHomepageVideos();
+    if (list.length > 0) {
+      setVideos(list);
+      setHasError(false);
+      if (currentIndex >= list.length) {
+        setCurrentIndex(0);
+      }
+    } else {
+      setVideos([]);
+      setHasError(true);
     }
   };
 
   useEffect(() => {
+    // 1. Initial load from client storage immediately
     loadData();
 
+    // 2. Fetch fresh active videos asynchronously on mount
+    syncHomepageVideosFromApi().then((freshList) => {
+      if (Array.isArray(freshList) && freshList.length > 0) {
+        loadData(freshList);
+      }
+    });
+
+    // 3. Listen for broadcast data updates
     const handleUpdate = (e: Event) => {
-      const key = (e as CustomEvent)?.detail?.key;
+      const custom = e as CustomEvent;
+      const key = custom?.detail?.key;
       if (key && key !== 'homepage_videos') return;
+      if (Array.isArray(custom?.detail?.value)) {
+        loadData(custom.detail.value);
+        return;
+      }
       loadData();
     };
+
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
@@ -64,7 +94,8 @@ export function HeroSection() {
   const handleVideoError = () => {
     console.warn(`Video failed to load: ${activeVideo?.url}`);
     if (videos.length > 1) {
-      // Advance to next video
+      // Remove failed video from active state playlist so we don't loop back to it
+      setVideos((prev) => prev.filter((v) => v.id !== activeVideo?.id));
       handleVideoEnded();
     } else {
       setHasError(true);
@@ -174,10 +205,11 @@ export function HeroSection() {
         ref={videoRefA}
         key={`video-slot-a-${activeSlot === 'A' ? activeVideo.id : nextVideo?.id}`}
         src={activeSlot === 'A' ? activeVideo.url : nextVideo?.url}
-        autoPlay
+        autoPlay={!isSlowOrDataSaver}
         muted={isMuted}
         playsInline
-        preload="auto"
+        poster="https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=1920&auto=format&fit=crop"
+        preload={activeSlot === 'A' ? (isSlowOrDataSaver ? 'none' : 'metadata') : 'none'}
         onEnded={handleVideoEnded}
         onError={handleVideoError}
         onLoadedData={() => setIsVideoLoaded(true)}
@@ -192,10 +224,11 @@ export function HeroSection() {
           ref={videoRefB}
           key={`video-slot-b-${activeSlot === 'B' ? activeVideo.id : nextVideo?.id}`}
           src={activeSlot === 'B' ? activeVideo.url : nextVideo?.url}
-          autoPlay
+          autoPlay={!isSlowOrDataSaver}
           muted={isMuted}
           playsInline
-          preload="auto"
+          poster="https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=1920&auto=format&fit=crop"
+          preload={activeSlot === 'B' ? (isSlowOrDataSaver ? 'none' : 'metadata') : 'none'}
           onEnded={handleVideoEnded}
           onError={handleVideoError}
           onLoadedData={() => setIsVideoLoaded(true)}

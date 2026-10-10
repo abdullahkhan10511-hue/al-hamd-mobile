@@ -59,7 +59,7 @@ export class UnconfiguredCardGateway implements PaymentGateway {
     supportedCurrencies: ['PKR'],
   };
 
-  async initiatePayment(order: Order): Promise<PaymentInitiationResult> {
+  async initiatePayment(_order: Order): Promise<PaymentInitiationResult> {
     return {
       success: false,
       error:
