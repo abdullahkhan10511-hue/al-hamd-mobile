@@ -1202,7 +1202,7 @@ export default function AdminSettingsPage() {
                     <span className="w-3.5 h-3.5 rounded-full bg-neutral-900 inline-block shrink-0"></span>
                   )}
                   <span className="text-xs text-neutral-800 font-medium truncate">
-                    {settings.seo?.metaTitle || settings.storeName || 'AL-HAMD MOBILE ACCESSORIES'}
+                    {settings.seo?.metaTitle || settings.storeName || 'AL-HAMD SHOP'}
                   </span>
                   <X className="w-3 h-3 text-neutral-400 ml-auto shrink-0" />
                 </div>

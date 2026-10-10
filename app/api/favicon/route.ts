@@ -41,7 +41,17 @@ export async function GET(_request: NextRequest) {
       if (media && fs.existsSync(media.absolutePath)) {
         const buffer = await fs.promises.readFile(media.absolutePath);
         const ext = path.extname(media.absolutePath).toLowerCase();
-        const contentType = MIME_MAP[ext] || 'image/png';
+        let contentType = MIME_MAP[ext] || 'image/png';
+
+        if (buffer.length >= 4 && buffer[0] === 0 && buffer[1] === 0 && buffer[2] === 1 && buffer[3] === 0) {
+          contentType = 'image/x-icon';
+        } else if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+          contentType = 'image/png';
+        } else if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+          contentType = 'image/jpeg';
+        } else if (buffer.length >= 4 && buffer.subarray(0, 4).toString() === 'RIFF') {
+          contentType = 'image/webp';
+        }
 
         return new NextResponse(buffer, {
           status: 200,

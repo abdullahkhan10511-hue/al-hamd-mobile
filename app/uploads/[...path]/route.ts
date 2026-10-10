@@ -35,7 +35,28 @@ export async function GET(
 
     const { absolutePath, size } = resolved;
     const ext = path.extname(absolutePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    let contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+    // Verify binary magic numbers for images to ensure content type matches payload
+    if (ext === '.ico' || ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.webp') {
+      try {
+        const headerBuf = Buffer.alloc(12);
+        const fd = await fs.promises.open(absolutePath, 'r');
+        await fd.read(headerBuf, 0, 12, 0);
+        await fd.close();
+        if (headerBuf[0] === 0 && headerBuf[1] === 0 && headerBuf[2] === 1 && headerBuf[3] === 0) {
+          contentType = 'image/x-icon';
+        } else if (headerBuf[0] === 0x89 && headerBuf[1] === 0x50 && headerBuf[2] === 0x4e && headerBuf[3] === 0x47) {
+          contentType = 'image/png';
+        } else if (headerBuf[0] === 0xff && headerBuf[1] === 0xd8 && headerBuf[2] === 0xff) {
+          contentType = 'image/jpeg';
+        } else if (headerBuf.subarray(0, 4).toString() === 'RIFF') {
+          contentType = 'image/webp';
+        }
+      } catch {
+        // Fall back to extension-based contentType
+      }
+    }
 
     const rangeHeader = request.headers.get('range');
 

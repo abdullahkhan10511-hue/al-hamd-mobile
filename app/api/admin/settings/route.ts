@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
     const rawWebsiteTitle = body.websiteTitle !== undefined ? body.websiteTitle : (body.seo?.websiteTitle !== undefined ? body.seo.websiteTitle : current.websiteTitle);
     const rawOgImage = body.ogImageUrl !== undefined ? body.ogImageUrl : (body.seo?.ogImageUrl !== undefined ? body.seo.ogImageUrl : current.ogImageUrl);
     const rawStoreName = body.storeName !== undefined ? body.storeName.trim() : current.storeName;
+    const rawSearchTitle = body.seo?.searchEngineTitle !== undefined ? body.seo.searchEngineTitle : (body.searchEngineTitle !== undefined ? body.searchEngineTitle : current.seo?.searchEngineTitle);
+    const rawSearchDesc = body.seo?.searchEngineDescription !== undefined ? body.seo.searchEngineDescription : (body.searchEngineDescription !== undefined ? body.searchEngineDescription : current.seo?.searchEngineDescription);
+    const rawMetaDesc = body.seo?.metaDescription !== undefined ? body.seo.metaDescription : (body.metaDescription !== undefined ? body.metaDescription : current.seo?.metaDescription);
 
     const updated: StoreSettings = {
       ...current,
@@ -147,6 +150,10 @@ export async function POST(request: NextRequest) {
         logoUrl: rawLogo,
         faviconUrl: rawFavicon,
         ogImageUrl: rawOgImage,
+        searchEngineTitle: rawSearchTitle,
+        searchEngineDescription: rawSearchDesc,
+        metaTitle: rawWebsiteTitle,
+        metaDescription: rawMetaDesc,
       },
     };
 

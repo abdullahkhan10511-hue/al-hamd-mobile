@@ -170,7 +170,7 @@ export function HeroSection() {
         <div className="relative z-10 text-center space-y-3 px-4 max-w-lg mx-auto">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-white/90 text-xs font-semibold tracking-widest uppercase">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>AL-HAMD MOBILE ACCESSORIES</span>
+            <span>AL-HAMD SHOP</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight uppercase">
             Curated Tech Essentials

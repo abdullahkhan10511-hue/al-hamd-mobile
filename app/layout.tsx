@@ -57,42 +57,50 @@ export async function generateMetadata(): Promise<Metadata> {
     (settings.websiteTitle && settings.websiteTitle.trim()) ||
     (settings.seo?.websiteTitle && settings.seo.websiteTitle.trim()) ||
     (settings.seo?.metaTitle && settings.seo.metaTitle.trim()) ||
-    `${siteName} | Mobile Accessories in Pakistan`;
+    `${siteName} | Mobile Accessories Pakistan`;
 
   // Search Engine Title Override (only used if intentionally set and not a stale default)
   const knownSeedTitles = [
     'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories in Pakistan',
     'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
     'AL-HAMD-SHOP | Mobile Accessories in Pakistan',
+    'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
+    'AL-HAMD SHOP | Quality Mobile Accessories Pakistan',
+    'AL-HAMD SHOP | Mobile Accessories in Pakistan',
   ];
   const rawSearchEngineTitle = settings.seo?.searchEngineTitle?.trim() || '';
   const isSearchTitleStale =
     !rawSearchEngineTitle ||
     rawSearchEngineTitle === websiteTitle ||
-    (websiteTitle !== `${siteName} | Mobile Accessories in Pakistan` &&
-      knownSeedTitles.includes(rawSearchEngineTitle));
+    knownSeedTitles.includes(rawSearchEngineTitle);
 
   const effectiveTitle = isSearchTitleStale ? websiteTitle : rawSearchEngineTitle;
 
   // Primary Meta Description from Admin SEO settings
   const primaryMetaDescription =
     (settings.seo?.metaDescription && settings.seo.metaDescription.trim()) ||
-    'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
+    ((settings as any).metaDescription && typeof (settings as any).metaDescription === 'string' && (settings as any).metaDescription.trim()) ||
+    'Shop mobile accessories at AL-HAMD SHOP. Explore chargers, cables, cases, earbuds, power banks and more, with reliable delivery across Pakistan.';
 
   // Search Engine Description Override (used only when intentionally populated, never silently overriding newer metaDescription)
   const knownSeedDescriptions = [
     'Find authentic chargers, cables, cases, and earbuds with express delivery across Pakistan.',
     'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.',
+    'Shop quality smartphone cases, screen protectors, fast chargers, power banks, earbuds, and mobile accessories in Pakistan.',
+    'Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.',
   ];
   const rawSearchEngineDesc = settings.seo?.searchEngineDescription?.trim() || '';
   const isSearchDescStale =
     !rawSearchEngineDesc ||
     rawSearchEngineDesc === primaryMetaDescription ||
-    (primaryMetaDescription &&
-      !knownSeedDescriptions.includes(primaryMetaDescription) &&
-      knownSeedDescriptions.includes(rawSearchEngineDesc));
+    knownSeedDescriptions.includes(rawSearchEngineDesc);
 
   const effectiveDescription = isSearchDescStale ? primaryMetaDescription : rawSearchEngineDesc;
+
+  const baseUrl = canonicalUrl.replace(/\/+$/, '');
+  const absoluteOgImage = ogImage.startsWith('http')
+    ? ogImage
+    : `${baseUrl}${ogImage.startsWith('/') ? '' : '/'}${ogImage}`;
 
   const keywords =
     Array.isArray(settings.seo?.keywords) && settings.seo.keywords.length > 0
@@ -128,7 +136,7 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName,
       images: [
         {
-          url: ogImage,
+          url: absoluteOgImage,
           width: 1200,
           height: 630,
           alt: siteName,
@@ -141,18 +149,28 @@ export async function generateMetadata(): Promise<Metadata> {
       card: 'summary_large_image',
       title: effectiveTitle,
       description: effectiveDescription,
-      images: [ogImage],
+      images: [absoluteOgImage],
     },
     icons: {
       icon: [
-        { url: '/favicon.ico', sizes: 'any' },
         ...(customFavicon && customFavicon !== '/favicon.ico'
-          ? [{ url: customFavicon, sizes: 'any' }]
+          ? [
+              {
+                url: customFavicon,
+                sizes: customFavicon.endsWith('.ico') ? 'any' : '192x192',
+                type: customFavicon.endsWith('.ico') ? 'image/x-icon' : 'image/png',
+              },
+            ]
           : []),
+        { url: '/favicon.ico', sizes: 'any', type: 'image/x-icon' },
       ],
-      shortcut: '/favicon.ico',
+      shortcut: customFavicon || '/favicon.ico',
       apple: [
-        { url: customFavicon && customFavicon !== '/favicon.ico' ? customFavicon : '/favicon.ico', sizes: '180x180' },
+        {
+          url: customFavicon && customFavicon !== '/favicon.ico' ? customFavicon : '/apple-icon.png',
+          sizes: '180x180',
+          type: 'image/png',
+        },
       ],
     },
   };
@@ -185,7 +203,7 @@ export default async function RootLayout({
 
   const absoluteLogoUrl = rawLogo
     ? (rawLogo.startsWith('http') ? rawLogo : `${baseUrl}${rawLogo.startsWith('/') ? '' : '/'}${rawLogo}`)
-    : (rawLogo || `${baseUrl}/favicon.ico`);
+    : `${baseUrl}/icon.png`;
 
   // WebSite and Organization / OnlineStore JSON-LD Structured Data
   const structuredData = [

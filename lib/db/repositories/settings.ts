@@ -160,7 +160,7 @@ export async function getStoreSettingsFromDb(): Promise<StoreSettings> {
     const rawStoreName = r.store_name !== undefined && r.store_name !== null ? r.store_name.trim() : '';
     const storeName = rawStoreName || 'AL-HAMD SHOP';
 
-    const websiteTitle = r.website_title || r.seo_meta_title || `${storeName} | Quality Mobile Accessories Pakistan`;
+    const websiteTitle = r.website_title || r.seo_meta_title || `${storeName} | Mobile Accessories Pakistan`;
     const canonicalUrl = r.canonical_url || 'https://alhamdshop.com';
     const ogImageUrl = r.og_image_url || undefined;
     const searchEngineTitle = r.search_engine_title || websiteTitle;

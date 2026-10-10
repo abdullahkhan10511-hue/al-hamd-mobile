@@ -91,18 +91,24 @@ export default function AdminSeoSettingsPage() {
 
   function populateForm(s: StoreSettings) {
     const rawSiteName = s.storeName || 'AL-HAMD SHOP';
-    const rawWebsiteTitle = s.websiteTitle || s.seo?.websiteTitle || s.seo?.metaTitle || `${rawSiteName} | Mobile Accessories in Pakistan`;
-    const rawMetaDesc = s.seo?.metaDescription || 'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
+    const rawWebsiteTitle = s.websiteTitle || s.seo?.websiteTitle || s.seo?.metaTitle || `${rawSiteName} | Mobile Accessories Pakistan`;
+    const rawMetaDesc = s.seo?.metaDescription || 'Shop mobile accessories at AL-HAMD SHOP. Explore chargers, cables, cases, earbuds, power banks and more, with reliable delivery across Pakistan.';
     
     // Stale seed/legacy default values
     const knownSeedTitles = [
       'AL-HAMD MOBILE ACCESSORIES | Premium Mobile Accessories in Pakistan',
       'AL-HAMD MOBILE ACCESSORIES | Mobile Accessories in Pakistan',
+      'AL-HAMD-SHOP | Mobile Accessories in Pakistan',
+      'AL-HAMD SHOP ACCESSORIES | Quality Mobile Accessories Pakistan',
+      'AL-HAMD SHOP | Quality Mobile Accessories Pakistan',
+      'AL-HAMD SHOP | Mobile Accessories in Pakistan',
     ];
 
     const knownSeedDescriptions = [
       'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.',
       'Find authentic chargers, cables, cases, and earbuds with express delivery across Pakistan.',
+      'Shop quality smartphone cases, screen protectors, fast chargers, power banks, earbuds, and mobile accessories in Pakistan.',
+      'Shop premier smartphone cases, screen protectors, fast chargers, power banks, and audio accessories nationwide in Pakistan.',
     ];
 
     // Only pre-fill override fields if they are explicitly different from primary title/description and not stale seed defaults
@@ -469,7 +475,7 @@ export default function AdminSeoSettingsPage() {
                 type="text"
                 value={websiteTitle}
                 onChange={(e) => setWebsiteTitle(e.target.value)}
-                placeholder="AL-HAMD SHOP | Mobile Accessories in Pakistan"
+                placeholder="AL-HAMD SHOP | Mobile Accessories Pakistan"
                 className="w-full px-3.5 py-2.5 bg-neutral-50/70 border border-neutral-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-normal text-neutral-900 placeholder:text-neutral-400"
               />
               <p className="text-[11px] text-neutral-500">
@@ -508,7 +514,7 @@ export default function AdminSeoSettingsPage() {
                 rows={3}
                 value={metaDescription}
                 onChange={(e) => setMetaDescription(e.target.value)}
-                placeholder="Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more."
+                placeholder="Shop mobile accessories at AL-HAMD SHOP. Explore chargers, cables, cases, earbuds, power banks and more, with reliable delivery across Pakistan."
                 className="w-full px-3.5 py-2.5 bg-neutral-50/70 border border-neutral-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-normal text-neutral-900 placeholder:text-neutral-400 resize-y"
               />
               <p className="text-[11px] text-neutral-500">

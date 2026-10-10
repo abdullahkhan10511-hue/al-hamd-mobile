@@ -113,8 +113,8 @@ export function isValidCustomFavicon(url?: string | null): boolean {
   if (!trimmed || trimmed === '/favicon.ico' || trimmed === 'favicon.ico') {
     return false;
   }
-  // Exclude website logos or corrupted download files
-  if (trimmed.includes('logo_') || trimmed.includes('favicon_1791116789478_download.jpg')) {
+  // Exclude corrupted test download files
+  if (trimmed.includes('favicon_1791116789478_download.jpg')) {
     return false;
   }
   return true;
@@ -195,11 +195,11 @@ export function getStoreSettings(): StoreSettings {
     base.websiteTitle ||
     base.seo?.websiteTitle ||
     base.seo?.metaTitle ||
-    `${base.storeName} | Mobile Accessories in Pakistan`;
+    `${base.storeName} | Mobile Accessories Pakistan`;
   const canonicalUrl = normalizeCanonicalUrl(base.canonicalUrl || base.seo?.canonicalUrl || 'https://alhamdshop.com');
   const metaDescription =
     base.seo?.metaDescription ||
-    'Shop quality mobile accessories in Pakistan including phone cases, screen protectors, chargers, cables, power banks, earbuds and more.';
+    'Shop mobile accessories at AL-HAMD SHOP. Explore chargers, cables, cases, earbuds, power banks and more, with reliable delivery across Pakistan.';
   const searchEngineTitle = base.seo?.searchEngineTitle || websiteTitle;
   const searchEngineDescription = base.seo?.searchEngineDescription || metaDescription;
   const ogImageUrl = base.ogImageUrl || base.seo?.ogImageUrl || '';
