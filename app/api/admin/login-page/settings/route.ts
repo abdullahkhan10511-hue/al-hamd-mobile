@@ -59,11 +59,12 @@ export async function GET() {
   }
 }
 
+import { getAdminSession } from '@/lib/db/adminAuth';
+
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    const session = getAdminSession(request);
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify settings.' },
         { status: 401 }

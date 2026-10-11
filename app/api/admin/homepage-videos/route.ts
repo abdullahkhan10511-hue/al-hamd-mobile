@@ -8,37 +8,17 @@ import {
 } from '@/lib/db/repositories/homepageVideos';
 import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
+import { getAdminSession } from '@/lib/db/adminAuth';
 
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (!cookieVal) return null;
-
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
-      }
-    }
+export async function GET(request: NextRequest) {
+  const session = getAdminSession(request);
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Admin session required.' },
+      { status: 401 }
+    );
   }
 
-  return null;
-}
-
-export async function GET() {
   try {
     let items: HomepageVideo[] = [];
 
@@ -72,9 +52,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    const session = getAdminSession(request);
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify homepage videos.' },
         { status: 401 }

@@ -125,8 +125,11 @@ export async function testConnection(): Promise<{ connected: boolean; error?: st
   try {
     const p = getPool();
     const connection = await p.getConnection();
-    await connection.ping();
-    connection.release();
+    try {
+      await connection.ping();
+    } finally {
+      connection.release();
+    }
     return { connected: true };
   } catch (err: any) {
     return {

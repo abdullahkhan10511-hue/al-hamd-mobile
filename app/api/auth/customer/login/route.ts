@@ -9,6 +9,8 @@ const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_ADMIN_COOKIE = 'admin_session';
 
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+
 export async function POST(request: NextRequest) {
   let identifier = '';
   try {
@@ -30,6 +32,19 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedIdentifier = identifier.toLowerCase();
+
+    // Brute-force rate limiting: 10 attempts per minute per IP + identifier
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`customer_login_${ip}_${normalizedIdentifier}`, 10, 60000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many login attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        { status: 429 }
+      );
+    }
 
     // 1. Check if user is an Administrator or Staff member first (only if format could be an email)
     if (normalizedIdentifier.includes('@')) {

@@ -7,12 +7,27 @@ import { StaffUser } from '@/types/admin';
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
     const normalizedEmail = (email || '').trim().toLowerCase();
+
+    // Brute-force rate limiting: 8 attempts per minute per IP + email
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`admin_login_${ip}_${normalizedEmail}`, 8, 60000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many login attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        { status: 429 }
+      );
+    }
 
     // Validate inputs
     if (!normalizedEmail || !normalizedEmail.includes('@') || !password || typeof password !== 'string') {

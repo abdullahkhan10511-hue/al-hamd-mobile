@@ -93,7 +93,15 @@ async function writeServerSettings(settings: StoreSettings): Promise<void> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const session = getAdminSession(request);
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Admin session required.' },
+      { status: 401 }
+    );
+  }
+
   const settings = await readServerSettings();
   return NextResponse.json(
     { success: true, settings },
@@ -107,10 +115,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request) || getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
+    const session = getAdminSession(request);
 
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to update settings.' },
         { status: 401 }

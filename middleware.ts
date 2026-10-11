@@ -5,14 +5,90 @@ const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
 const ADMIN_FALLBACK_COOKIE = 'admin_session';
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 
+function parseValidAdminSession(raw: string | undefined): boolean {
+  if (!raw) return false;
+  let curr = raw.trim();
+  for (let i = 0; i < 3; i++) {
+    try {
+      const session = JSON.parse(curr);
+      if (
+        session &&
+        typeof session === 'object' &&
+        typeof session.email === 'string' &&
+        session.email.includes('@') &&
+        session.status !== 'inactive'
+      ) {
+        const notExpired = !session.expiresAt || typeof session.expiresAt !== 'number' || session.expiresAt > Date.now();
+        const roleNormalized = (session.role || '').toUpperCase();
+        if (
+          notExpired &&
+          roleNormalized !== 'CUSTOMER' &&
+          (session.isOwner ||
+            roleNormalized === 'ADMIN' ||
+            roleNormalized === 'SUPER_ADMIN' ||
+            roleNormalized === 'OWNER' ||
+            roleNormalized === 'STAFF' ||
+            roleNormalized === 'MANAGER')
+        ) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      try {
+        const decoded = decodeURIComponent(curr);
+        if (decoded === curr) break;
+        curr = decoded;
+      } catch {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
+function parseValidCustomerSession(raw: string | undefined): boolean {
+  if (!raw) return false;
+  let curr = raw.trim();
+  for (let i = 0; i < 3; i++) {
+    try {
+      const customerSession = JSON.parse(curr);
+      if (
+        customerSession &&
+        typeof customerSession === 'object' &&
+        (customerSession.email || customerSession.shopName) &&
+        customerSession.status !== 'inactive'
+      ) {
+        const notExpired =
+          !customerSession.expiresAt ||
+          typeof customerSession.expiresAt !== 'number' ||
+          customerSession.expiresAt > Date.now();
+        if (notExpired) {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      try {
+        const decoded = decodeURIComponent(curr);
+        if (decoded === curr) break;
+        curr = decoded;
+      } catch {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Next.js Edge Middleware for Server-Side Route Protection & Perimeter RBAC
  * 
  * Enforces:
- * 1. Admin route protection (/admin, /admin/*) - Accessible ONLY to authenticated Staff/Admin sessions.
+ * 1. Admin route protection (/admin, /admin/*) - Accessible ONLY to verified authenticated Staff/Admin sessions.
  * 2. Cross-role isolation - Customer sessions are strictly barred from Admin routes.
  * 3. Customer account protection (/account, /account/*) - Requires authenticated customer session.
- * 4. Preservation of intended redirect target on login.
+ * 4. Token validation - Rejects arbitrary, unverified Bearer tokens or non-session cookies.
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -26,57 +102,24 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // --- Read Admin Session Cookie ---
+  // --- Validate Admin Session (Cookies and authorized Bearer tokens) ---
   const adminCookieValue =
     request.cookies.get(ADMIN_COOKIE_NAME)?.value ||
     request.cookies.get(ADMIN_FALLBACK_COOKIE)?.value;
 
-  let isAdminAuthenticated = false;
+  let isAdminAuthenticated = parseValidAdminSession(adminCookieValue);
 
-  if (adminCookieValue) {
-    try {
-      const session = JSON.parse(decodeURIComponent(adminCookieValue));
-      if (session && session.email && session.status !== 'inactive') {
-        const notExpired = !session.expiresAt || session.expiresAt > Date.now();
-        const roleNormalized = (session.role || '').toUpperCase();
-        // Strict check: must not be a customer role
-        if (notExpired && roleNormalized !== 'CUSTOMER') {
-          isAdminAuthenticated = true;
-        }
-      }
-    } catch {
-      // Fallback for non-JSON tokens if valid length
-      if (adminCookieValue.length > 10) {
-        isAdminAuthenticated = true;
-      }
-    }
-  }
-
-  // Also verify Authorization header for programmatic test requests
   const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    isAdminAuthenticated = true;
-  }
-
-  // --- Read Customer Session Cookie ---
-  const customerCookieValue = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
-  let isCustomerAuthenticated = false;
-
-  if (customerCookieValue) {
-    try {
-      const customerSession = JSON.parse(decodeURIComponent(customerCookieValue));
-      if (customerSession && (customerSession.email || customerSession.shopName) && customerSession.status !== 'inactive') {
-        const notExpired = !customerSession.expiresAt || customerSession.expiresAt > Date.now();
-        if (notExpired) {
-          isCustomerAuthenticated = true;
-        }
-      }
-    } catch {
-      if (customerCookieValue.length > 10) {
-        isCustomerAuthenticated = true;
-      }
+  if (!isAdminAuthenticated && authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    if (token) {
+      isAdminAuthenticated = parseValidAdminSession(token);
     }
   }
+
+  // --- Validate Customer Session Cookie ---
+  const customerCookieValue = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
+  const isCustomerAuthenticated = parseValidCustomerSession(customerCookieValue);
 
   // =========================================================================
   // 1. ADMIN ROUTES (/admin, /admin/*)

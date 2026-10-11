@@ -3,35 +3,7 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getBillSettingsFromDb, updateBillSettingsInDb } from '@/lib/db/repositories/settings';
 import { defaultBillSettings } from '@/lib/db/billSettings';
 import { BillSettings } from '@/types/admin';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (!cookieVal) return null;
-
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
-      }
-    }
-  }
-
-  return null;
-}
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 import fs from 'fs';
 import path from 'path';
@@ -84,7 +56,15 @@ function saveDevBillSettings(settings: BillSettings): void {
   } catch {}
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const session = getAdminSession(request);
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Admin session required.' },
+      { status: 401 }
+    );
+  }
+
   try {
     let settings: BillSettings;
 
@@ -110,10 +90,9 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
+    const session = getAdminSession(request);
 
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify bill settings.' },
         { status: 401 }

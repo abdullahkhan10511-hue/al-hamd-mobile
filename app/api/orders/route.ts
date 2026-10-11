@@ -59,8 +59,22 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`order_submit_${ip}`, 15, 300000); // 15 attempts per 5 mins
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many order attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before submitting again.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
 
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
@@ -68,6 +82,32 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Cannot place order: Cart is empty.' },
         { status: 400 }
       );
+    }
+
+    // Validate each cart item strictly
+    for (const item of body.items) {
+      if (!item || typeof item !== 'object') {
+        return NextResponse.json(
+          { success: false, error: 'Invalid cart item payload.' },
+          { status: 400 }
+        );
+      }
+      if (!item.productId && !item.dealId) {
+        return NextResponse.json(
+          { success: false, error: 'Every cart item must specify a valid product or deal ID.' },
+          { status: 400 }
+        );
+      }
+      const qty = Number(item.quantity);
+      if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0 || qty > 1000) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid quantity for "${item.productName || 'Product'}". Must be a positive integer (1-1000).`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (!body.customer || (!body.customer.firstName && !body.customer.phone && !body.shopName)) {

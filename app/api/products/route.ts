@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const slug = searchParams.get('slug');
     const id = searchParams.get('id');
+    const limitParam = searchParams.get('limit');
+    const pageParam = searchParams.get('page');
 
     let products: any[] = [];
 
@@ -82,8 +84,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const totalCount = products.length;
+
+    // Optional Bounded Pagination:
+    // If 'limit' or 'page' is explicitly requested, enforce pagination bounds (1 to 200 items per page).
+    // If 'limit' is omitted, return complete catalogue for backward compatibility with storefront sync routines.
+    let paginatedProducts = products;
+    let page = 1;
+    let limit = totalCount;
+    let totalPages = 1;
+    let isPaginated = false;
+
+    if (limitParam !== null || pageParam !== null) {
+      isPaginated = true;
+      const parsedLimit = parseInt(limitParam || '50', 10);
+      limit = Math.max(1, Math.min(isNaN(parsedLimit) ? 50 : parsedLimit, 200));
+
+      const parsedPage = parseInt(pageParam || '1', 10);
+      page = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+
+      totalPages = Math.max(1, Math.ceil(totalCount / limit));
+      const startIndex = (page - 1) * limit;
+      paginatedProducts = products.slice(startIndex, startIndex + limit);
+    }
+
     return NextResponse.json(
-      { success: true, count: products.length, products },
+      {
+        success: true,
+        count: paginatedProducts.length,
+        total: totalCount,
+        ...(isPaginated ? { page, limit, totalPages } : {}),
+        products: paginatedProducts,
+      },
       {
         headers: {
           'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
