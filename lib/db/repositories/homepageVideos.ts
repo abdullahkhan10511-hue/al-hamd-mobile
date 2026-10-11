@@ -39,7 +39,7 @@ export async function getAllHomepageVideosFromDb(): Promise<HomepageVideo[]> {
   }
 
   const rows = await query<HomepageVideoRow[]>(
-    'SELECT * FROM homepage_videos ORDER BY display_order ASC, updated_at DESC, created_at ASC'
+    'SELECT * FROM homepage_videos ORDER BY display_order ASC, id ASC'
   );
 
   return rows.map(mapRowToVideo);
@@ -51,7 +51,7 @@ export async function getActiveHomepageVideosFromDb(): Promise<HomepageVideo[]> 
   }
 
   const rows = await query<HomepageVideoRow[]>(
-    'SELECT * FROM homepage_videos WHERE active = 1 ORDER BY display_order ASC, updated_at DESC, created_at ASC'
+    "SELECT * FROM homepage_videos WHERE active = 1 AND url IS NOT NULL AND TRIM(url) != '' ORDER BY display_order ASC, id ASC"
   );
 
   return rows.map(mapRowToVideo);
@@ -63,16 +63,42 @@ export async function saveHomepageVideoInDb(video: Partial<HomepageVideo>): Prom
   }
 
   const id = video.id || `video-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const title = (video.title || 'Untitled Homepage Video').trim();
-  const rawUrl = (video.url || '').trim();
+
+  // Safely retrieve existing row if this is an update to avoid wiping unpassed fields
+  const existingRows = await query<HomepageVideoRow[]>(
+    'SELECT * FROM homepage_videos WHERE id = ? LIMIT 1',
+    [id]
+  );
+  const existing = existingRows[0] ? mapRowToVideo(existingRows[0]) : null;
+
+  const rawTitle = (video.title !== undefined && video.title.trim().length > 0)
+    ? video.title.trim()
+    : (existing?.title || 'Untitled Homepage Video').trim();
+  const title = rawTitle.length > 0 ? rawTitle : (existing?.title || 'Untitled Homepage Video');
+
+  const rawUrl = (video.url !== undefined && video.url.trim().length > 0)
+    ? video.url.trim()
+    : (existing?.url || '').trim();
   const url = (await ensureSafeMediaUrl(rawUrl, 'videos')) || rawUrl;
-  const rawThumbnail = video.thumbnailUrl ? video.thumbnailUrl.trim() : null;
+  const rawThumbnail = video.thumbnailUrl !== undefined
+    ? (video.thumbnailUrl ? video.thumbnailUrl.trim() : null)
+    : (existing?.thumbnailUrl || null);
   const thumbnailUrl = rawThumbnail ? ((await ensureSafeMediaUrl(rawThumbnail, 'videos')) || rawThumbnail) : null;
-  const active = video.active !== undefined ? (video.active ? 1 : 0) : 1;
-  const displayOrder = Number(video.displayOrder) || 1;
-  const duration = video.duration !== undefined ? Number(video.duration) : null;
-  const size = video.size !== undefined ? Number(video.size) : null;
-  const mimeType = video.mimeType || 'video/mp4';
+  const active = video.active !== undefined
+    ? (video.active ? 1 : 0)
+    : (existing ? (existing.active ? 1 : 0) : 1);
+  const displayOrder = video.displayOrder !== undefined && !isNaN(Number(video.displayOrder))
+    ? Math.max(1, Math.round(Number(video.displayOrder)))
+    : (existing ? existing.displayOrder : 1);
+  const duration = video.duration !== undefined
+    ? (video.duration !== null ? Number(video.duration) : null)
+    : (existing?.duration ?? null);
+  const size = video.size !== undefined
+    ? (video.size !== null ? Number(video.size) : null)
+    : (existing?.size ?? null);
+  const mimeType = video.mimeType !== undefined
+    ? video.mimeType
+    : (existing?.mimeType || 'video/mp4');
 
   await execute(
     `INSERT INTO homepage_videos (

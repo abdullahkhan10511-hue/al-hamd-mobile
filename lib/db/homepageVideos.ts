@@ -3,6 +3,7 @@ import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
 
 const COLLECTION_KEY = 'homepage_videos';
+const ACTIVE_COLLECTION_KEY = 'homepage_active_videos';
 
 export const seedHomepageVideos: HomepageVideo[] = [
   {
@@ -37,37 +38,51 @@ let hasSyncedHomepageVideosFromApi = false;
 export async function syncHomepageVideosFromApi(): Promise<HomepageVideo[]> {
   if (typeof window === 'undefined') return [];
   try {
-    // 1. Fetch public dedicated endpoint first
-    let res = await fetch('/api/homepage-videos', { cache: 'no-store' });
-    // Fallback to admin endpoint if public route returns non-OK
-    if (!res.ok) {
-      res = await fetch('/api/admin/homepage-videos', { cache: 'no-store' });
-    }
+    const res = await fetch(`/api/homepage-videos?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
     if (res.ok) {
       const data = await res.json();
-      const list: HomepageVideo[] = Array.isArray(data.videos)
-        ? data.videos
-        : Array.isArray(data.items)
-        ? data.items
-        : [];
+      if (data.success) {
+        const list: HomepageVideo[] = Array.isArray(data.videos)
+          ? data.videos
+          : Array.isArray(data.activeVideos)
+          ? data.activeVideos
+          : Array.isArray(data.items)
+          ? data.items
+          : [];
 
-      if (data.success && list.length > 0) {
-        // Sort before persisting
-        list.sort((a, b) => {
-          const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
-          if (orderDiff !== 0) return orderDiff;
-          const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-          return timeB - timeA;
-        });
+        // Strictly active videos with non-empty URLs
+        const validActive = list
+          .filter((v) => {
+            if (!v) return false;
+            const isActive =
+              (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+              v.active !== false &&
+              (v.active as any) !== 0 &&
+              (v.active as any) !== '0' &&
+              (v.active as any) !== 'false';
+            const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
+            return Boolean(isActive && hasUrl);
+          })
+          .sort((a, b) => {
+            const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+            const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return (a.id || '').localeCompare(b.id || '');
+          });
 
-        await persistCollection(COLLECTION_KEY, list);
+        await persistCollection(ACTIVE_COLLECTION_KEY, validActive, true);
         window.dispatchEvent(
           new CustomEvent('alhamd:data-updated', {
-            detail: { key: COLLECTION_KEY, value: list },
+            detail: { key: ACTIVE_COLLECTION_KEY, value: validActive },
           })
         );
-        return list;
+        return validActive;
       }
     }
   } catch (err) {
@@ -77,20 +92,15 @@ export async function syncHomepageVideosFromApi(): Promise<HomepageVideo[]> {
 }
 
 /**
- * Get all homepage videos ordered by displayOrder
+ * Get all homepage videos ordered deterministically by displayOrder ASC, then id ASC
  */
 export function getHomepageVideos(): HomepageVideo[] {
-  if (typeof window !== 'undefined' && !hasSyncedHomepageVideosFromApi) {
-    hasSyncedHomepageVideosFromApi = true;
-    syncHomepageVideosFromApi().catch(() => {});
-  }
   const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, seedHomepageVideos);
   return items.sort((a, b) => {
-    const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
-    if (orderDiff !== 0) return orderDiff;
-    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-    return timeB - timeA;
+    const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+    const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.id || '').localeCompare(b.id || '');
   });
 }
 
@@ -98,7 +108,25 @@ export function getHomepageVideos(): HomepageVideo[] {
  * Get only ACTIVE homepage videos for the live storefront sequence
  */
 export function getActiveHomepageVideos(): HomepageVideo[] {
-  return getHomepageVideos().filter((v) => v.active);
+  const items = getStoredCollection<HomepageVideo>(ACTIVE_COLLECTION_KEY, []);
+  return items
+    .filter((v) => {
+      if (!v) return false;
+      const isActive =
+        (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+        v.active !== false &&
+        (v.active as any) !== 0 &&
+        (v.active as any) !== '0' &&
+        (v.active as any) !== 'false';
+      const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
+      return Boolean(isActive && hasUrl);
+    })
+    .sort((a, b) => {
+      const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+      const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.id || '').localeCompare(b.id || '');
+    });
 }
 
 /**
@@ -111,60 +139,112 @@ export async function saveHomepageVideo(
   const current = getHomepageVideos();
   const now = new Date().toISOString();
 
+  let targetItem: HomepageVideo;
+
   if (videoData.id) {
     const index = current.findIndex((v) => v.id === videoData.id);
     if (index !== -1) {
-      const updatedItem: HomepageVideo = {
+      targetItem = {
         ...current[index],
         ...videoData,
         updatedAt: now,
       };
-      current[index] = updatedItem;
-      current.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      await persistCollection(COLLECTION_KEY, current);
-      await syncWithServer(current);
-      await logActivity({
-        adminEmail,
-        action: 'Updated Homepage Video',
-        target: updatedItem.title,
-      });
-      return updatedItem;
+      current[index] = targetItem;
+    } else {
+      targetItem = {
+        id: videoData.id,
+        title: videoData.title || 'Untitled Homepage Video',
+        url: videoData.url || '',
+        thumbnailUrl: videoData.thumbnailUrl || '',
+        active: videoData.active !== undefined ? videoData.active : true,
+        displayOrder: videoData.displayOrder !== undefined ? videoData.displayOrder : current.length + 1,
+        duration: videoData.duration,
+        size: videoData.size,
+        mimeType: videoData.mimeType,
+        createdAt: now,
+        updatedAt: now,
+      };
+      current.push(targetItem);
     }
+  } else {
+    const nextOrder =
+      videoData.displayOrder !== undefined
+        ? videoData.displayOrder
+        : current.length > 0
+        ? Math.max(...current.map((v) => v.displayOrder || 0)) + 1
+        : 1;
+
+    targetItem = {
+      id: `video-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: videoData.title || 'Untitled Homepage Video',
+      url: videoData.url || '',
+      thumbnailUrl: videoData.thumbnailUrl || '',
+      active: videoData.active !== undefined ? videoData.active : true,
+      displayOrder: nextOrder,
+      duration: videoData.duration,
+      size: videoData.size,
+      mimeType: videoData.mimeType,
+      createdAt: now,
+      updatedAt: now,
+    };
+    current.push(targetItem);
   }
 
-  // Create new video item
-  const nextOrder =
-    videoData.displayOrder !== undefined
-      ? videoData.displayOrder
-      : current.length > 0
-      ? Math.max(...current.map((v) => v.displayOrder || 0)) + 1
-      : 1;
+  current.sort((a, b) => {
+    const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+    const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+  await persistCollection(COLLECTION_KEY, current);
 
-  const newItem: HomepageVideo = {
-    id: videoData.id || `video-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    title: videoData.title || 'Untitled Homepage Video',
-    url: videoData.url || '',
-    thumbnailUrl: videoData.thumbnailUrl || '',
-    active: videoData.active !== undefined ? videoData.active : true,
-    displayOrder: nextOrder,
-    duration: videoData.duration,
-    size: videoData.size,
-    mimeType: videoData.mimeType,
-    createdAt: now,
-    updatedAt: now,
-  };
+  // Synchronize active collection for public hero
+  const activeSubset = current.filter((v) => {
+    const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+    return Boolean(isActive && v.url && v.url.trim());
+  });
+  await persistCollection(ACTIVE_COLLECTION_KEY, activeSubset, true);
+  window.dispatchEvent(
+    new CustomEvent('alhamd:data-updated', {
+      detail: { key: ACTIVE_COLLECTION_KEY, value: activeSubset },
+    })
+  );
 
-  const updatedList = [...current, newItem].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-  await persistCollection(COLLECTION_KEY, updatedList);
-  await syncWithServer(updatedList);
+  try {
+    const payload = videoData.id
+      ? { action: 'update', id: videoData.id, updates: targetItem }
+      : { action: 'add', item: targetItem };
+
+    const res = await fetch('/api/admin/homepage-videos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        await persistCollection(COLLECTION_KEY, data.items);
+        const serverActive = data.items.filter((v: HomepageVideo) => {
+          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+          return Boolean(isActive && v.url && v.url.trim());
+        });
+        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+          })
+        );
+      }
+    }
+  } catch {}
 
   await logActivity({
     adminEmail,
-    action: 'Added Homepage Video',
-    target: newItem.title,
+    action: videoData.id ? 'Updated Homepage Video' : 'Added Homepage Video',
+    target: targetItem.title,
   });
 
-  return newItem;
+  return targetItem;
 }
 
 /**
@@ -182,14 +262,41 @@ export async function toggleHomepageVideoStatus(
   item.active = active;
   item.updatedAt = new Date().toISOString();
   await persistCollection(COLLECTION_KEY, current);
-  await syncWithServer(current);
+
+  // Immediately update public active sequence
+  const activeSubset = current.filter((v) => {
+    const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+    return Boolean(isActive && v.url && v.url.trim());
+  });
+  await persistCollection(ACTIVE_COLLECTION_KEY, activeSubset, true);
+  window.dispatchEvent(
+    new CustomEvent('alhamd:data-updated', {
+      detail: { key: ACTIVE_COLLECTION_KEY, value: activeSubset },
+    })
+  );
 
   try {
-    await fetch('/api/admin/homepage-videos', {
+    const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update', id, updates: { active } }),
+      body: JSON.stringify({ action: 'update', id, updates: { ...item, active } }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        await persistCollection(COLLECTION_KEY, data.items);
+        const serverActive = data.items.filter((v: HomepageVideo) => {
+          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+          return Boolean(isActive && v.url && v.url.trim());
+        });
+        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+          })
+        );
+      }
+    }
   } catch {}
 
   await logActivity({
@@ -229,14 +336,42 @@ export async function reorderHomepageVideos(
   });
 
   await persistCollection(COLLECTION_KEY, reordered);
-  await syncWithServer(reordered);
+
+  // Immediately update public active sequence
+  const activeSubset = reordered.filter((v) => {
+    const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+    return Boolean(isActive && v.url && v.url.trim());
+  });
+  await persistCollection(ACTIVE_COLLECTION_KEY, activeSubset, true);
+  window.dispatchEvent(
+    new CustomEvent('alhamd:data-updated', {
+      detail: { key: ACTIVE_COLLECTION_KEY, value: activeSubset },
+    })
+  );
 
   try {
-    await fetch('/api/admin/homepage-videos', {
+    const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'reorder', orderedIds }),
+      body: JSON.stringify({ action: 'reorder', orderedIds, items: reordered }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        await persistCollection(COLLECTION_KEY, data.items);
+        const serverActive = data.items.filter((v: HomepageVideo) => {
+          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+          return Boolean(isActive && v.url && v.url.trim());
+        });
+        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+          })
+        );
+        return data.items;
+      }
+    }
   } catch {}
 
   await logActivity({
@@ -266,14 +401,31 @@ export async function deleteHomepageVideo(
   });
 
   await persistCollection(COLLECTION_KEY, filtered);
-  await syncWithServer(filtered);
+
+  // Update active collection
+  const activeSubset = filtered.filter((v) => {
+    const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+    return Boolean(isActive && v.url && v.url.trim());
+  });
+  await persistCollection(ACTIVE_COLLECTION_KEY, activeSubset, true);
+  window.dispatchEvent(
+    new CustomEvent('alhamd:data-updated', {
+      detail: { key: ACTIVE_COLLECTION_KEY, value: activeSubset },
+    })
+  );
 
   try {
-    await fetch('/api/admin/homepage-videos', {
+    const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete', id }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        await persistCollection(COLLECTION_KEY, data.items);
+      }
+    }
   } catch {}
 
   // If local uploaded video, call server cleanup
@@ -296,20 +448,4 @@ export async function deleteHomepageVideo(
   });
 
   return true;
-}
-
-/**
- * Background sync helper with server-side JSON storage
- */
-async function syncWithServer(items: HomepageVideo[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  try {
-    await fetch('/api/admin/homepage-videos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'sync', items }),
-    });
-  } catch (err) {
-    // Local persistence is already guaranteed
-  }
 }

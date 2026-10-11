@@ -75,7 +75,7 @@ export default function HomepageVideosPage() {
           : Array.isArray(data.videos)
           ? data.videos
           : [];
-        if (data.success && list.length > 0) {
+        if (data.success && Array.isArray(list)) {
           setVideos(list);
         }
       })
@@ -190,10 +190,16 @@ export default function HomepageVideosPage() {
       finalUrl = videoUrlInput.trim();
     }
 
+    const nextOrder =
+      videos.length > 0
+        ? Math.max(...videos.map((v) => Number(v.displayOrder) || 0)) + 1
+        : 1;
+
     await saveHomepageVideo({
       title: newTitle.trim(),
       url: finalUrl,
       active: newActive,
+      displayOrder: nextOrder,
       size: fileSize,
       mimeType,
     });
@@ -409,7 +415,7 @@ export default function HomepageVideosPage() {
                         : 'bg-neutral-200 text-neutral-500'
                     }`}
                   >
-                    #{idx + 1}
+                    #{vid.displayOrder ?? idx + 1}
                   </div>
 
                   {/* Video Thumbnail with Quick Play Overlay */}
@@ -740,6 +746,23 @@ export default function HomepageVideosPage() {
                   value={editingVideo.url}
                   onChange={(e) => setEditingVideo({ ...editingVideo, url: e.target.value })}
                   className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-[11px]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-neutral-800 block mb-1">Display Order #</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={editingVideo.displayOrder ?? 1}
+                  onChange={(e) =>
+                    setEditingVideo({
+                      ...editingVideo,
+                      displayOrder: Math.max(1, parseInt(e.target.value) || 1),
+                    })
+                  }
+                  className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:border-neutral-950 focus:outline-none font-mono text-xs"
                 />
               </div>
 

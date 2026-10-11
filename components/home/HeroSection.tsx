@@ -2,21 +2,24 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Volume2, VolumeX, ChevronDown } from 'lucide-react';
-import { getActiveHomepageVideos, syncHomepageVideosFromApi, seedHomepageVideos } from '@/lib/db/homepageVideos';
+import { getActiveHomepageVideos, syncHomepageVideosFromApi } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export function HeroSection() {
-  // Synchronous initial seed to prevent initial empty-render flash
+  // Synchronous initial load of existing active videos
   const [videos, setVideos] = useState<HomepageVideo[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const active = getActiveHomepageVideos();
-        if (active.length > 0) return active;
+        const cached = getActiveHomepageVideos();
+        return cached.filter((v) => {
+          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+          return Boolean(isActive && v.url && v.url.trim());
+        });
       } catch {
-        // Fall back to seed
+        return [];
       }
     }
-    return seedHomepageVideos.filter((v) => v.active);
+    return [];
   });
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -28,6 +31,8 @@ export function HeroSection() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const failedVideoIdsRef = useRef<Set<string>>(new Set());
+  const activeVideoIdRef = useRef<string | null>(null);
 
   // Check reduced-motion preference
   useEffect(() => {
@@ -40,36 +45,42 @@ export function HeroSection() {
     }
   }, []);
 
-  // Sync fresh active videos asynchronously in background without blocking rendering
+  // Sync fresh active videos in background without blocking rendering
   useEffect(() => {
     let isMounted = true;
 
-    try {
-      const cached = getActiveHomepageVideos();
-      if (cached.length > 0 && isMounted) {
-        setVideos(cached);
-      }
-    } catch {
-      // Ignore
-    }
-
-    // Refresh from API in background (non-blocking)
-    syncHomepageVideosFromApi().then((freshList) => {
-      if (isMounted && Array.isArray(freshList) && freshList.length > 0) {
-        setVideos(freshList.filter((v) => v.active));
-      }
-    }).catch(() => {});
+    // Refresh authoritative active playlist from API
+    syncHomepageVideosFromApi()
+      .then((freshList) => {
+        if (isMounted) {
+          setVideos(freshList);
+        }
+      })
+      .catch(() => {});
 
     // Listen for admin video updates
     const handleUpdate = (e: Event) => {
       const custom = e as CustomEvent;
       const key = custom?.detail?.key;
-      if (key && key !== 'homepage_videos') return;
-      if (Array.isArray(custom?.detail?.value)) {
-        const updated = custom.detail.value.filter((v: HomepageVideo) => v.active);
-        if (updated.length > 0 && isMounted) {
-          setVideos(updated);
-        }
+      if (key && key !== 'homepage_videos' && key !== 'homepage_active_videos') return;
+      if (Array.isArray(custom?.detail?.value) && isMounted) {
+        const valid = custom.detail.value
+          .filter((v: HomepageVideo) => {
+            if (!v) return false;
+            const isActive =
+              (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+              v.active !== false &&
+              (v.active as any) !== 0 &&
+              (v.active as any) !== '0' &&
+              (v.active as any) !== 'false';
+            const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
+            return Boolean(isActive && hasUrl);
+          })
+          .sort(
+            (a: HomepageVideo, b: HomepageVideo) =>
+              ((a.displayOrder || 0) - (b.displayOrder || 0)) || (a.id || '').localeCompare(b.id || '')
+          );
+        setVideos(valid);
       }
     };
 
@@ -81,8 +92,6 @@ export function HeroSection() {
   }, []);
 
   // CRITICAL: Defer video attachment until after initial page render and hydration.
-  // This guarantees that HTML, CSS, JavaScript, fonts, and critical product/category APIs
-  // receive 100% priority over the heavy video media stream.
   useEffect(() => {
     let idleId: number;
     let timeoutId: NodeJS.Timeout;
@@ -93,7 +102,6 @@ export function HeroSection() {
 
     if (typeof window !== 'undefined') {
       if ('requestIdleCallback' in window) {
-        // Wait for browser idle or max 600ms fallback
         idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts: { timeout: number }) => number }).requestIdleCallback(startLoading, { timeout: 600 });
       } else {
         timeoutId = setTimeout(startLoading, 200);
@@ -108,46 +116,109 @@ export function HeroSection() {
     };
   }, []);
 
-  const activeVideo = videos[currentIndex] || videos[0];
+  // Reconcile playback index when videos array changes
+  useEffect(() => {
+    if (videos.length === 0) {
+      setCurrentIndex(0);
+      setIsReady(false);
+      setHasStartedPlaying(false);
+      activeVideoIdRef.current = null;
+      return;
+    }
 
-  // Advance to next video in sequence
-  const advanceToNextVideo = useCallback(() => {
-    if (videos.length <= 1) return;
+    // Clean up failed set for removed items
+    const currentIdSet = new Set(videos.map((v) => v.id));
+    for (const failedId of failedVideoIdsRef.current) {
+      if (!currentIdSet.has(failedId)) {
+        failedVideoIdsRef.current.delete(failedId);
+      }
+    }
+
+    const currentActiveId = activeVideoIdRef.current;
+    if (currentActiveId) {
+      const existingIdx = videos.findIndex((v) => v.id === currentActiveId);
+      if (existingIdx !== -1) {
+        if (existingIdx !== currentIndex) {
+          setCurrentIndex(existingIdx);
+        }
+        return;
+      }
+    }
+
+    // Previous active video is no longer active; select lowest numbered active video
+    setCurrentIndex(0);
     setIsReady(false);
     setHasStartedPlaying(false);
-    setCurrentIndex((prev) => (prev + 1) % videos.length);
-  }, [videos.length]);
+    setHasError(false);
+    activeVideoIdRef.current = videos[0]?.id || null;
+  }, [videos]);
 
-  // Video error handling - keeps container cleanly black without breaking the page
+  const activeVideo: HomepageVideo | undefined = videos[currentIndex] || videos[0];
+
+  useEffect(() => {
+    if (activeVideo?.id) {
+      activeVideoIdRef.current = activeVideo.id;
+    }
+  }, [activeVideo?.id]);
+
+  // Advance to next video in sequential playlist
+  const advanceToNextVideo = useCallback(() => {
+    if (videos.length <= 1) return;
+
+    let nextIdx = (currentIndex + 1) % videos.length;
+    let attempts = 0;
+
+    // Skip any videos that have permanently failed during this session
+    while (
+      failedVideoIdsRef.current.has(videos[nextIdx]?.id) &&
+      attempts < videos.length
+    ) {
+      nextIdx = (nextIdx + 1) % videos.length;
+      attempts++;
+    }
+
+    if (attempts >= videos.length) {
+      // All active videos have failed; fail quietly to solid black
+      setHasError(true);
+      setIsReady(false);
+      return;
+    }
+
+    setIsReady(false);
+    setHasStartedPlaying(false);
+    setCurrentIndex(nextIdx);
+  }, [currentIndex, videos]);
+
+  // Video error handling - safely attempts next eligible video without infinite loop
   const handleVideoError = useCallback(() => {
-    console.warn(`Homepage video failed or aborted: ${activeVideo?.url}`);
-    if (videos.length > 1) {
+    if (!activeVideo) return;
+    console.warn(`Homepage video failed or aborted: ${activeVideo.url}`);
+    failedVideoIdsRef.current.add(activeVideo.id);
+
+    const remaining = videos.filter((v) => !failedVideoIdsRef.current.has(v.id));
+    if (remaining.length > 0) {
       advanceToNextVideo();
     } else {
       setHasError(true);
       setIsReady(false);
     }
-  }, [activeVideo?.url, videos.length, advanceToNextVideo]);
+  }, [activeVideo, videos, advanceToNextVideo]);
 
-  // Graceful stall/hang fallback: if video request hangs indefinitely (>12s), fail quietly to black
+  // Watchdog fallback for hanging video requests
   useEffect(() => {
     if (!canLoadVideo || isReady || hasStartedPlaying || !activeVideo) return;
 
     const timeout = setTimeout(() => {
       if (!isReady && !hasStartedPlaying) {
         console.warn(`Homepage video timed out waiting for media stream: ${activeVideo.url}`);
-        if (videos.length > 1) {
-          advanceToNextVideo();
-        } else {
-          setHasError(true);
-        }
+        handleVideoError();
       }
     }, 12000);
 
     return () => clearTimeout(timeout);
-  }, [canLoadVideo, currentIndex, isReady, hasStartedPlaying, activeVideo, videos.length, advanceToNextVideo]);
+  }, [canLoadVideo, currentIndex, isReady, hasStartedPlaying, activeVideo, handleVideoError]);
 
-  // Video media lifecycle events
+  // Media lifecycle events
   const handleLoadStart = () => {
     if (!hasStartedPlaying) {
       setIsReady(false);
@@ -155,7 +226,6 @@ export function HeroSection() {
   };
 
   const handleLoadedData = () => {
-    // First frame decoded successfully
     setIsReady(true);
   };
 
@@ -165,7 +235,12 @@ export function HeroSection() {
     if (video && video.paused) {
       video.muted = isMuted;
       video.play().catch(() => {
-        // Autoplay policy prevented immediate playback; remains on solid ready frame
+        // Autoplay policy prevented immediate playback; try muted fallback
+        if (!video.muted) {
+          video.muted = true;
+          setIsMuted(true);
+          video.play().catch(() => {});
+        }
       });
     }
   };
@@ -176,34 +251,58 @@ export function HeroSection() {
     setHasError(false);
   };
 
-  const handleWaiting = () => {
-    // Preserve current frame during buffering without flashing to black
-  };
+  const handleWaiting = () => {};
+  const handleStalled = () => {};
 
-  const handleStalled = () => {
-    // Network stall: preserve current frame
-  };
+  // Video ended event: single video loops seamlessly, multiple videos advance
+  const handleEnded = useCallback(() => {
+    if (videos.length === 1) {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = 0;
+        video.play().catch(() => {});
+      }
+      return;
+    }
+    advanceToNextVideo();
+  }, [videos.length, advanceToNextVideo]);
 
-  // Attempt autoplay when ready and unmuted/muted state alters
+  // Autoplay attempt with resilient muted fallback
   useEffect(() => {
     if (!canLoadVideo) return;
     const video = videoRef.current;
     if (!video || !activeVideo?.url) return;
 
     video.muted = isMuted;
-    if (video.paused) {
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsReady(true);
-            setHasStartedPlaying(true);
-            setHasError(false);
-          })
-          .catch(() => {
-            // Autoplay restricted by browser; controls remain usable
-          });
-      }
+    setIsReady(false);
+    setHasStartedPlaying(false);
+
+    try {
+      video.load();
+    } catch {}
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsReady(true);
+          setHasStartedPlaying(true);
+          setHasError(false);
+        })
+        .catch(() => {
+          // Autoplay restricted by browser; retry muted
+          if (!video.muted) {
+            video.muted = true;
+            setIsMuted(true);
+            video.play()
+              .then(() => {
+                setIsReady(true);
+                setHasStartedPlaying(true);
+                setHasError(false);
+              })
+              .catch(() => {});
+          }
+        });
     }
   }, [canLoadVideo, currentIndex, activeVideo?.url, isMuted]);
 
@@ -224,8 +323,8 @@ export function HeroSection() {
     setCurrentIndex(idx);
   };
 
-  // If permanently errored or no videos exist: solid clean black container without any broken icons or placeholders
-  if (!activeVideo || hasError) {
+  // If permanently errored or no active videos exist: solid clean black container
+  if (!activeVideo || hasError || videos.length === 0) {
     return (
       <section
         id="hero"
@@ -233,7 +332,6 @@ export function HeroSection() {
         aria-label="Homepage Hero Video"
       >
         <div className="absolute inset-0 bg-black z-0" aria-hidden="true" />
-        {/* Subtle scroll indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 text-white/40 pointer-events-none">
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
             Scroll Down
@@ -268,7 +366,6 @@ export function HeroSection() {
       */}
       <video
         ref={videoRef}
-        key={activeVideo.id || `hero-vid-${currentIndex}`}
         src={canLoadVideo ? activeVideo.url : undefined}
         autoPlay
         muted={isMuted}
@@ -280,7 +377,7 @@ export function HeroSection() {
         onPlaying={handlePlaying}
         onWaiting={handleWaiting}
         onStalled={handleStalled}
-        onEnded={advanceToNextVideo}
+        onEnded={handleEnded}
         onError={handleVideoError}
         loop={videos.length === 1}
         className={`absolute inset-0 w-full h-full object-cover z-10 transition-opacity ${

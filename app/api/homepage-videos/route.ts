@@ -8,6 +8,7 @@ import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -15,40 +16,49 @@ export async function GET() {
 
     if (isDbConfigured()) {
       try {
-        items = await getAllHomepageVideosFromDb();
+        items = await getActiveHomepageVideosFromDb();
       } catch (err) {
         console.warn('MySQL error in /api/homepage-videos:', err);
-        items = seedHomepageVideos;
+        items = [];
       }
     } else {
-      items = seedHomepageVideos;
+      // Development mock fallback only when DB is not configured
+      items = seedHomepageVideos.filter((v) => Boolean(v.active && v.url && v.url.trim()));
     }
 
-    if (!items || items.length === 0) {
-      items = seedHomepageVideos;
-    }
-
-    // Sort by displayOrder ascending, then updated_at descending
-    items.sort((a, b) => {
-      const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
-      if (orderDiff !== 0) return orderDiff;
-      const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return timeB - timeA;
+    // Filter strictly for active items with valid non-empty URLs
+    const activePlayable = (items || []).filter((v) => {
+      if (!v) return false;
+      const isActive =
+        (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+        v.active !== false &&
+        (v.active as any) !== 0 &&
+        (v.active as any) !== '0' &&
+        (v.active as any) !== 'false';
+      const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
+      return Boolean(isActive && hasUrl);
     });
 
-    const activeVideos = items.filter((v) => v.active);
+    // Deterministic sort: displayOrder ASC, then id ASC
+    activePlayable.sort((a, b) => {
+      const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+      const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.id || '').localeCompare(b.id || '');
+    });
 
     return NextResponse.json(
       {
         success: true,
-        videos: items,
-        items,
-        activeVideos,
+        videos: activePlayable,
+        items: activePlayable,
+        activeVideos: activePlayable,
       },
       {
         headers: {
-          'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         },
       }
     );
@@ -57,10 +67,16 @@ export async function GET() {
       {
         success: false,
         error: err?.message || 'Failed to load homepage videos',
-        videos: seedHomepageVideos,
-        items: seedHomepageVideos,
+        videos: [],
+        items: [],
+        activeVideos: [],
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
     );
   }
 }
