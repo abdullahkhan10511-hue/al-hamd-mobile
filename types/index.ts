@@ -121,6 +121,8 @@ export interface Product {
   shippingInfo?: string;
   returnsInfo?: string;
   reviews?: ProductReview[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Category {

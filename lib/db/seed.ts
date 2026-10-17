@@ -3,6 +3,7 @@ import {
   Brand,
   Order,
   HomepageSection,
+  AllProductsConfig,
   HeroConfig,
   AnnouncementItem,
   NavigationItem,
@@ -55,8 +56,20 @@ export const seedHomepageSections: HomepageSection[] = [
   { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 5 },
   { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 6 },
   { id: 'deals', name: 'Special Deals & Bundles', enabled: true, order: 7 },
-  { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 8 },
+  { id: 'all-products', name: 'All Products Showcase', enabled: true, order: 8 },
+  { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 9 },
 ];
+
+export const seedAllProductsConfig: AllProductsConfig = {
+  title: 'All Products',
+  subtitle: 'Explore our complete catalog of high-grade mobile accessories',
+  limit: 12,
+  sortBy: 'featured',
+  categoryFilter: 'all',
+  showViewAllButton: true,
+  viewAllLink: '/shop',
+  viewAllText: 'Explore Entire Catalog',
+};
 
 export const seedHeroConfig: HeroConfig = {
   eyebrowText: 'PREMIUM MOBILE ACCESSORIES',

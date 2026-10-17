@@ -110,7 +110,7 @@ export async function syncProductsFromApi(): Promise<
   }
   isSyncingProducts = true;
   try {
-    const res = await fetch('/api/products', { cache: 'no-store' });
+    const res = await fetch('/api/products');
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.products)) {
@@ -164,7 +164,7 @@ export async function fetchProductBySlug(
   if (local) return local;
   if (typeof window !== 'undefined') {
     try {
-      const res = await fetch(`/api/products?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/products?slug=${encodeURIComponent(slug)}`);
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.products) && json.products.length > 0) {

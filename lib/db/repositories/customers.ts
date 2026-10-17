@@ -1,4 +1,4 @@
-import { query, execute, isDbConfigured } from '../mysql';
+import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Customer, CustomerType } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
 import crypto from 'crypto';
@@ -336,44 +336,70 @@ export async function registerCustomerInDb(params: {
   const firstName = params.firstName?.trim() || parts[0] || fullName;
   const lastName = params.lastName !== undefined ? params.lastName.trim() : (parts.slice(1).join(' ') || '');
 
-  const existing = await getCustomerByEmailFromDb(email);
-  if (existing && existing.passwordHash) {
-    throw new Error('An account with this email already exists. Please sign in.');
-  }
-
   const salt = generateCustomerSalt(16);
   const passwordHash = hashCustomerPassword(params.password, salt);
-  const customerId = existing?.id || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-  if (existing) {
-    await execute(
-      `UPDATE customers SET
-        full_name = ?, first_name = ?, last_name = ?, phone = ?,
-        password_hash = ?, password_salt = ?, date_of_birth = ?, status = 'active'
-       WHERE id = ?`,
-      [fullName, firstName, lastName, phone, passwordHash, salt, params.dateOfBirth?.trim() || null, customerId]
-    );
-  } else {
-    await execute(
-      `INSERT INTO customers (
-        id, customer_type, full_name, first_name, last_name, email, phone,
-        password_hash, password_salt, date_of_birth, status, total_orders, total_spent
-      ) VALUES (?, 'RETAIL', ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, 0.00)`,
-      [
-        customerId,
-        fullName,
-        firstName,
-        lastName,
-        email,
-        phone,
-        passwordHash,
-        salt,
-        params.dateOfBirth?.trim() || null,
-      ]
-    );
+  let customerId = '';
+
+  try {
+    await withTransaction(async (connection) => {
+      // Row lock on email check to guarantee concurrent safety
+      const [rows] = await connection.query<CustomerRow[]>(
+        'SELECT * FROM customers WHERE LOWER(email) = ? FOR UPDATE',
+        [email]
+      );
+
+      const existing = rows && rows.length > 0 ? rows[0] : null;
+      if (existing && existing.password_hash) {
+        throw new Error('An account with this email already exists. Please sign in.');
+      }
+
+      customerId = existing?.id || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+      if (existing) {
+        await connection.execute(
+          `UPDATE customers SET
+            full_name = ?, first_name = ?, last_name = ?, phone = ?,
+            password_hash = ?, password_salt = ?, date_of_birth = ?, status = 'active'
+           WHERE id = ?`,
+          [fullName, firstName, lastName, phone, passwordHash, salt, params.dateOfBirth?.trim() || null, customerId]
+        );
+      } else {
+        await connection.execute(
+          `INSERT INTO customers (
+            id, customer_type, full_name, first_name, last_name, email, phone,
+            password_hash, password_salt, date_of_birth, status, total_orders, total_spent
+          ) VALUES (?, 'RETAIL', ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, 0.00)`,
+          [
+            customerId,
+            fullName,
+            firstName,
+            lastName,
+            email,
+            phone,
+            passwordHash,
+            salt,
+            params.dateOfBirth?.trim() || null,
+          ]
+        );
+      }
+    });
+  } catch (err: any) {
+    if (
+      err?.code === 'ER_DUP_ENTRY' ||
+      err?.errno === 1062 ||
+      (err?.message && err.message.toLowerCase().includes('duplicate entry'))
+    ) {
+      throw new Error('An account with this email already exists. Please sign in.');
+    }
+    throw err;
   }
 
-  return (await getCustomerByIdFromDb(customerId))!;
+  const saved = await getCustomerByIdFromDb(customerId);
+  if (!saved) {
+    throw new Error('Failed to retrieve registered customer record.');
+  }
+  return saved;
 }
 
 export async function authenticateCustomerInDb(

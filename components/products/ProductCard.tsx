@@ -134,9 +134,7 @@ export function ProductCard({ product, className = '', priority = false }: Produ
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             priority={priority}
-            className={`object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04] ${
-              isOutOfStock ? 'grayscale opacity-75' : ''
-            }`}
+            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
           />
         </Link>
       </div>

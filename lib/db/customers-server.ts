@@ -619,6 +619,8 @@ export async function authenticateCustomerServer(
   else throw new Error('Invalid shop name or password.');
 }
 
+const pendingRegistrations = new Set<string>();
+
 export async function registerCustomerServer(params: {
   fullName?: string;
   firstName?: string;
@@ -628,57 +630,69 @@ export async function registerCustomerServer(params: {
   password: string;
   dateOfBirth?: string;
 }): Promise<Customer> {
-  if (isDbConfigured()) {
-    return await registerCustomerInDb(params);
+  const normalizedEmail = (params.email || '').trim().toLowerCase();
+  if (pendingRegistrations.has(normalizedEmail)) {
+    throw new Error('A registration for this email address is already in progress. Please sign in or try again shortly.');
   }
 
-  const fullName = (params.fullName || `${params.firstName || ''} ${params.lastName || ''}`).trim();
-  if (!fullName) throw new Error('Full Name is required.');
-  const email = params.email?.trim().toLowerCase();
-  if (!email || !email.includes('@')) throw new Error('Please provide a valid email address.');
-  const phone = params.phone?.trim();
-  if (!phone) throw new Error('Phone number is required.');
-  if (!params.password || params.password.length < 6) throw new Error('Password must be at least 6 characters long.');
+  pendingRegistrations.add(normalizedEmail);
+  try {
+    if (isDbConfigured()) {
+      return await registerCustomerInDb({
+        ...params,
+        email: normalizedEmail,
+      });
+    }
 
-  const parts = fullName.split(/\s+/);
-  const firstName = params.firstName?.trim() || parts[0] || fullName;
-  const lastName = params.lastName !== undefined ? params.lastName.trim() : (parts.slice(1).join(' ') || '');
+    const fullName = (params.fullName || `${params.firstName || ''} ${params.lastName || ''}`).trim();
+    if (!fullName) throw new Error('Full Name is required.');
+    if (!normalizedEmail || !normalizedEmail.includes('@')) throw new Error('Please provide a valid email address.');
+    const phone = params.phone?.trim();
+    if (!phone) throw new Error('Phone number is required.');
+    if (!params.password || params.password.length < 6) throw new Error('Password must be at least 6 characters long.');
 
-  const customers = getServerCustomersSync();
-  const existing = customers.find((c) => c.email && c.email.toLowerCase() === email);
-  if (existing && existing.passwordHash) {
-    throw new Error('An account with this email already exists. Please sign in.');
+    const parts = fullName.split(/\s+/);
+    const firstName = params.firstName?.trim() || parts[0] || fullName;
+    const lastName = params.lastName !== undefined ? params.lastName.trim() : (parts.slice(1).join(' ') || '');
+
+    const customers = getServerCustomersSync();
+    const existing = customers.find((c) => c.email && c.email.toLowerCase() === normalizedEmail);
+    if (existing && existing.passwordHash) {
+      throw new Error('An account with this email already exists. Please sign in.');
+    }
+
+    const salt = generateCustomerSalt(16);
+    const passwordHash = hashCustomerPassword(params.password, salt);
+    const customerId = existing?.id || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    const newCustomer: Customer = {
+      id: customerId,
+      customerType: 'RETAIL',
+      fullName,
+      firstName,
+      lastName,
+      email: normalizedEmail,
+      phone,
+      passwordHash,
+      passwordSalt: salt,
+      dateOfBirth: params.dateOfBirth?.trim() || existing?.dateOfBirth || '',
+      status: 'active',
+      totalOrders: existing?.totalOrders || 0,
+      totalSpent: existing?.totalSpent || 0,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    };
+
+    const existingIndex = customers.findIndex((c) => c.id === customerId);
+    if (existingIndex >= 0) {
+      customers[existingIndex] = newCustomer;
+    } else {
+      customers.unshift(newCustomer);
+    }
+
+    saveLocalFileCustomers(customers);
+    memoryCustomers = customers;
+    return newCustomer;
+  } finally {
+    pendingRegistrations.delete(normalizedEmail);
   }
-
-  const salt = generateCustomerSalt(16);
-  const passwordHash = hashCustomerPassword(params.password, salt);
-  const customerId = existing?.id || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-
-  const newCustomer: Customer = {
-    id: customerId,
-    customerType: 'RETAIL',
-    fullName,
-    firstName,
-    lastName,
-    email,
-    phone,
-    passwordHash,
-    passwordSalt: salt,
-    dateOfBirth: params.dateOfBirth?.trim() || existing?.dateOfBirth || '',
-    status: 'active',
-    totalOrders: existing?.totalOrders || 0,
-    totalSpent: existing?.totalSpent || 0,
-    createdAt: existing?.createdAt || new Date().toISOString(),
-  };
-
-  const existingIndex = customers.findIndex((c) => c.id === customerId);
-  if (existingIndex >= 0) {
-    customers[existingIndex] = newCustomer;
-  } else {
-    customers.unshift(newCustomer);
-  }
-
-  saveLocalFileCustomers(customers);
-  memoryCustomers = customers;
-  return newCustomer;
 }

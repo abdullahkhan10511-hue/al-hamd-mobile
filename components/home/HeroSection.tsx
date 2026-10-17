@@ -1,26 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import { Volume2, VolumeX, ChevronDown } from 'lucide-react';
 import { getActiveHomepageVideos, syncHomepageVideosFromApi } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export function HeroSection() {
-  // Synchronous initial load of existing active videos
-  const [videos, setVideos] = useState<HomepageVideo[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = getActiveHomepageVideos();
-        return cached.filter((v) => {
-          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
-          return Boolean(isActive && v.url && v.url.trim());
-        });
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  // Safe SSR initialization - identical on server and client to avoid hydration mismatch
+  const [videos, setVideos] = useState<HomepageVideo[]>([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
@@ -29,10 +17,31 @@ export function HeroSection() {
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isSlowConnection, setIsSlowConnection] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const failedVideoIdsRef = useRef<Set<string>>(new Set());
   const activeVideoIdRef = useRef<string | null>(null);
+
+  // Detect slow network or Data Saver mode to conserve bandwidth
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'connection' in navigator) {
+      const conn = (navigator as any).connection;
+      if (conn) {
+        const checkSlow = () => {
+          const isSaveData = Boolean(conn.saveData);
+          const isSlow =
+            conn.effectiveType === 'slow-2g' ||
+            conn.effectiveType === '2g' ||
+            conn.effectiveType === '3g';
+          setIsSlowConnection(isSaveData || isSlow);
+        };
+        checkSlow();
+        conn.addEventListener?.('change', checkSlow);
+        return () => conn.removeEventListener?.('change', checkSlow);
+      }
+    }
+  }, []);
 
   // Check reduced-motion preference
   useEffect(() => {
@@ -48,6 +57,23 @@ export function HeroSection() {
   // Sync fresh active videos in background without blocking rendering
   useEffect(() => {
     let isMounted = true;
+
+    // Immediately restore cached local active videos after client mount
+    try {
+      const cached = getActiveHomepageVideos();
+      const valid = cached.filter((v) => {
+        const isActive =
+          v &&
+          (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+          v.active !== false &&
+          (v.active as any) !== 0 &&
+          (v.active as any) !== '0';
+        return Boolean(isActive && v.url && v.url.trim());
+      });
+      if (valid.length > 0 && isMounted) {
+        setVideos(valid);
+      }
+    } catch {}
 
     // Refresh authoritative active playlist from API
     syncHomepageVideosFromApi()
@@ -328,11 +354,11 @@ export function HeroSection() {
     return (
       <section
         id="hero"
-        className="relative w-full h-[100dvh] min-h-[500px] overflow-hidden bg-black select-none"
+        className="relative w-full h-[45vh] min-h-[220px] max-h-[380px] sm:h-[55vh] sm:min-h-[340px] sm:max-h-[500px] md:h-[65vh] lg:h-[75vh] md:max-h-[760px] overflow-hidden bg-black select-none"
         aria-label="Homepage Hero Video"
       >
         <div className="absolute inset-0 bg-black z-0" aria-hidden="true" />
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 text-white/40 pointer-events-none">
+        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 text-white/40 pointer-events-none">
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
             Scroll Down
           </span>
@@ -345,32 +371,45 @@ export function HeroSection() {
   return (
     <section
       id="hero"
-      className="relative w-full h-[100dvh] min-h-[500px] overflow-hidden bg-black select-none"
+      className="relative w-full h-[45vh] min-h-[220px] max-h-[380px] sm:h-[55vh] sm:min-h-[340px] sm:max-h-[500px] md:h-[65vh] lg:h-[75vh] md:max-h-[760px] overflow-hidden bg-black select-none"
       aria-label="Homepage Hero Video"
     >
       {/*
         Solid black backdrop:
         Permanently present at z-0. Guarantees that the container is solid black
         prior to video frame decoding, during buffering, or if media fails.
-        Never shows AI placeholders, stock photos, or broken indicators.
       */}
       <div className="absolute inset-0 bg-black z-0" aria-hidden="true" />
+
+      {/* Lightweight poster image fallback on slow connections or prior to playback */}
+      {activeVideo.thumbnailUrl && (
+        <Image
+          src={activeVideo.thumbnailUrl}
+          alt={activeVideo.title || 'Homepage Hero'}
+          fill
+          priority
+          sizes="100vw"
+          className={`absolute inset-0 w-full h-full object-cover z-5 transition-opacity duration-700 ${
+            isReady ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+        />
+      )}
 
       {/* 
         HTML5 Video Element:
         - Non-blocking: 'src' is attached only after client hydration/idle queue.
-        - preload="metadata" ensures minimal network footprint.
+        - preload is "none" on slow/data-saver connections, "metadata" on standard.
         - muted + playsInline conforms strictly with mobile autoplay standards.
         - opacity-0 until first frame decoded, transitioning smoothly to opacity-100.
-        - NO poster attribute to prevent unwanted picture flashes.
       */}
       <video
         ref={videoRef}
         src={canLoadVideo ? activeVideo.url : undefined}
-        autoPlay
+        poster={activeVideo.thumbnailUrl || undefined}
+        autoPlay={!prefersReducedMotion}
         muted={isMuted}
         playsInline
-        preload="metadata"
+        preload={isSlowConnection || prefersReducedMotion ? 'none' : 'metadata'}
         onLoadStart={handleLoadStart}
         onLoadedData={handleLoadedData}
         onCanPlay={handleCanPlay}
@@ -386,12 +425,12 @@ export function HeroSection() {
       />
 
       {/* Subtle bottom vignette to blend naturally into following sections */}
-      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-20" />
+      <div className="absolute inset-x-0 bottom-0 h-16 sm:h-28 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-20" />
 
       {/* Multiple Video Sequence Navigation Indicators - Fades in only once video is ready */}
       {videos.length > 1 && (
         <div
-          className={`absolute bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-opacity duration-500 ${
+          className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-opacity duration-500 ${
             isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -405,8 +444,8 @@ export function HeroSection() {
                 aria-label={`Switch to video ${idx + 1}: ${vid.title || 'Video'}`}
                 className={`transition-all duration-300 rounded-full cursor-pointer h-1.5 ${
                   isActive
-                    ? 'w-8 bg-white shadow-md'
-                    : 'w-2 bg-white/40 hover:bg-white/70'
+                    ? 'w-6 sm:w-8 bg-white shadow-md'
+                    : 'w-1.5 sm:w-2 bg-white/40 hover:bg-white/70'
                 }`}
                 title={vid.title}
               />
@@ -417,23 +456,23 @@ export function HeroSection() {
 
       {/* Audio Mute/Unmute Toggle - Fades in only once video is ready */}
       <div
-        className={`absolute bottom-8 right-6 sm:right-10 z-30 transition-opacity duration-500 ${
+        className={`absolute bottom-3 right-3 sm:bottom-6 sm:right-8 z-30 transition-opacity duration-500 ${
           isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
         <button
           type="button"
           onClick={toggleMute}
-          className="p-3 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md text-white border border-white/20 transition-all shadow-lg hover:scale-105 cursor-pointer"
+          className="p-2.5 sm:p-3 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md text-white border border-white/20 transition-all shadow-lg hover:scale-105 cursor-pointer"
           title={isMuted ? 'Unmute video audio' : 'Mute video audio'}
           aria-label={isMuted ? 'Unmute video audio' : 'Mute video audio'}
         >
-          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {isMuted ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
         </button>
       </div>
 
       {/* Minimalist scroll indicator */}
-      <div className="absolute bottom-8 left-6 sm:left-10 z-30 hidden sm:flex items-center gap-2 text-white/60 pointer-events-none">
+      <div className="absolute bottom-6 left-6 sm:left-8 z-30 hidden sm:flex items-center gap-2 text-white/60 pointer-events-none">
         <div className="w-4 h-7 rounded-full border-2 border-white/50 flex items-start justify-center p-1">
           <div className="w-1 h-1.5 rounded-full bg-white animate-bounce" />
         </div>

@@ -142,6 +142,7 @@ export default function LoginMediaShowcase({
                 }}
                 src={currentSlide.url}
                 poster={currentSlide.thumbnailUrl}
+                preload="metadata"
                 muted
                 playsInline
                 autoPlay={currentSlide.autoPlay ?? true}

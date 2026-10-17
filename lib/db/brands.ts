@@ -15,7 +15,7 @@ export async function syncBrandsFromApi(): Promise<Brand[]> {
   if (isSyncingBrands) return getBrands();
   isSyncingBrands = true;
   try {
-    const res = await fetch('/api/brands', { cache: 'no-store' });
+    const res = await fetch('/api/brands');
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.brands)) {

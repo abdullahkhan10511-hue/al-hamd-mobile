@@ -56,9 +56,7 @@ function WishlistItemCard({
           src={getProductImage(product)}
           alt={product.name}
           fill
-          className={`object-cover group-hover:scale-104 transition-transform duration-300 ${
-            isOutOfStock ? 'grayscale opacity-75' : ''
-          }`}
+          className="object-cover group-hover:scale-104 transition-transform duration-300"
         />
         <button
           onClick={onRemove}

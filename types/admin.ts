@@ -383,10 +383,21 @@ export interface HomepageVideo {
 }
 
 export interface HomepageSection {
-  id: string; // 'hero' | 'trust' | 'categories' | 'new-arrivals' | 'best-sellers' | 'deals' | 'promo-banners' | 'final-trust'
+  id: string; // 'hero' | 'trust' | 'categories' | 'brands' | 'new-arrivals' | 'best-sellers' | 'deals' | 'all-products' | 'promo-banners' | 'final-trust'
   name: string;
   enabled: boolean;
   order: number;
+}
+
+export interface AllProductsConfig {
+  title: string;
+  subtitle: string;
+  limit: number;
+  sortBy: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'best-selling';
+  categoryFilter: string;
+  showViewAllButton: boolean;
+  viewAllLink: string;
+  viewAllText: string;
 }
 
 export interface HeroConfig {

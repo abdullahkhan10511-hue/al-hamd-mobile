@@ -8,6 +8,7 @@ import { ShopByBrands } from '@/components/home/ShopByBrands';
 import { NewArrivals } from '@/components/home/NewArrivals';
 import { BestSellers } from '@/components/home/BestSellers';
 import { DealsSection } from '@/components/home/DealsSection';
+import { AllProductsSection } from '@/components/home/AllProductsSection';
 import { FinalTrustBar } from '@/components/home/FinalTrustBar';
 import { getHomepageSections } from '@/lib/db/homepage';
 import { HomepageSection } from '@/types/admin';
@@ -27,7 +28,7 @@ export default function HomePage() {
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
-      const HOME_KEYS = ['homepage_sections', 'store_settings', 'brands', 'categories', 'store_deals'];
+      const HOME_KEYS = ['homepage_sections', 'homepage_all_products_config', 'store_settings', 'brands', 'categories', 'store_deals', 'products'];
       if (key && !HOME_KEYS.includes(key)) return;
       loadData();
     };
@@ -52,6 +53,8 @@ export default function HomePage() {
       case 'deals':
       case 'promo-banners':
         return <DealsSection key="deals" />;
+      case 'all-products':
+        return <AllProductsSection key="all-products" />;
       case 'final-trust':
         return <FinalTrustBar key="final-trust" />;
       default:
@@ -73,6 +76,7 @@ export default function HomePage() {
             <NewArrivals />
             <BestSellers />
             <DealsSection />
+            <AllProductsSection />
             <FinalTrustBar />
           </>
         )}

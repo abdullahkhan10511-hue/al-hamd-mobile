@@ -1,5 +1,6 @@
 import {
   HomepageSection,
+  AllProductsConfig,
   HeroConfig,
   FlashSaleConfig,
   TrustBenefitItem,
@@ -7,6 +8,7 @@ import {
 } from '@/types/admin';
 import {
   seedHomepageSections,
+  seedAllProductsConfig,
   seedHeroConfig,
   seedFlashSaleConfig,
   seedTrustBenefits,
@@ -19,6 +21,7 @@ const SECTIONS_KEY = 'homepage_sections';
 const HERO_KEY = 'homepage_hero';
 const FLASH_SALE_KEY = 'homepage_flash_sale';
 const TRUST_BENEFITS_KEY = 'homepage_trust_benefits';
+const ALL_PRODUCTS_CONFIG_KEY = 'homepage_all_products_config';
 
 // Homepage Sections & Order
 export function getHomepageSections(): HomepageSection[] {
@@ -41,6 +44,13 @@ export function getHomepageSections(): HomepageSection[] {
     const bsSection = rawList.find((s) => s.id === 'best-sellers');
     const dealsOrder = bsSection ? bsSection.order + 0.5 : 6.5;
     rawList.push({ id: 'deals', name: 'Special Deals & Bundles', enabled: true, order: dealsOrder });
+  }
+
+  // Ensure 'all-products' section is present if upgrading an existing cached collection
+  if (!rawList.some((s) => s.id === 'all-products')) {
+    const dealsSection = rawList.find((s) => s.id === 'deals');
+    const allProdOrder = dealsSection ? dealsSection.order + 0.5 : 7.5;
+    rawList.push({ id: 'all-products', name: 'All Products Showcase', enabled: true, order: allProdOrder });
   }
 
   return rawList.sort((a, b) => a.order - b.order);
@@ -230,6 +240,25 @@ export async function updateTrustBenefits(
     adminEmail,
     action: 'Updated Trust & Benefits Pillars',
     target: 'Benefits Section',
+  });
+}
+
+// All Products Section Config
+export function getAllProductsConfig(): AllProductsConfig {
+  return getLocal<AllProductsConfig>(ALL_PRODUCTS_CONFIG_KEY, seedAllProductsConfig);
+}
+
+export async function updateAllProductsConfig(
+  config: Partial<AllProductsConfig>,
+  adminEmail = 'admin@alhamd.com'
+): Promise<void> {
+  const current = getAllProductsConfig();
+  const updated = { ...current, ...config };
+  setLocal(ALL_PRODUCTS_CONFIG_KEY, updated);
+  await logActivity({
+    adminEmail,
+    action: 'Updated All Products Section Config',
+    target: 'All Products Showcase',
   });
 }
 

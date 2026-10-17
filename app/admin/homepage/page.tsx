@@ -27,19 +27,24 @@ import {
   updateFloatingProducts,
   getFlashSaleConfig,
   updateFlashSaleConfig,
+  getAllProductsConfig,
+  updateAllProductsConfig,
 } from '@/lib/db/homepage';
 import { getDeals, toggleDealStatus } from '@/lib/db/deals';
 import { getProducts } from '@/lib/db/products';
+import { getCategories } from '@/lib/db/categories';
 import { uploadMediaFile } from '@/lib/db/media';
-import { HomepageSection, HeroConfig, FloatingProductConfig, FlashSaleConfig, Deal } from '@/types/admin';
+import { HomepageSection, HeroConfig, FloatingProductConfig, FlashSaleConfig, Deal, AllProductsConfig } from '@/types/admin';
 
 export default function HomepageControlPage() {
   const [sections, setSections] = useState<HomepageSection[]>(getHomepageSections());
   const [heroConfig, setHeroConfig] = useState<HeroConfig>(getHeroConfig());
   const [floatingProducts, setFloatingProducts] = useState<FloatingProductConfig[]>(getFloatingProducts());
   const [flashSale, setFlashSale] = useState<FlashSaleConfig>(getFlashSaleConfig());
+  const [allProductsConfig, setAllProductsConfig] = useState<AllProductsConfig>(getAllProductsConfig());
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [activeTab, setActiveTab] = useState<'sections' | 'flash' | 'preview'>('sections');
+  const [categories, setCategories] = useState(getCategories());
+  const [activeTab, setActiveTab] = useState<'sections' | 'all-products' | 'flash' | 'preview'>('sections');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -136,6 +141,7 @@ export default function HomepageControlPage() {
     await updateHeroConfig(heroConfig);
     await updateFloatingProducts(floatingProducts);
     await updateFlashSaleConfig(flashSale);
+    await updateAllProductsConfig(allProductsConfig);
 
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
@@ -179,6 +185,7 @@ export default function HomepageControlPage() {
       <div className="flex items-center gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap pb-px">
         {[
           { id: 'sections', label: 'Section Reordering & Visibility' },
+          { id: 'all-products', label: 'All Products Showcase Settings' },
           { id: 'flash', label: 'Deals & Promotional Campaigns' },
           { id: 'preview', label: 'Live Storefront Preview' },
         ].map((tab) => (
@@ -231,6 +238,15 @@ export default function HomepageControlPage() {
                           <span>Manage Videos →</span>
                         </Link>
                       )}
+                      {sec.id === 'all-products' && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('all-products')}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-neutral-900 bg-neutral-100 hover:bg-neutral-200 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
+                        >
+                          <span>Configure Settings →</span>
+                        </button>
+                      )}
                     </div>
                     <span className="text-[10px] text-neutral-400 font-mono">id: #{sec.id}</span>
                   </div>
@@ -272,6 +288,232 @@ export default function HomepageControlPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. All Products Showcase Settings */}
+      {activeTab === 'all-products' && (
+        <div className="bg-white rounded-3xl border border-neutral-200/80 p-6 sm:p-8 shadow-xs space-y-6">
+          <div className="border-b border-neutral-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-neutral-100 text-neutral-900">
+                  <Layers className="w-4 h-4" />
+                </span>
+                <h2 className="text-base font-bold text-neutral-950 uppercase tracking-tight">
+                  All Products Showcase Configuration
+                </h2>
+              </div>
+              <p className="text-xs text-neutral-500 mt-1">
+                Customize section title, subtitle, sorting, limit, and category filter for the dynamic homepage showcase.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-500 font-medium">Section Status:</span>
+              <button
+                type="button"
+                onClick={() => toggleSection('all-products')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-colors ${
+                  sections.find((s) => s.id === 'all-products')?.enabled !== false
+                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'
+                }`}
+              >
+                {sections.find((s) => s.id === 'all-products')?.enabled !== false ? (
+                  <>
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Enabled on Homepage</span>
+                  </>
+                ) : (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5" />
+                    <span>Hidden</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Title */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Section Heading / Title
+              </label>
+              <input
+                type="text"
+                value={allProductsConfig.title}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({ ...prev, title: e.target.value }))
+                }
+                placeholder="e.g. All Products"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors"
+              />
+            </div>
+
+            {/* Subtitle */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Subtitle / Description
+              </label>
+              <input
+                type="text"
+                value={allProductsConfig.subtitle}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({ ...prev, subtitle: e.target.value }))
+                }
+                placeholder="e.g. Explore our complete catalog of mobile accessories"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors"
+              />
+            </div>
+
+            {/* Products Limit */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Products Display Limit
+              </label>
+              <select
+                value={allProductsConfig.limit}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({
+                    ...prev,
+                    limit: parseInt(e.target.value, 10) || 12,
+                  }))
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors bg-white cursor-pointer"
+              >
+                {[6, 8, 12, 16, 18, 24, 30, 36].map((num) => (
+                  <option key={num} value={num}>
+                    {num} Products
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-neutral-400 mt-1 block">
+                Number of active products displayed in the homepage grid.
+              </span>
+            </div>
+
+            {/* Sort By */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Default Sort Order
+              </label>
+              <select
+                value={allProductsConfig.sortBy}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({
+                    ...prev,
+                    sortBy: e.target.value as any,
+                  }))
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors bg-white cursor-pointer"
+              >
+                <option value="featured">Featured First (Default)</option>
+                <option value="newest">Newest Arrivals First</option>
+                <option value="best-selling">Best Sellers First</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Category Scope / Filter
+              </label>
+              <select
+                value={allProductsConfig.categoryFilter}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({
+                    ...prev,
+                    categoryFilter: e.target.value,
+                  }))
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors bg-white cursor-pointer"
+              >
+                <option value="all">All Categories (Full Catalog)</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.slug}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-neutral-400 mt-1 block">
+                Optionally restrict the showcase to a specific product category.
+              </span>
+            </div>
+
+            {/* View All Link */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                &ldquo;View All&rdquo; Button Target URL
+              </label>
+              <input
+                type="text"
+                value={allProductsConfig.viewAllLink}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({ ...prev, viewAllLink: e.target.value }))
+                }
+                placeholder="/shop"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors"
+              />
+            </div>
+
+            {/* View All Button Text */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                &ldquo;View All&rdquo; Button Label
+              </label>
+              <input
+                type="text"
+                value={allProductsConfig.viewAllText}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({ ...prev, viewAllText: e.target.value }))
+                }
+                placeholder="Explore Entire Catalog"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors"
+              />
+            </div>
+
+            {/* Toggle View All Button */}
+            <div className="flex items-center gap-3 self-end pb-2">
+              <input
+                type="checkbox"
+                id="showViewAllBtn"
+                checked={allProductsConfig.showViewAllButton}
+                onChange={(e) =>
+                  setAllProductsConfig((prev) => ({
+                    ...prev,
+                    showViewAllButton: e.target.checked,
+                  }))
+                }
+                className="w-4 h-4 rounded text-neutral-900 focus:ring-neutral-950 border-neutral-300 cursor-pointer"
+              />
+              <label htmlFor="showViewAllBtn" className="text-xs font-semibold text-neutral-800 cursor-pointer">
+                Display &ldquo;View All&rdquo; link in section header
+              </label>
+            </div>
+          </div>
+
+          {/* Quick Status Bar */}
+          <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs text-neutral-600">
+              <Check className="w-4 h-4 text-emerald-600" />
+              <span>
+                <strong>{allProducts.filter((p) => (p as any).status !== 'archived' && (p as any).status !== 'inactive' && (p as any).isActive !== false).length}</strong> active products available in database. Showing up to <strong>{allProductsConfig.limit}</strong> items.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveAll}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-xs cursor-pointer self-start sm:self-auto"
+            >
+              {isSaved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
+              <span>{isSaved ? 'Settings Saved' : 'Save Section Settings'}</span>
+            </button>
           </div>
         </div>
       )}

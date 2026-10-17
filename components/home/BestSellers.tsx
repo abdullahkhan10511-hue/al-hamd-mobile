@@ -181,9 +181,7 @@ function LargeBestSellerCard({ product }: { product: Product }) {
             alt={product.name}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
-            className={`object-cover transition-transform duration-700 ease-out group-hover:scale-105 ${
-              isOutOfStock ? 'grayscale opacity-75' : ''
-            }`}
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
           />
         </Link>
       </div>

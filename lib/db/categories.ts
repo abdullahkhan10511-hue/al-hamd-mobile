@@ -83,7 +83,7 @@ export async function syncCategoriesFromApi(): Promise<Category[]> {
   if (isSyncingCategories) return getCategories();
   isSyncingCategories = true;
   try {
-    const res = await fetch('/api/categories', { cache: 'no-store' });
+    const res = await fetch('/api/categories');
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.categories)) {

@@ -626,13 +626,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     title={item.type === 'video' ? `Product Video ${idx + 1}` : `Product Image ${idx + 1}`}
                   >
                     {item.type === 'video' ? (
-                      <div className="w-full h-full relative bg-neutral-900 flex items-center justify-center">
-                        <video
-                          src={item.url}
-                          muted
-                          preload="metadata"
-                          className="w-full h-full object-cover opacity-85"
-                        />
+                      <div className="w-full h-full relative bg-neutral-900 flex items-center justify-center overflow-hidden">
+                        {product.images?.[0] ? (
+                          <Image
+                            src={product.images[0]}
+                            alt={`${product.name} video thumbnail`}
+                            fill
+                            sizes="80px"
+                            className="object-cover opacity-60"
+                          />
+                        ) : null}
                         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                           <div className="w-6 h-6 rounded-full bg-white/95 flex items-center justify-center text-neutral-950 shadow-sm">
                             <Play className="w-3 h-3 fill-neutral-950 ml-0.5" />
@@ -647,6 +650,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                         src={item.url}
                         alt={`${product.name} thumbnail ${idx + 1}`}
                         fill
+                        sizes="80px"
                         className="object-cover"
                       />
                     )}
@@ -663,8 +667,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                     key={activeMedia.url}
                     src={activeMedia.url}
                     controls
-                    autoPlay
-                    muted
+                    preload="metadata"
                     playsInline
                     className="w-full h-full object-contain"
                   />

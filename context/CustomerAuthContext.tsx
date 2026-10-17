@@ -4,7 +4,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import {
   SanitizedCustomer,
   authenticateCustomer,
-  registerCustomer,
   updateCustomerProfile,
   changeCustomerPassword,
   getCustomerById,
@@ -201,19 +200,33 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
   }): Promise<SanitizedCustomer> => {
     setIsLoading(true);
     try {
-      const sanitized = await registerCustomer(data);
+      const res = await fetch('/api/auth/customer/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || 'Failed to create customer account. Please try again.');
+      }
+
+      const sanitized: SanitizedCustomer = resData.customer;
       setCustomer(sanitized);
+
       if (typeof window !== 'undefined') {
         localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
         setCustomerCookie(sanitized);
+        try {
+          const rawCust = localStorage.getItem('alhamd_store_customers');
+          const list: any[] = rawCust ? JSON.parse(rawCust) : [];
+          if (!list.some((c: any) => c.id === sanitized.id)) {
+            list.unshift(sanitized);
+            localStorage.setItem('alhamd_store_customers', JSON.stringify(list));
+          }
+        } catch {}
       }
-      try {
-        fetch('/api/auth/customer/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        }).catch(() => {});
-      } catch {}
+
       return sanitized;
     } finally {
       setIsLoading(false);
