@@ -18,8 +18,8 @@ import {
   Search,
   Image as ImageIcon,
 } from 'lucide-react';
-import { getProducts, updateProduct } from '@/lib/db/products';
-import { getHomepageSections, updateHomepageSections } from '@/lib/db/homepage';
+import { getProducts, updateProduct, syncProductsFromApi } from '@/lib/db/products';
+import { getHomepageSections, updateHomepageSections, syncHomepageSettingsFromApi } from '@/lib/db/homepage';
 import { formatPrice } from '@/lib/utils';
 import { Product } from '@/types';
 import { HomepageSection } from '@/types/admin';
@@ -50,6 +50,8 @@ export default function AdminNewArrivalsPage() {
 
   useEffect(() => {
     loadData();
+    syncProductsFromApi().then(() => loadData()).catch(() => {});
+    syncHomepageSettingsFromApi().then(() => loadData()).catch(() => {});
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);

@@ -10,6 +10,7 @@ import {
   deleteStaffInDb,
 } from '@/lib/db/staff-server';
 import { isDbConfigured } from '@/lib/db/mysql';
+import { allowDevMockFallback } from '@/lib/env';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
@@ -204,27 +205,30 @@ export async function POST(request: NextRequest) {
     };
 
     // 6. Save to MySQL or server storage
+    let createdStaffUser: StaffUser | null = null;
     if (isDbConfigured()) {
-      try {
-        await createStaffInDb({
-          name: newStaff.name,
-          email: newStaff.email,
-          password,
-          role: newStaff.role,
-          phone: newStaff.phone,
-          avatar: newStaff.avatar,
-          status: newStaff.status,
-          permissions: newStaff.permissions,
-        });
-      } catch (err: any) {
-        console.warn('MySQL create staff notice:', err.message);
-      }
+      createdStaffUser = await createStaffInDb({
+        name: newStaff.name,
+        email: newStaff.email,
+        password,
+        role: newStaff.role,
+        phone: newStaff.phone,
+        avatar: newStaff.avatar,
+        status: newStaff.status,
+        permissions: newStaff.permissions,
+      });
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      saveServerStaffUsers([...allStaff, newStaff]);
+      createdStaffUser = newStaff;
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
-    saveServerStaffUsers([...allStaff, newStaff]);
-
     // 7. Strip sensitive credentials before returning in API response
-    const { passwordHash: _, salt: __, ...safeStaff } = newStaff;
+    const { passwordHash: _, salt: __, ...safeStaff } = createdStaffUser || newStaff;
 
     return NextResponse.json(
       {
@@ -235,9 +239,13 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (err: any) {
+    console.error('Error creating staff member:', err);
+    const isConflict =
+      err?.message?.includes('already exists') ||
+      err?.code === 'ER_DUP_ENTRY';
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to create staff member.' },
-      { status: 500 }
+      { status: isConflict ? 409 : 500 }
     );
   }
 }
@@ -359,29 +367,39 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update in MySQL if configured
+    let safeUpdatedStaff: any = null;
     if (isDbConfigured()) {
-      try {
-        await updateStaffInDb(target.id, {
-          name: updated.name,
-          email: updated.email,
-          phone: updated.phone,
-          avatar: updated.avatar,
-          status: updated.status,
-          role: updated.role,
-          permissions: updated.permissions,
-          newPassword: passwordToSet,
-        });
-      } catch (err: any) {
-        console.warn('MySQL update staff notice:', err.message);
-      }
+      const updatedFromDb = await updateStaffInDb(target.id, {
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        avatar: updated.avatar,
+        status: updated.status,
+        role: updated.role,
+        permissions: updated.permissions,
+        newPassword: passwordToSet,
+      });
+      const { passwordHash: _, salt: __, ...safe } = updatedFromDb;
+      safeUpdatedStaff = safe;
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      allStaff[index] = updated;
+      saveServerStaffUsers(allStaff);
+      const { passwordHash: _, salt: __, ...safe } = updated;
+      safeUpdatedStaff = safe;
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
-    allStaff[index] = updated;
-    saveServerStaffUsers(allStaff);
-
-    const { passwordHash: _, salt: __, ...safeUpdated } = updated;
-    return NextResponse.json({ success: true, staff: safeUpdated, message: 'Account updated successfully.' });
+    return NextResponse.json({
+      success: true,
+      staff: safeUpdatedStaff,
+      message: 'Account updated successfully.',
+    });
   } catch (err: any) {
+    console.error('Error updating staff member:', err);
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to update staff member.' },
       { status: 500 }
@@ -469,23 +487,25 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (isDbConfigured()) {
-      try {
-        await deleteStaffInDb(target.id);
-      } catch (err: any) {
-        console.warn('MySQL delete staff notice:', err.message);
-      }
+      await deleteStaffInDb(target.id);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const filtered = allStaff.filter(
+        (u) => u.id !== target.id && u.email.toLowerCase() !== target.email.toLowerCase()
+      );
+      saveServerStaffUsers(filtered);
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
-
-    const filtered = allStaff.filter(
-      (u) => u.id !== target.id && u.email.toLowerCase() !== target.email.toLowerCase()
-    );
-    saveServerStaffUsers(filtered);
 
     return NextResponse.json({
       success: true,
       message: `Staff account "${target.name}" permanently deleted.`,
     });
   } catch (err: any) {
+    console.error('Error deleting staff member:', err);
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to delete staff member.' },
       { status: 500 }

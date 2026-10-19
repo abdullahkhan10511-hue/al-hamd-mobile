@@ -354,11 +354,11 @@ export function HeroSection() {
     return (
       <section
         id="hero"
-        className="relative w-full h-[45vh] min-h-[220px] max-h-[380px] sm:h-[55vh] sm:min-h-[340px] sm:max-h-[500px] md:h-[65vh] lg:h-[75vh] md:max-h-[760px] overflow-hidden bg-black select-none"
+        className="relative w-full h-[100dvh] min-h-[500px] overflow-hidden bg-black select-none"
         aria-label="Homepage Hero Video"
       >
         <div className="absolute inset-0 bg-black z-0" aria-hidden="true" />
-        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 text-white/40 pointer-events-none">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 text-white/40 pointer-events-none">
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
             Scroll Down
           </span>
@@ -371,7 +371,7 @@ export function HeroSection() {
   return (
     <section
       id="hero"
-      className="relative w-full h-[45vh] min-h-[220px] max-h-[380px] sm:h-[55vh] sm:min-h-[340px] sm:max-h-[500px] md:h-[65vh] lg:h-[75vh] md:max-h-[760px] overflow-hidden bg-black select-none"
+      className="relative w-full h-[100dvh] min-h-[500px] overflow-hidden bg-black select-none"
       aria-label="Homepage Hero Video"
     >
       {/*
@@ -425,12 +425,12 @@ export function HeroSection() {
       />
 
       {/* Subtle bottom vignette to blend naturally into following sections */}
-      <div className="absolute inset-x-0 bottom-0 h-16 sm:h-28 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-20" />
+      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-20" />
 
       {/* Multiple Video Sequence Navigation Indicators - Fades in only once video is ready */}
       {videos.length > 1 && (
         <div
-          className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-opacity duration-500 ${
+          className={`absolute bottom-8 sm:bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-opacity duration-500 ${
             isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -456,7 +456,7 @@ export function HeroSection() {
 
       {/* Audio Mute/Unmute Toggle - Fades in only once video is ready */}
       <div
-        className={`absolute bottom-3 right-3 sm:bottom-6 sm:right-8 z-30 transition-opacity duration-500 ${
+        className={`absolute bottom-6 sm:bottom-8 right-4 sm:right-10 z-30 transition-opacity duration-500 ${
           isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -472,7 +472,7 @@ export function HeroSection() {
       </div>
 
       {/* Minimalist scroll indicator */}
-      <div className="absolute bottom-6 left-6 sm:left-8 z-30 hidden sm:flex items-center gap-2 text-white/60 pointer-events-none">
+      <div className="absolute bottom-8 left-6 sm:left-10 z-30 hidden sm:flex items-center gap-2 text-white/60 pointer-events-none">
         <div className="w-4 h-7 rounded-full border-2 border-white/50 flex items-start justify-center p-1">
           <div className="w-1 h-1.5 rounded-full bg-white animate-bounce" />
         </div>

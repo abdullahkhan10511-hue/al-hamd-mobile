@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { MapPin, ExternalLink, Navigation } from 'lucide-react';
-import { getActiveShopLocation } from '@/lib/db/locations';
+import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { ShopLocation } from '@/types/admin';
 
 interface ShopLocationCardProps {
@@ -20,6 +20,9 @@ export function ShopLocationCard({ className = '', variant = 'card' }: ShopLocat
 
   useEffect(() => {
     loadLocation();
+    syncShopLocationsFromApi().then((fresh) => {
+      if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;

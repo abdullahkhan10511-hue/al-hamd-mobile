@@ -88,6 +88,5 @@ class MemoryCache {
 // Global singleton instance across server requests
 const globalForCache = globalThis as unknown as { serverCache?: MemoryCache };
 export const serverCache = globalForCache.serverCache || new MemoryCache();
-if (process.env.NODE_ENV !== 'production') {
-  globalForCache.serverCache = serverCache;
-}
+globalForCache.serverCache = serverCache;
+(globalThis as any).serverCache = serverCache;

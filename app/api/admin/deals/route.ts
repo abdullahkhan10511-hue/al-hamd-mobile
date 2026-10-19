@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { getDeals, saveDeal } from '@/lib/db/deals';
 import { getAllDealsFromDb, insertDealToDb } from '@/lib/db/repositories/deals';
 import { isDbConfigured } from '@/lib/db/mysql';
+import { allowDevMockFallback } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,14 +126,13 @@ export async function POST(request: NextRequest) {
 
     let savedDeal;
     if (isDbConfigured()) {
+      savedDeal = await insertDealToDb(body);
       try {
-        savedDeal = await insertDealToDb(body);
         await saveDeal(savedDeal, session.email);
-      } catch (dbErr: any) {
-        console.warn('MySQL error inserting deal, falling back to local storage:', dbErr);
-        savedDeal = await saveDeal(body, session.email);
+      } catch (cacheErr) {
+        console.warn('Notice syncing deal to local cache:', cacheErr);
       }
-    } else {
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       try {
         const { insertDevDeal } = await import('@/lib/db/serverDevStorage');
         savedDeal = await insertDevDeal(body, session.email);
@@ -140,6 +140,11 @@ export async function POST(request: NextRequest) {
       } catch {
         savedDeal = await saveDeal(body, session.email);
       }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
     try {

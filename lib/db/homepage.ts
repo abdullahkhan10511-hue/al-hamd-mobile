@@ -17,11 +17,74 @@ import { getStoredCollection, getLocal, setLocal, persistCollection } from './st
 import { logActivity } from './activity';
 import { allowDevMockFallback } from '../env';
 
+import { getAdminAuthHeaders } from './staff';
+
 const SECTIONS_KEY = 'homepage_sections';
 const HERO_KEY = 'homepage_hero';
 const FLASH_SALE_KEY = 'homepage_flash_sale';
 const TRUST_BENEFITS_KEY = 'homepage_trust_benefits';
 const ALL_PRODUCTS_CONFIG_KEY = 'homepage_all_products_config';
+
+let inFlightHomepageSettingsPromise: Promise<boolean> | null = null;
+
+export async function syncHomepageSettingsFromApi(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (inFlightHomepageSettingsPromise) return inFlightHomepageSettingsPromise;
+
+  inFlightHomepageSettingsPromise = (async () => {
+    try {
+      const res = await fetch('/api/homepage-settings?t=' + Date.now(), {
+        cache: 'no-store',
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (!data.success || !data.settings) return false;
+
+      const { sections, hero, flashSale, trustBenefits, allProducts } = data.settings;
+      if (Array.isArray(sections)) {
+        await persistCollection(SECTIONS_KEY, sections);
+      }
+      if (hero) {
+        setLocal(HERO_KEY, hero);
+      }
+      if (flashSale) {
+        setLocal(FLASH_SALE_KEY, flashSale);
+      }
+      if (Array.isArray(trustBenefits)) {
+        await persistCollection(TRUST_BENEFITS_KEY, trustBenefits);
+      }
+      if (allProducts) {
+        setLocal(ALL_PRODUCTS_CONFIG_KEY, allProducts);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: 'homepage_sections' } }));
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      inFlightHomepageSettingsPromise = null;
+    }
+  })();
+
+  return inFlightHomepageSettingsPromise;
+}
+
+async function saveHomepageSettingsToServer(payload: Record<string, any>): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch('/api/admin/homepage-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.warn('Network error while saving homepage settings to server:', err);
+  }
+}
 
 // Homepage Sections & Order
 export function getHomepageSections(): HomepageSection[] {
@@ -61,6 +124,7 @@ export async function updateHomepageSections(
   adminEmail = 'admin@alhamd.com'
 ): Promise<void> {
   await persistCollection(SECTIONS_KEY, sections);
+  await saveHomepageSettingsToServer({ sections });
   await logActivity({
     adminEmail,
     action: 'Updated Homepage Sections Order/Visibility',
@@ -131,6 +195,7 @@ export async function updateHeroConfig(
   const current = getHeroConfig();
   const updated = { ...current, ...config };
   setLocal(HERO_KEY, updated);
+  await saveHomepageSettingsToServer({ hero: updated });
   await logActivity({
     adminEmail,
     action: 'Updated Hero Section Config',
@@ -210,6 +275,7 @@ export async function updateFlashSaleConfig(
   const current = getFlashSaleConfig();
   const updated = { ...current, ...config };
   setLocal(FLASH_SALE_KEY, updated);
+  await saveHomepageSettingsToServer({ flashSale: updated });
   await logActivity({
     adminEmail,
     action: 'Updated Flash Sale Config & Timer',
@@ -236,6 +302,7 @@ export async function updateTrustBenefits(
   adminEmail = 'admin@alhamd.com'
 ): Promise<void> {
   await persistCollection(TRUST_BENEFITS_KEY, items);
+  await saveHomepageSettingsToServer({ trustBenefits: items });
   await logActivity({
     adminEmail,
     action: 'Updated Trust & Benefits Pillars',
@@ -255,6 +322,7 @@ export async function updateAllProductsConfig(
   const current = getAllProductsConfig();
   const updated = { ...current, ...config };
   setLocal(ALL_PRODUCTS_CONFIG_KEY, updated);
+  await saveHomepageSettingsToServer({ allProducts: updated });
   await logActivity({
     adminEmail,
     action: 'Updated All Products Section Config',

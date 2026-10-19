@@ -25,7 +25,7 @@ import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getNavigation } from '@/lib/db/navigation';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
-import { getActiveShopLocation } from '@/lib/db/locations';
+import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { getPages } from '@/lib/db/pages';
 import { NavigationItem, StoreSettings, ShopLocation, CustomPage } from '@/types/admin';
 import { Category } from '@/types';
@@ -89,6 +89,9 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
     }).catch(() => {});
     syncStoreSettingsFromApi().then((fresh) => {
       if (fresh) setSettings(fresh);
+    }).catch(() => {});
+    syncShopLocationsFromApi().then((fresh) => {
+      if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
     }).catch(() => {});
 
     const handleUpdate = (e: Event) => {

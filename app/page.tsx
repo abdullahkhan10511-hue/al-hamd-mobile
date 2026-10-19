@@ -10,7 +10,7 @@ import { BestSellers } from '@/components/home/BestSellers';
 import { DealsSection } from '@/components/home/DealsSection';
 import { AllProductsSection } from '@/components/home/AllProductsSection';
 import { FinalTrustBar } from '@/components/home/FinalTrustBar';
-import { getHomepageSections } from '@/lib/db/homepage';
+import { getHomepageSections, syncHomepageSettingsFromApi } from '@/lib/db/homepage';
 import { HomepageSection } from '@/types/admin';
 
 export default function HomePage() {
@@ -25,6 +25,9 @@ export default function HomePage() {
 
   useEffect(() => {
     loadData();
+    syncHomepageSettingsFromApi().then(() => {
+      loadData();
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;

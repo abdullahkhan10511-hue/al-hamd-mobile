@@ -22,12 +22,12 @@ console.log('======================================================\n');
 console.log('--- TEST SUITE 1: Homepage Mobile Video Sizing & Preload ---');
 const heroFile = fs.readFileSync(path.join(process.cwd(), 'components/home/HeroSection.tsx'), 'utf8');
 
-assert(!heroFile.includes('h-[100dvh]'), 'HeroSection no longer forces h-[100dvh] viewport height');
-assert(heroFile.includes('h-[45vh] min-h-[220px] max-h-[380px]'), 'HeroSection applies responsive mobile height limits (45vh, 220px min, 380px max)');
+assert(heroFile.includes('h-[100dvh] min-h-[500px]'), 'HeroSection provides full viewport immersive presentation (h-[100dvh] min-h-[500px])');
+assert(!heroFile.includes('h-[45vh] min-h-[220px] max-h-[380px]'), 'HeroSection does not unnecessarily shrink video dimensions on mobile');
 assert(heroFile.includes('isSlowConnection'), 'HeroSection detects slow cellular network or Data Saver mode');
 assert(heroFile.includes('preload={isSlowConnection || prefersReducedMotion ? \'none\' : \'metadata\'}'), 'HeroSection uses network-aware video preloading');
 assert(heroFile.includes('activeVideo.thumbnailUrl'), 'HeroSection integrates poster and thumbnail fallback');
-assert(heroFile.includes('bottom-3 sm:bottom-6'), 'Bottom controls and indicators are adjusted for compact mobile screens');
+assert(heroFile.includes('bottom-8 sm:bottom-10'), 'Bottom controls and indicators are positioned with proper immersive spacing');
 
 // 2. Product Page Video Optimization
 console.log('\n--- TEST SUITE 2: Product Page Media Optimization ---');

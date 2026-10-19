@@ -1,6 +1,7 @@
 import { HomepageVideo } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 const COLLECTION_KEY = 'homepage_videos';
 const ACTIVE_COLLECTION_KEY = 'homepage_active_videos';
@@ -210,33 +211,39 @@ export async function saveHomepageVideo(
     })
   );
 
-  try {
+  if (typeof window !== 'undefined') {
     const payload = videoData.id
       ? { action: 'update', id: videoData.id, updates: targetItem }
       : { action: 'add', item: targetItem };
 
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
+
     const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(payload),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.items)) {
-        await persistCollection(COLLECTION_KEY, data.items);
-        const serverActive = data.items.filter((v: HomepageVideo) => {
-          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
-          return Boolean(isActive && v.url && v.url.trim());
-        });
-        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
-          })
-        );
-      }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to save homepage video to database.');
     }
-  } catch {}
+    if (data.success && Array.isArray(data.items)) {
+      await persistCollection(COLLECTION_KEY, data.items);
+      const serverActive = data.items.filter((v: HomepageVideo) => {
+        const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+        return Boolean(isActive && v.url && v.url.trim());
+      });
+      await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+      window.dispatchEvent(
+        new CustomEvent('alhamd:data-updated', {
+          detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+        })
+      );
+    }
+  }
 
   await logActivity({
     adminEmail,
@@ -275,29 +282,34 @@ export async function toggleHomepageVideoStatus(
     })
   );
 
-  try {
+  if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
     const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ action: 'update', id, updates: { ...item, active } }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.items)) {
-        await persistCollection(COLLECTION_KEY, data.items);
-        const serverActive = data.items.filter((v: HomepageVideo) => {
-          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
-          return Boolean(isActive && v.url && v.url.trim());
-        });
-        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
-          })
-        );
-      }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to update video status in database.');
     }
-  } catch {}
+    if (data.success && Array.isArray(data.items)) {
+      await persistCollection(COLLECTION_KEY, data.items);
+      const serverActive = data.items.filter((v: HomepageVideo) => {
+        const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+        return Boolean(isActive && v.url && v.url.trim());
+      });
+      await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+      window.dispatchEvent(
+        new CustomEvent('alhamd:data-updated', {
+          detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+        })
+      );
+    }
+  }
 
   await logActivity({
     adminEmail,
@@ -349,30 +361,35 @@ export async function reorderHomepageVideos(
     })
   );
 
-  try {
+  if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
     const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ action: 'reorder', orderedIds, items: reordered }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.items)) {
-        await persistCollection(COLLECTION_KEY, data.items);
-        const serverActive = data.items.filter((v: HomepageVideo) => {
-          const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
-          return Boolean(isActive && v.url && v.url.trim());
-        });
-        await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
-          })
-        );
-        return data.items;
-      }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to update video order in database.');
     }
-  } catch {}
+    if (data.success && Array.isArray(data.items)) {
+      await persistCollection(COLLECTION_KEY, data.items);
+      const serverActive = data.items.filter((v: HomepageVideo) => {
+        const isActive = v && (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') && v.active !== false && (v.active as any) !== 0 && (v.active as any) !== '0';
+        return Boolean(isActive && v.url && v.url.trim());
+      });
+      await persistCollection(ACTIVE_COLLECTION_KEY, serverActive, true);
+      window.dispatchEvent(
+        new CustomEvent('alhamd:data-updated', {
+          detail: { key: ACTIVE_COLLECTION_KEY, value: serverActive },
+        })
+      );
+      return data.items;
+    }
+  }
 
   await logActivity({
     adminEmail,
@@ -414,19 +431,24 @@ export async function deleteHomepageVideo(
     })
   );
 
-  try {
+  if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
     const res = await fetch('/api/admin/homepage-videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ action: 'delete', id }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.items)) {
-        await persistCollection(COLLECTION_KEY, data.items);
-      }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to delete homepage video from database.');
     }
-  } catch {}
+    if (data.success && Array.isArray(data.items)) {
+      await persistCollection(COLLECTION_KEY, data.items);
+    }
+  }
 
   // If local uploaded video, call server cleanup
   if (target.url && target.url.startsWith('/uploads/videos/')) {

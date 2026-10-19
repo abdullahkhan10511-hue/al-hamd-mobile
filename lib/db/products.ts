@@ -9,6 +9,7 @@ import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getFlashSaleConfig, getHeroConfig } from './homepage';
 import { getMediaItems } from './media';
 import { allowDevMockFallback } from '../env';
+import { getAdminAuthHeaders } from './staff';
 
 const COLLECTION_KEY = 'products';
 const DELETED_PRODUCT_IDS_KEY = 'deleted_product_ids';
@@ -99,33 +100,39 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
 }
 
 let hasSyncedProductsFromApi = false;
-let isSyncingProducts = false;
+let inFlightProductsPromise: Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]> | null = null;
 
-export async function syncProductsFromApi(): Promise<
+export async function syncProductsFromApi(forceFresh = false): Promise<
   (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
 > {
   if (typeof window === 'undefined') return [];
-  if (isSyncingProducts) {
-    return getProducts();
+  if (inFlightProductsPromise && !forceFresh) {
+    return inFlightProductsPromise;
   }
-  isSyncingProducts = true;
-  try {
-    const res = await fetch('/api/products');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.products)) {
-        const sanitized = sanitizeProducts(data.products);
-        await persistCollection(COLLECTION_KEY, sanitized);
-        hasSyncedProductsFromApi = true;
-        return sanitized;
+
+  inFlightProductsPromise = (async () => {
+    try {
+      const res = await fetch(`/api/products?t=${Date.now()}&fresh=true`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          const sanitized = sanitizeProducts(data.products);
+          await persistCollection(COLLECTION_KEY, sanitized);
+          hasSyncedProductsFromApi = true;
+          return sanitized;
+        }
       }
+    } catch (err) {
+      console.warn('API error syncing products:', err);
+    } finally {
+      inFlightProductsPromise = null;
     }
-  } catch (err) {
-    console.warn('API error syncing products:', err);
-  } finally {
-    isSyncingProducts = false;
-  }
-  return getProducts();
+    return getProducts();
+  })();
+
+  return inFlightProductsPromise;
 }
 
 export function getProductById(id: string) {
@@ -330,9 +337,13 @@ export async function createProduct(
 
   if (typeof window !== 'undefined') {
     try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
       const res = await fetch('/api/admin/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(newProduct),
       });
       const resData = await res.json();
@@ -489,9 +500,13 @@ export async function updateProduct(
 
   if (typeof window !== 'undefined') {
     try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(updates),
       });
       const resData = await res.json();
@@ -540,7 +555,7 @@ export async function updateProduct(
 
 export interface DeleteProductResponse {
   success: boolean;
-  action: 'deleted' | 'not_found';
+  action: 'deleted' | 'not_found' | 'error';
   message: string;
   error?: string;
 }
@@ -555,19 +570,29 @@ export async function deleteProduct(
     return { success: false, action: 'not_found', message: 'Product not found.' };
   }
 
-  // 1. Permanently remove from product database collection
-  const filtered = products.filter((p) => p.id !== id);
-  await persistCollection(COLLECTION_KEY, filtered);
-
   if (typeof window !== 'undefined') {
     try {
-      await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'DELETE',
+        headers: authHeaders,
       });
-    } catch (err) {
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        return { success: false, action: 'error', message: resData.error || 'Failed to delete product from database.' };
+      }
+    } catch (err: any) {
       console.warn('API error deleting product:', err);
+      return { success: false, action: 'error', message: err?.message || 'Failed to delete product from database.' };
     }
   }
+
+  // 1. Remove from product database collection after confirmed server delete
+  const filtered = products.filter((p) => p.id !== id);
+  await persistCollection(COLLECTION_KEY, filtered);
 
   // 2. Blacklist deleted ID so getProducts() seed rehydration never resurrects it
   const deletedIds = getLocal<string[]>(DELETED_PRODUCT_IDS_KEY, []);

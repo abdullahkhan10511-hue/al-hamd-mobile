@@ -1,6 +1,7 @@
 import { Deal, DealProductItem } from '@/types/admin';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 export const DEALS_STORAGE_KEY = 'store_deals';
 const DELETED_DEALS_KEY = 'deleted_deal_ids';
@@ -93,23 +94,45 @@ export async function saveDeal(
     updatedAt: new Date().toISOString(),
   };
 
+  let finalDeal = newDeal;
+  if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
+    const endpoint = existingIndex >= 0 ? `/api/admin/deals/${encodeURIComponent(id)}` : '/api/admin/deals';
+    const method = existingIndex >= 0 ? 'PUT' : 'POST';
+    const res = await fetch(endpoint, {
+      method,
+      headers: authHeaders,
+      body: JSON.stringify(newDeal),
+    });
+    const resData = await res.json().catch(() => ({}));
+    if (!res.ok || !resData.success) {
+      throw new Error(resData.error || 'Failed to save deal to database.');
+    }
+    if (resData.deal) {
+      finalDeal = resData.deal;
+    }
+  }
+
   let updatedList: Deal[];
   if (existingIndex >= 0) {
     updatedList = [...deals];
-    updatedList[existingIndex] = newDeal;
+    updatedList[existingIndex] = finalDeal;
     await logActivity({
       adminEmail,
       action: 'UPDATE_DEAL',
-      target: newDeal.name,
-      details: `Updated promotional deal "${newDeal.name}" (${newDeal.products.length} products)`,
+      target: finalDeal.name,
+      details: `Updated promotional deal "${finalDeal.name}" (${finalDeal.products.length} products)`,
     });
   } else {
-    updatedList = [...deals, newDeal];
+    updatedList = [...deals, finalDeal];
     await logActivity({
       adminEmail,
       action: 'CREATE_DEAL',
-      target: newDeal.name,
-      details: `Created new promotional deal "${newDeal.name}" with ${newDeal.products.length} products`,
+      target: finalDeal.name,
+      details: `Created new promotional deal "${finalDeal.name}" with ${finalDeal.products.length} products`,
     });
   }
 
@@ -119,20 +142,35 @@ export async function saveDeal(
     try {
       const { insertDevDeal, updateDevDeal } = require('./serverDevStorage');
       if (existingIndex >= 0) {
-        await updateDevDeal(id, newDeal, adminEmail);
+        await updateDevDeal(id, finalDeal, adminEmail);
       } else {
-        await insertDevDeal(newDeal, adminEmail);
+        await insertDevDeal(finalDeal, adminEmail);
       }
     } catch {}
   }
 
-  return newDeal;
+  return finalDeal;
 }
 
 export async function deleteDeal(id: string, adminEmail: string = 'admin@alhamd.com'): Promise<boolean> {
   const deals = getDeals();
   const target = deals.find((d) => d.id === id);
   if (!target) return false;
+
+  if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
+    const res = await fetch(`/api/admin/deals/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: authHeaders,
+    });
+    const resData = await res.json().catch(() => ({}));
+    if (!res.ok || !resData.success) {
+      throw new Error(resData.error || 'Failed to delete deal from database.');
+    }
+  }
 
   const deletedIds = getDeletedDealIds();
   deletedIds.add(id);
@@ -190,35 +228,31 @@ export function parseDateTimeInputToIso(localStr?: string): string | undefined {
   return date.toISOString();
 }
 
-let isSyncingDeals = false;
+let inFlightDealsPromise: Promise<Deal[]> | null = null;
 
 export async function syncDealsFromApi(): Promise<Deal[]> {
   if (typeof window === 'undefined') return getDeals();
-  if (isSyncingDeals) return getDeals();
+  if (inFlightDealsPromise) return inFlightDealsPromise;
 
-  isSyncingDeals = true;
-  try {
-    const res = await fetch('/api/deals', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.deals)) {
-        if (data.deals.length > 0) {
-          const currentDeals = getDeals();
-          const serverIds = new Set(data.deals.map((d: Deal) => d.id));
-          const localOnly = currentDeals.filter((d) => !serverIds.has(d.id));
-          const merged = [...data.deals, ...localOnly];
-          await persistCollection(DEALS_STORAGE_KEY, merged, true);
-          return merged;
+  inFlightDealsPromise = (async () => {
+    try {
+      const res = await fetch(`/api/deals?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.deals)) {
+          await persistCollection(DEALS_STORAGE_KEY, data.deals, true);
+          return data.deals;
         }
       }
+    } catch (err) {
+      console.warn('Could not sync deals from API:', err);
+    } finally {
+      inFlightDealsPromise = null;
     }
-  } catch (err) {
-    console.warn('Could not sync deals from API:', err);
-  } finally {
-    isSyncingDeals = false;
-  }
+    return getDeals();
+  })();
 
-  return getDeals();
+  return inFlightDealsPromise;
 }
 
 export function isDealExpired(deal: Deal): boolean {

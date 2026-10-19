@@ -108,6 +108,11 @@ export async function GET(request: NextRequest) {
       paginatedProducts = products.slice(startIndex, startIndex + limit);
     }
 
+    const isFresh = searchParams.get('fresh') === 'true' || searchParams.has('t');
+    const cacheControl = isFresh
+      ? 'no-cache, no-store, must-revalidate, max-age=0'
+      : 'public, max-age=10, s-maxage=30, stale-while-revalidate=60';
+
     return NextResponse.json(
       {
         success: true,
@@ -118,7 +123,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': cacheControl,
         },
       }
     );

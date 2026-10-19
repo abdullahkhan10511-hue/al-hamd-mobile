@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminSession } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { insertProductToDb, getAllProductsFromDb } from '@/lib/db/repositories/products';
@@ -55,6 +56,14 @@ export async function POST(request: NextRequest) {
 
     if (isDbConfigured()) {
       const product = await insertProductToDb(body, session.email);
+      try {
+        revalidatePath('/');
+        revalidatePath('/api/products');
+        revalidatePath('/products');
+        revalidatePath('/admin/products');
+      } catch (revErr) {
+        console.warn('revalidatePath notice:', revErr);
+      }
       return NextResponse.json({ success: true, product }, { status: 201 });
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       const { insertDevProduct } = await import('@/lib/db/serverDevStorage');

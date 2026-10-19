@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Mail, Phone, MapPin } from 'lucide-react';
 import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
-import { getActiveShopLocation } from '@/lib/db/locations';
+import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { StoreSettings, ShopLocation } from '@/types/admin';
 
 // Clean, accessible SVG brand icons for supported social networks
@@ -93,6 +93,9 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
     loadData();
     syncStoreSettingsFromApi().then((fresh) => {
       if (fresh) setSettings(fresh);
+    }).catch(() => {});
+    syncShopLocationsFromApi().then((fresh) => {
+      if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
     }).catch(() => {});
 
     const handleUpdate = (e: Event) => {

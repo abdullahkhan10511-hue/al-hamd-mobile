@@ -1,6 +1,7 @@
 import { ShopLocation } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -50,6 +51,38 @@ export function isValidGoogleMapsUrl(rawUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+let inFlightLocationsPromise: Promise<ShopLocation[]> | null = null;
+
+export async function syncShopLocationsFromApi(): Promise<ShopLocation[]> {
+  if (typeof window === 'undefined') return getShopLocations();
+  if (inFlightLocationsPromise) return inFlightLocationsPromise;
+
+  inFlightLocationsPromise = (async () => {
+    try {
+      const res = await fetch(`/api/locations?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.locations)) {
+          await persistCollection(COLLECTION_KEY, data.locations, true);
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: COLLECTION_KEY, value: data.locations },
+            })
+          );
+          return data.locations;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not sync shop locations from API:', err);
+    } finally {
+      inFlightLocationsPromise = null;
+    }
+    return getShopLocations();
+  })();
+
+  return inFlightLocationsPromise;
 }
 
 /**
@@ -124,18 +157,28 @@ export async function saveShopLocation(
       updatedList = [...locations, locationRecord];
     }
 
-    // Persist to local cache and system sync
-    await persistCollection(COLLECTION_KEY, updatedList);
-
-    // Direct Firestore document sync if Firestore is available
-    if (db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'shopLocations', locationId);
-        await setDoc(docRef, locationRecord, { merge: true });
-      } catch (err) {
-        console.warn('Firestore shopLocations direct sync notice:', err);
+    // Persist to server API first
+    if (typeof window !== 'undefined') {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch('/api/admin/locations', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(locationRecord),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok || !resData.success) {
+        return { success: false, error: resData.error || 'Failed to save shop location to server.' };
+      }
+      if (resData.data) {
+        Object.assign(locationRecord, resData.data);
       }
     }
+
+    // Persist to local cache and system sync
+    await persistCollection(COLLECTION_KEY, updatedList);
 
     // Broadcast update event
     if (typeof window !== 'undefined') {
@@ -173,8 +216,32 @@ export async function deleteShopLocation(
       return { success: false, error: 'Shop location not found.' };
     }
 
+    if (typeof window !== 'undefined') {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch('/api/admin/locations', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ action: 'delete', id }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok || !resData.success) {
+        return { success: false, error: resData.error || 'Failed to delete shop location from server.' };
+      }
+    }
+
     const filtered = locations.filter((l) => l.id !== id);
     await persistCollection(COLLECTION_KEY, filtered);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('alhamd:data-updated', {
+          detail: { key: COLLECTION_KEY, value: filtered },
+        })
+      );
+    }
 
     // Direct Firestore document deletion if available and real credentials exist
     const hasRealFirebase =

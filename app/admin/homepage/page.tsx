@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import {
   getHomepageSections,
+  syncHomepageSettingsFromApi,
   updateHomepageSections,
   getHeroConfig,
   updateHeroConfig,
@@ -30,7 +31,7 @@ import {
   getAllProductsConfig,
   updateAllProductsConfig,
 } from '@/lib/db/homepage';
-import { getDeals, toggleDealStatus } from '@/lib/db/deals';
+import { getDeals, toggleDealStatus, syncDealsFromApi } from '@/lib/db/deals';
 import { getProducts } from '@/lib/db/products';
 import { getCategories } from '@/lib/db/categories';
 import { uploadMediaFile } from '@/lib/db/media';
@@ -54,8 +55,24 @@ export default function HomepageControlPage() {
 
   useEffect(() => {
     loadDeals();
+    syncHomepageSettingsFromApi().then(() => {
+      setSections(getHomepageSections());
+      setHeroConfig(getHeroConfig());
+      setFloatingProducts(getFloatingProducts());
+      setFlashSale(getFlashSaleConfig());
+      setAllProductsConfig(getAllProductsConfig());
+    }).catch(() => {});
+    syncDealsFromApi().then((fresh) => {
+      if (fresh) setDeals(fresh);
+    }).catch(() => {});
+
     const handleUpdate = () => {
       loadDeals();
+      setSections(getHomepageSections());
+      setHeroConfig(getHeroConfig());
+      setFloatingProducts(getFloatingProducts());
+      setFlashSale(getFlashSaleConfig());
+      setAllProductsConfig(getAllProductsConfig());
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);

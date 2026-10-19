@@ -23,6 +23,7 @@ import {
 import { ShopLocation } from '@/types/admin';
 import {
   getShopLocations,
+  syncShopLocationsFromApi,
   saveShopLocation,
   deleteShopLocation,
   toggleShopLocationStatus,
@@ -69,6 +70,9 @@ export default function AdminShopLocationPage() {
 
   useEffect(() => {
     loadData();
+    syncShopLocationsFromApi().then((fresh) => {
+      if (fresh) setLocations(fresh);
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminSession } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getProductByIdFromDb, updateProductInDb, deleteProductInDb } from '@/lib/db/repositories/products';
@@ -60,6 +61,18 @@ export async function PUT(
       );
     }
 
+    try {
+      revalidatePath('/');
+      revalidatePath('/api/products');
+      revalidatePath('/products');
+      revalidatePath('/admin/products');
+      if (product?.slug) {
+        revalidatePath(`/product/${product.slug}`);
+      }
+    } catch (revErr) {
+      console.warn('revalidatePath notice:', revErr);
+    }
+
     return NextResponse.json({ success: true, product });
   } catch (err: any) {
     console.error('Error updating product:', err);
@@ -107,6 +120,15 @@ export async function DELETE(
 
     if (!ok) {
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
+    }
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/api/products');
+      revalidatePath('/products');
+      revalidatePath('/admin/products');
+    } catch (revErr) {
+      console.warn('revalidatePath notice:', revErr);
     }
 
     return NextResponse.json({ success: true, message: 'Product deleted successfully.' });

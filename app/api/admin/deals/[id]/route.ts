@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { getDealById, saveDeal, deleteDeal } from '@/lib/db/deals';
 import { getDealByIdFromDb, updateDealInDb, deleteDealFromDb } from '@/lib/db/repositories/deals';
 import { isDbConfigured } from '@/lib/db/mysql';
+import { allowDevMockFallback } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,14 +116,13 @@ export async function PUT(
 
     let updatedDeal;
     if (isDbConfigured()) {
+      updatedDeal = await updateDealInDb(id, body);
       try {
-        updatedDeal = await updateDealInDb(id, body);
         await saveDeal(updatedDeal, session.email);
-      } catch (dbErr: any) {
-        console.warn('MySQL error updating deal, fallback to storage:', dbErr);
-        updatedDeal = await saveDeal({ ...body, id }, session.email);
+      } catch (cacheErr) {
+        console.warn('Notice syncing updated deal to local cache:', cacheErr);
       }
-    } else {
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       try {
         const { updateDevDeal } = await import('@/lib/db/serverDevStorage');
         updatedDeal = await updateDevDeal(id, body, session.email);
@@ -130,6 +130,11 @@ export async function PUT(
       } catch {
         updatedDeal = await saveDeal({ ...body, id }, session.email);
       }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
     try {
@@ -166,14 +171,16 @@ export async function DELETE(
 
     let success = false;
     if (isDbConfigured()) {
-      try {
-        success = await deleteDealFromDb(id);
-        await deleteDeal(id, session.email);
-      } catch (dbErr) {
-        console.warn('MySQL error deleting deal, fallback to storage:', dbErr);
-        success = await deleteDeal(id, session.email);
+      success = await deleteDealFromDb(id);
+      if (!success) {
+        return NextResponse.json({ success: false, error: 'Deal not found in database.' }, { status: 404 });
       }
-    } else {
+      try {
+        await deleteDeal(id, session.email);
+      } catch (cacheErr) {
+        console.warn('Notice deleting deal from local cache:', cacheErr);
+      }
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       try {
         const { deleteDevDeal } = await import('@/lib/db/serverDevStorage');
         success = await deleteDevDeal(id, session.email);
@@ -181,6 +188,11 @@ export async function DELETE(
       } catch {
         success = await deleteDeal(id, session.email);
       }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Database is not configured in production.' },
+        { status: 503 }
+      );
     }
 
     try {

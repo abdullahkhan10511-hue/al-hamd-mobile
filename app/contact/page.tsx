@@ -16,7 +16,7 @@ import {
   Hash,
 } from 'lucide-react';
 import { getStoreSettings, getActiveSocialAccounts } from '@/lib/db/settings';
-import { getActiveShopLocation } from '@/lib/db/locations';
+import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { StoreSettings, ShopLocation, InquiryType } from '@/types/admin';
 import { ShopLocationCard } from '@/components/ui/ShopLocationCard';
 
@@ -79,6 +79,9 @@ export default function ContactPage() {
 
   useEffect(() => {
     loadData();
+    syncShopLocationsFromApi().then((fresh) => {
+      if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
