@@ -438,8 +438,20 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   if (!isReady) {
     return (
-      <div className="py-24 text-center text-neutral-400 min-h-[50vh] flex items-center justify-center">
-        <div className="w-7 h-7 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin" />
+      <div className="bg-white min-h-screen py-8 sm:py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 animate-pulse">
+          <div className="h-4 w-48 bg-neutral-200 rounded-full mb-8" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
+            <div className="aspect-square bg-neutral-100 rounded-3xl" />
+            <div className="space-y-6 pt-2">
+              <div className="h-4 w-28 bg-neutral-200 rounded-full" />
+              <div className="h-8 w-3/4 bg-neutral-200 rounded-xl" />
+              <div className="h-6 w-36 bg-neutral-200 rounded-lg" />
+              <div className="h-24 w-full bg-neutral-100 rounded-2xl" />
+              <div className="h-12 w-full bg-neutral-200 rounded-full" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

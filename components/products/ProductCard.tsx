@@ -20,7 +20,11 @@ interface ProductCardProps {
   priority?: boolean;
 }
 
-export function ProductCard({ product, className = '', priority = false }: ProductCardProps) {
+export const ProductCard = React.memo(function ProductCard({
+  product,
+  className = '',
+  priority = false,
+}: ProductCardProps) {
   const { addToCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const { isWholesale, isSuperWholesale } = useCustomerAuth();
@@ -57,13 +61,12 @@ export function ProductCard({ product, className = '', priority = false }: Produ
     if (isAdding || justAdded) return;
 
     setIsAdding(true);
-    await new Promise((r) => setTimeout(r, 250));
     addToCart(product, 1);
     setIsAdding(false);
     setJustAdded(true);
     setTimeout(() => {
       setJustAdded(false);
-    }, 2000);
+    }, 1800);
   };
 
   const handleWishlist = (e: React.MouseEvent) => {
@@ -274,4 +277,4 @@ export function ProductCard({ product, className = '', priority = false }: Produ
       </AnimatePresence>
     </div>
   );
-}
+});

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { Product } from '@/types';
 import { getProducts } from '@/lib/db/products';
 
@@ -40,32 +40,38 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
     }
   }, [wishlist, hasHydrated]);
 
-  const toggleWishlist = (productId: string) => {
+  const toggleWishlist = useCallback((productId: string) => {
     setWishlist((prev) =>
       prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
     );
-  };
+  }, []);
 
-  const isInWishlist = (productId: string) => wishlist.includes(productId);
+  const isInWishlist = useCallback((productId: string) => wishlist.includes(productId), [wishlist]);
 
-  const wishlistProducts = getProducts().filter(
-    (p) =>
-      wishlist.includes(p.id) &&
-      (p as any).status !== 'archived' &&
-      (p as any).status !== 'inactive' &&
-      (p as any).isActive !== false
+  const wishlistProducts = useMemo(() => {
+    if (wishlist.length === 0) return [];
+    return getProducts().filter(
+      (p) =>
+        wishlist.includes(p.id) &&
+        (p as any).status !== 'archived' &&
+        (p as any).status !== 'inactive' &&
+        (p as any).isActive !== false
+    );
+  }, [wishlist]);
+
+  const contextValue = useMemo<WishlistContextType>(
+    () => ({
+      wishlist,
+      wishlistProducts,
+      toggleWishlist,
+      isInWishlist,
+      wishlistCount: wishlist.length,
+    }),
+    [wishlist, wishlistProducts, toggleWishlist, isInWishlist]
   );
 
   return (
-    <WishlistContext.Provider
-      value={{
-        wishlist,
-        wishlistProducts,
-        toggleWishlist,
-        isInWishlist,
-        wishlistCount: wishlist.length,
-      }}
-    >
+    <WishlistContext.Provider value={contextValue}>
       {children}
     </WishlistContext.Provider>
   );

@@ -111,7 +111,7 @@ export function BestSellers() {
   );
 }
 
-function LargeBestSellerCard({ product }: { product: Product }) {
+const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }: { product: Product }) {
   const { addToCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const [isAdding, setIsAdding] = useState(false);
@@ -140,11 +140,10 @@ function LargeBestSellerCard({ product }: { product: Product }) {
     }
     if (isAdding || justAdded) return;
     setIsAdding(true);
-    await new Promise((r) => setTimeout(r, 250));
     addToCart(product, 1);
     setIsAdding(false);
     setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 2000);
+    setTimeout(() => setJustAdded(false), 1800);
   };
 
   return (
@@ -278,4 +277,4 @@ function LargeBestSellerCard({ product }: { product: Product }) {
       </AnimatePresence>
     </div>
   );
-}
+});

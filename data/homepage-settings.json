@@ -1,0 +1,125 @@
+{
+  "sections": [
+    {
+      "id": "hero",
+      "name": "Full-Screen Video Hero",
+      "enabled": true,
+      "order": 1
+    },
+    {
+      "id": "trust",
+      "name": "Trust & Benefits Bar",
+      "enabled": false,
+      "order": 2
+    },
+    {
+      "id": "categories",
+      "name": "Shop by Categories",
+      "enabled": true,
+      "order": 3
+    },
+    {
+      "id": "brands",
+      "name": "Shop by Brands",
+      "enabled": true,
+      "order": 4
+    },
+    {
+      "id": "all-products",
+      "name": "All Products Showcase",
+      "enabled": true,
+      "order": 5
+    },
+    {
+      "id": "new-arrivals",
+      "name": "New Arrivals",
+      "enabled": true,
+      "order": 6
+    },
+    {
+      "id": "best-sellers",
+      "name": "Best Sellers",
+      "enabled": true,
+      "order": 7
+    },
+    {
+      "id": "deals",
+      "name": "Special Deals & Bundles",
+      "enabled": false,
+      "order": 8
+    },
+    {
+      "id": "final-trust",
+      "name": "Final Assurance Bar",
+      "enabled": true,
+      "order": 9
+    }
+  ],
+  "hero": {
+    "eyebrowText": "PREMIUM MOBILE ACCESSORIES",
+    "mainHeading": "Elevate Your",
+    "headingHighlight": "Mobile Experience",
+    "description": "Shop high-speed GaN fast chargers, military-grade MagSafe phone cases, 20,000mAh power banks, crystal-clear TWS earbuds, and precision smartphone protection across Pakistan.",
+    "primaryButtonText": "Shop All Accessories",
+    "primaryButtonLink": "/shop",
+    "secondaryButtonText": "Explore Categories",
+    "secondaryButtonLink": "#categories",
+    "desktopImage": "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=1200&auto=format&fit=crop",
+    "mobileImage": "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=600&auto=format&fit=crop",
+    "floatingProducts": [
+      {
+        "id": "fp-1",
+        "productId": "prod-15",
+        "position": "top-left",
+        "badge": "Active ANC",
+        "animationEnabled": true,
+        "animationSpeed": "normal",
+        "visible": true
+      },
+      {
+        "id": "fp-2",
+        "productId": "prod-16",
+        "position": "top-right",
+        "badge": "20,000 mAh",
+        "animationEnabled": true,
+        "animationSpeed": "normal",
+        "visible": true
+      },
+      {
+        "id": "fp-3",
+        "productId": "prod-case-01",
+        "position": "bottom-left",
+        "badge": "MagSafe Armor",
+        "animationEnabled": true,
+        "animationSpeed": "normal",
+        "visible": true
+      }
+    ]
+  },
+  "flashSale": {
+    "enabled": true,
+    "title": "Up To 50% Off",
+    "subtitle": "Power & Audio Flash Sale",
+    "bannerImage": "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop",
+    "buttonText": "Shop Flash Deals",
+    "buttonLink": "/shop?filter=sale",
+    "startDate": "2026-10-19T07:22:46.293Z",
+    "endDate": "2026-10-21T23:07:46.293Z",
+    "countdownEndTime": "2026-10-21T23:07:46.293Z",
+    "productIds": [
+      "prod-16",
+      "prod-15",
+      "prod-chg-01"
+    ]
+  },
+  "allProducts": {
+    "title": "All Products",
+    "subtitle": "Explore our complete catalog of high-grade mobile accessories",
+    "limit": 12,
+    "sortBy": "featured",
+    "categoryFilter": "all",
+    "showViewAllButton": true,
+    "viewAllLink": "/shop",
+    "viewAllText": "Explore Entire Catalog"
+  }
+}

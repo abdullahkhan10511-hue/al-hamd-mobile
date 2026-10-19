@@ -62,6 +62,11 @@ function SearchContent() {
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
+  const [visibleCount, setVisibleCount] = useState<number>(16);
+
+  useEffect(() => {
+    setVisibleCount(16);
+  }, [rawQuery, selectedCategory, selectedBrand, maxPrice, inStockOnly, sortBy]);
 
   const loadData = async () => {
     let prods = getProducts();
@@ -496,10 +501,22 @@ function SearchContent() {
               </span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-              {matchingProducts.map((prod) => (
+              {matchingProducts.slice(0, visibleCount).map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}
             </div>
+
+            {visibleCount < matchingProducts.length && (
+              <div className="text-center mt-12">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + 16)}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                >
+                  Load More Products ({matchingProducts.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

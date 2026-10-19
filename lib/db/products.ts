@@ -101,6 +101,8 @@ export function getProducts(): (Product & { sku: string; lowStockThreshold: numb
 
 let hasSyncedProductsFromApi = false;
 let inFlightProductsPromise: Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]> | null = null;
+let lastProductsSyncTimestamp = 0;
+const PRODUCTS_SYNC_DEBOUNCE_MS = 15000; // 15s client-side sync debounce
 
 export async function syncProductsFromApi(forceFresh = false): Promise<
   (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
@@ -109,18 +111,21 @@ export async function syncProductsFromApi(forceFresh = false): Promise<
   if (inFlightProductsPromise && !forceFresh) {
     return inFlightProductsPromise;
   }
+  if (!forceFresh && Date.now() - lastProductsSyncTimestamp < PRODUCTS_SYNC_DEBOUNCE_MS) {
+    return getProducts();
+  }
 
   inFlightProductsPromise = (async () => {
     try {
-      const res = await fetch(`/api/products?t=${Date.now()}&fresh=true`, {
-        cache: 'no-store',
-      });
+      const url = forceFresh ? `/api/products?t=${Date.now()}&fresh=true` : `/api/products`;
+      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.products)) {
           const sanitized = sanitizeProducts(data.products);
           await persistCollection(COLLECTION_KEY, sanitized);
           hasSyncedProductsFromApi = true;
+          lastProductsSyncTimestamp = Date.now();
           return sanitized;
         }
       }

@@ -497,34 +497,61 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setShowAddedToast(false);
   };
 
+  const contextValue = useMemo<CartContextType>(
+    () => ({
+      cart,
+      addToCart,
+      addDealToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      totalItems,
+      subtotal,
+      shipping,
+      discount,
+      total,
+      isWholesale,
+      isSuperWholesale,
+      isCartOpen,
+      setIsCartOpen,
+      promoCode,
+      appliedPromo,
+      applyPromoCode,
+      removePromoCode,
+      appliedDiscountPercentage,
+      lastAddedProduct,
+      showAddedToast,
+      dismissToast,
+    }),
+    [
+      cart,
+      addToCart,
+      addDealToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      totalItems,
+      subtotal,
+      shipping,
+      discount,
+      total,
+      isWholesale,
+      isSuperWholesale,
+      isCartOpen,
+      setIsCartOpen,
+      promoCode,
+      appliedPromo,
+      applyPromoCode,
+      removePromoCode,
+      appliedDiscountPercentage,
+      lastAddedProduct,
+      showAddedToast,
+      dismissToast,
+    ]
+  );
+
   return (
-    <CartContext.Provider
-      value={{
-        cart,
-        addToCart,
-        addDealToCart,
-        removeFromCart,
-        updateQuantity,
-        clearCart,
-        totalItems,
-        subtotal,
-        shipping,
-        discount,
-        total,
-        isWholesale,
-        isSuperWholesale,
-        isCartOpen,
-        setIsCartOpen,
-        promoCode,
-        appliedPromo,
-        applyPromoCode,
-        removePromoCode,
-        appliedDiscountPercentage,
-        lastAddedProduct,
-        showAddedToast,
-        dismissToast,
-      }}
-    >
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   SanitizedCustomer,
   authenticateCustomer,
@@ -287,22 +287,34 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const contextValue = useMemo<CustomerAuthContextType>(
+    () => ({
+      customer,
+      isAuthenticated: !!customer,
+      isWholesale: customer?.customerType === 'WHOLESALE',
+      isSuperWholesale: customer?.customerType === 'SUPER_WHOLESALE',
+      isLoading,
+      login,
+      register,
+      logout,
+      updateProfile,
+      changePassword,
+      refreshCustomer,
+    }),
+    [
+      customer,
+      isLoading,
+      login,
+      register,
+      logout,
+      updateProfile,
+      changePassword,
+      refreshCustomer,
+    ]
+  );
+
   return (
-    <CustomerAuthContext.Provider
-      value={{
-        customer,
-        isAuthenticated: !!customer,
-        isWholesale: customer?.customerType === 'WHOLESALE',
-        isSuperWholesale: customer?.customerType === 'SUPER_WHOLESALE',
-        isLoading,
-        login,
-        register,
-        logout,
-        updateProfile,
-        changePassword,
-        refreshCustomer,
-      }}
-    >
+    <CustomerAuthContext.Provider value={contextValue}>
       {children}
     </CustomerAuthContext.Provider>
   );

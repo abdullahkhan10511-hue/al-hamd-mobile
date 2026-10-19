@@ -39,6 +39,11 @@ function BrandPageContent() {
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [visibleCount, setVisibleCount] = useState<number>(16);
+
+  useEffect(() => {
+    setVisibleCount(16);
+  }, [selectedCategoryParam, maxPrice, sortBy, inStockOnly, searchQuery, slug]);
 
   const applyData = (brandsList: Brand[], prodsList: Product[], catsList: Category[]) => {
     const cleanSlug = slug.trim().toLowerCase();
@@ -488,10 +493,24 @@ function BrandPageContent() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {filteredProducts.map((prod) => (
-              <ProductCard key={prod.id} product={prod} />
-            ))}
+          <div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+              {filteredProducts.slice(0, visibleCount).map((prod) => (
+                <ProductCard key={prod.id} product={prod} />
+              ))}
+            </div>
+
+            {visibleCount < filteredProducts.length && (
+              <div className="text-center mt-12">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + 16)}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                >
+                  Load More Products ({filteredProducts.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
