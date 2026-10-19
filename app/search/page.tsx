@@ -58,7 +58,7 @@ function SearchContent() {
   // Filter & Sort States
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const [maxPrice, setMaxPrice] = useState<number>(100000);
+  const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
@@ -133,7 +133,7 @@ function SearchContent() {
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrand('all');
-    setMaxPrice(100000);
+    setMaxPrice(1000000);
     setInStockOnly(false);
     setSortBy('featured');
   };
@@ -226,7 +226,7 @@ function SearchContent() {
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     (selectedBrand !== 'all' ? 1 : 0) +
-    (maxPrice < 100000 ? 1 : 0) +
+    (maxPrice < 1000000 ? 1 : 0) +
     (inStockOnly ? 1 : 0);
 
   return (
@@ -383,8 +383,8 @@ function SearchContent() {
                   <input
                     type="range"
                     min="1000"
-                    max="100000"
-                    step="1000"
+                    max="1000000"
+                    step="5000"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(Number(e.target.value))}
                     className="w-full accent-neutral-950 cursor-pointer"

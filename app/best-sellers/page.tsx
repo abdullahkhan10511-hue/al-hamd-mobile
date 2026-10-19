@@ -11,7 +11,6 @@ import {
   Star,
   Check,
   RotateCcw,
-  Flame,
   ArrowRight,
   PackageX,
 } from 'lucide-react';
@@ -39,7 +38,7 @@ function BestSellersContent() {
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [maxPrice, setMaxPrice] = useState<number>(100000);
+  const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('best-selling');
@@ -181,7 +180,7 @@ function BestSellersContent() {
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrands([]);
-    setMaxPrice(100000);
+    setMaxPrice(1000000);
     setMinRating(null);
     setInStockOnly(false);
     setSortBy('best-selling');
@@ -268,7 +267,7 @@ function BestSellersContent() {
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     selectedBrands.length +
-    (maxPrice < 100000 ? 1 : 0) +
+    (maxPrice < 1000000 ? 1 : 0) +
     (minRating !== null ? 1 : 0) +
     (inStockOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
@@ -280,16 +279,9 @@ function BestSellersContent() {
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 backdrop-blur-md border border-rose-500/20 text-xs font-semibold uppercase tracking-widest text-rose-400 mb-4">
-              <Flame className="w-3.5 h-3.5 text-rose-500" />
-              <span>Customer Favorites</span>
-            </div>
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
               Best Sellers
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-neutral-400 leading-relaxed">
-              Our most-loved and highest-rated pieces trusted by thousands of customers nationwide. Verified 5-star ratings, exceptional build quality, and immediate dispatch.
-            </p>
           </div>
         </div>
       </div>
@@ -444,15 +436,15 @@ function BestSellersContent() {
               <input
                 type="range"
                 min="1000"
-                max="100000"
-                step="1000"
+                max="1000000"
+                step="5000"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
                 className="w-full accent-neutral-950 cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-neutral-400 font-mono mt-1">
                 <span>Rs. 1,000</span>
-                <span>Rs. 100,000</span>
+                <span>Rs. 1,000,000</span>
               </div>
             </div>
 
@@ -590,8 +582,8 @@ function BestSellersContent() {
                     <input
                       type="range"
                       min="1000"
-                      max="100000"
-                      step="1000"
+                      max="1000000"
+                      step="5000"
                       value={maxPrice}
                       onChange={(e) => setMaxPrice(Number(e.target.value))}
                       className="w-full accent-neutral-950 mt-2"

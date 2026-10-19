@@ -35,7 +35,7 @@ function CategoryPageContent() {
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
   const [categoryProducts, setCategoryProducts] = useState<Product[]>([]);
-  const [maxPrice, setMaxPrice] = useState<number>(100000);
+  const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [sortBy, setSortBy] = useState<string>('featured');
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);

@@ -11,7 +11,6 @@ import {
   Star,
   Check,
   RotateCcw,
-  Sparkles,
   ArrowRight,
   PackageX,
 } from 'lucide-react';
@@ -39,7 +38,7 @@ function NewArrivalsContent() {
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [maxPrice, setMaxPrice] = useState<number>(100000);
+  const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('newest');
@@ -181,7 +180,7 @@ function NewArrivalsContent() {
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrands([]);
-    setMaxPrice(100000);
+    setMaxPrice(1000000);
     setMinRating(null);
     setInStockOnly(false);
     setSortBy('newest');
@@ -268,7 +267,7 @@ function NewArrivalsContent() {
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     selectedBrands.length +
-    (maxPrice < 100000 ? 1 : 0) +
+    (maxPrice < 1000000 ? 1 : 0) +
     (minRating !== null ? 1 : 0) +
     (inStockOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
@@ -280,16 +279,9 @@ function NewArrivalsContent() {
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-xs font-semibold uppercase tracking-widest text-neutral-300 mb-4">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Just Arrived</span>
-            </div>
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
               New Arrivals
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-neutral-400 leading-relaxed">
-              Explore the latest luxury drop and seasonal releases curated for discerning customers across Pakistan. Fast nationwide delivery with Cash on Delivery available.
-            </p>
           </div>
         </div>
       </div>
@@ -444,15 +436,15 @@ function NewArrivalsContent() {
               <input
                 type="range"
                 min="1000"
-                max="100000"
-                step="1000"
+                max="1000000"
+                step="5000"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
                 className="w-full accent-neutral-950 cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-neutral-400 font-mono mt-1">
                 <span>Rs. 1,000</span>
-                <span>Rs. 100,000</span>
+                <span>Rs. 1,000,000</span>
               </div>
             </div>
 
@@ -590,8 +582,8 @@ function NewArrivalsContent() {
                     <input
                       type="range"
                       min="1000"
-                      max="100000"
-                      step="1000"
+                      max="1000000"
+                      step="5000"
                       value={maxPrice}
                       onChange={(e) => setMaxPrice(Number(e.target.value))}
                       className="w-full accent-neutral-950 mt-2"

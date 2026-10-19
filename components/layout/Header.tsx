@@ -59,23 +59,80 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
 
 
   const loadData = async () => {
-    const baseNav = getNavigation().filter((n) => n.visible);
+    const rawNav = getNavigation();
     try {
       const allPages = await getPages();
+      const aboutPage = allPages.find((p) => p.id === 'about' || p.slug === 'about');
+      const aboutNavItem = rawNav.find((n) => n.href === '/about' || n.label.toLowerCase() === 'about');
+
+      // About is enabled only if its navigation entry is visible AND its page setting is published and allowed in header
+      const isAboutNavVisible = aboutNavItem ? Boolean(aboutNavItem.visible) : true;
+      const isAboutPageVisible = aboutPage
+        ? aboutPage.status === 'Published' && aboutPage.showInHeader !== false
+        : true;
+      const isAboutEnabled = isAboutNavVisible && isAboutPageVisible;
+
+      const baseNav = rawNav.filter((n) => {
+        const isAbout = n.href === '/about' || n.label.toLowerCase() === 'about';
+        if (isAbout) {
+          return isAboutEnabled;
+        }
+        return n.visible;
+      });
+
       const headerPages = allPages.filter((p) => p.status === 'Published' && p.showInHeader);
       const pageNavItems: NavigationItem[] = headerPages
-        .filter((p) => !baseNav.some((b) => b.href === `/${p.slug}`))
+        .filter((p) => {
+          // Never add a fallback/duplicate for pages that already exist in the master navigation collection
+          if (rawNav.some((b) => b.href === `/${p.slug}` || b.href === p.slug)) {
+            return false;
+          }
+          if (p.slug === 'about' || p.id === 'about') {
+            return false;
+          }
+          return true;
+        })
         .map((p) => ({
           id: `page-nav-${p.id}`,
-          label: p.title.replace('AL·HAMD', '').replace('Mobile Accessories', '').trim() || p.title,
+          label:
+            p.title
+              .replace(/AL[·\-\s]HAMD/gi, '')
+              .replace(/Mobile Accessories/gi, '')
+              .replace(/\bSHOP\b/gi, '')
+              .trim() || p.title,
           href: `/${p.slug}`,
           displayOrder: 50 + p.order,
           visible: true,
         }));
-      setNavItems([...baseNav, ...pageNavItems].sort((a, b) => a.displayOrder - b.displayOrder));
-      setMobilePages(allPages.filter((p) => p.status === 'Published' && p.showInMobile));
+
+      const finalNavItems = [...baseNav, ...pageNavItems].sort((a, b) => a.displayOrder - b.displayOrder);
+      setNavItems(finalNavItems);
+
+      // Mobile drawer Information & Policies: exclude about if disabled or if already in main navigation
+      setMobilePages(
+        allPages.filter((p) => {
+          if (p.status !== 'Published' || !p.showInMobile) return false;
+          const isAbout = p.slug === 'about' || p.id === 'about';
+          if (isAbout) {
+            // If about is disabled, hide it completely on mobile too
+            if (!isAboutEnabled) return false;
+            // If about is already visible in main navItems, don't duplicate it in Information & Policies
+            if (finalNavItems.some((n) => n.href === '/about')) return false;
+          }
+          return true;
+        })
+      );
     } catch {
-      setNavItems(baseNav);
+      const rawNavFallback = getNavigation();
+      const aboutNavItem = rawNavFallback.find((n) => n.href === '/about' || n.label.toLowerCase() === 'about');
+      const isAboutVisible = aboutNavItem ? Boolean(aboutNavItem.visible) : true;
+      setNavItems(
+        rawNavFallback.filter((n) => {
+          const isAbout = n.href === '/about' || n.label.toLowerCase() === 'about';
+          if (isAbout) return isAboutVisible;
+          return n.visible;
+        })
+      );
     }
     setCategories(deduplicateCategoriesById(getActiveCategories()));
     setSettings(getStoreSettings());
@@ -97,7 +154,7 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
       // Header cares about nav, categories, settings, locations, pages — not product stock or order events
-      const HEADER_KEYS = ['categories', 'navigation', 'store_settings', 'shop_locations', 'announcements', 'pages'];
+      const HEADER_KEYS = ['categories', 'navigation', 'store_settings', 'shop_locations', 'announcements', 'pages', 'static_pages'];
       if (key && !HEADER_KEYS.includes(key)) return;
       loadData();
     };

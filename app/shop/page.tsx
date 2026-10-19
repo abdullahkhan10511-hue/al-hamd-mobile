@@ -43,7 +43,7 @@ function ShopContent() {
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrand ? [initialBrand] : []);
-  const [maxPrice, setMaxPrice] = useState<number>(100000);
+  const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>(
@@ -489,7 +489,7 @@ function ShopContent() {
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedBrands([]);
-    setMaxPrice(100000);
+    setMaxPrice(1000000);
     setMinRating(null);
     setInStockOnly(false);
     setSearchQuery('');
@@ -500,7 +500,7 @@ function ShopContent() {
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     selectedBrands.length +
-    (maxPrice < 100000 ? 1 : 0) +
+    (maxPrice < 1000000 ? 1 : 0) +
     (minRating !== null ? 1 : 0) +
     (inStockOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
@@ -645,12 +645,12 @@ function ShopContent() {
                   </span>
                 );
               })}
-              {maxPrice < 100000 && (
+              {maxPrice < 1000000 && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium">
                   Under {formatPrice(maxPrice)}
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-neutral-950"
-                    onClick={() => setMaxPrice(100000)}
+                    onClick={() => setMaxPrice(1000000)}
                   />
                 </span>
               )}
@@ -720,15 +720,15 @@ function ShopContent() {
               <input
                 type="range"
                 min="1000"
-                max="100000"
-                step="1000"
+                max="1000000"
+                step="5000"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
                 className="w-full accent-neutral-950 cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-neutral-400 font-mono mt-1">
                 <span>Rs. 1,000</span>
-                <span>Rs. 100,000</span>
+                <span>Rs. 1,000,000</span>
               </div>
             </div>
 
@@ -941,8 +941,8 @@ function ShopContent() {
                   <input
                     type="range"
                     min="1000"
-                    max="100000"
-                    step="1000"
+                    max="1000000"
+                    step="5000"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(Number(e.target.value))}
                     className="w-full accent-neutral-950"
