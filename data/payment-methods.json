@@ -1,0 +1,64 @@
+{
+  "methods": [
+    {
+      "id": "cod",
+      "name": "Cash on Delivery",
+      "type": "cod",
+      "enabled": true,
+      "description": "Pay cash when your order is delivered.",
+      "instructions": "Pay cash to our courier delivery rider upon arrival of your parcel. Please keep the exact amount ready to avoid delays.",
+      "displayOrder": 1,
+      "requiresReference": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "card",
+      "name": "Credit / Debit Card",
+      "type": "card",
+      "enabled": true,
+      "description": "Pay securely with Visa, Mastercard, or PayPak.",
+      "instructions": "Online card payments are processed via 3D Secure 2.0 banking gateways. Card processing is currently undergoing banking PCI-DSS certification — please choose Cash on Delivery, Easypaisa, or JazzCash for immediate order dispatch.",
+      "displayOrder": 2,
+      "requiresReference": false,
+      "isConfigured": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "easypaisa",
+      "name": "Easypaisa",
+      "type": "wallet",
+      "enabled": true,
+      "description": "Instant transfer via Easypaisa Mobile App or *786#.",
+      "instructions": "1. Open your Easypaisa app or dial *786#.\n2. Transfer the exact order amount to our official merchant account.\n3. Enter your Order ID in the transfer remarks/reference.\n4. Enter the 11-digit Transaction ID (TID) received via SMS below for verification.",
+      "merchantName": "AL-HAMD-MOBILE OFFICIAL",
+      "merchantIdentifier": "0300-1234567",
+      "displayOrder": 3,
+      "requiresReference": true,
+      "referenceFormat": "11-digit TID (e.g. 10982736451)",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "jazzcash",
+      "name": "JazzCash",
+      "type": "wallet",
+      "enabled": true,
+      "description": "Instant transfer via JazzCash Mobile App or *786#.",
+      "instructions": "1. Open your JazzCash app or dial *786#.\n2. Transfer the exact order amount to our official JazzCash account.\n3. Mention your Order ID in the reference field.\n4. Enter the Transaction ID (TID) received from 8558 below for verification.",
+      "merchantName": "AL-HAMD-MOBILE OFFICIAL",
+      "merchantIdentifier": "0321-7654321",
+      "displayOrder": 4,
+      "requiresReference": true,
+      "referenceFormat": "12-digit TID (e.g. 984512340192)",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "security": {
+    "securityNotice": "Only make payments using the official payment details shown on this website. We will never ask you to send money to a personal account or share your password, OTP, PIN, CVV or full card details.",
+    "processingMessage": "Orders paid via Easypaisa or JazzCash are placed on hold (\"Awaiting Verification\") until our accounts department confirms receipt of the Transaction ID.",
+    "manualVerificationEnabled": true
+  }
+}

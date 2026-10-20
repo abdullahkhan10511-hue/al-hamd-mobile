@@ -22,7 +22,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useSearch } from '@/context/SearchContext';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
-import { getNavigation } from '@/lib/db/navigation';
+import { getNavigation, syncNavigationFromApi } from '@/lib/db/navigation';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
@@ -141,6 +141,9 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
 
   useEffect(() => {
     loadData();
+    syncNavigationFromApi().then(() => {
+      loadData();
+    }).catch(() => {});
     syncCategoriesFromApi().then(() => {
       setCategories(deduplicateCategoriesById(getActiveCategories()));
     }).catch(() => {});

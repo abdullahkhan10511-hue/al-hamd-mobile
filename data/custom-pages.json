@@ -1,0 +1,455 @@
+[
+  {
+    "id": "about",
+    "title": "About AL·HAMD Mobile Accessories",
+    "slug": "about",
+    "status": "Published",
+    "showInHeader": true,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "about",
+    "seoTitle": "About AL-HAMD | Premium Mobile Accessories Pakistan",
+    "seoDescription": "Engineered mobile accessories, GaN fast chargers, Kevlar braided cables, and military-grade device protection across Pakistan.",
+    "targetKeywords": [
+      "about al hamd",
+      "mobile accessories pakistan",
+      "fast chargers",
+      "device protection"
+    ],
+    "order": 1,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "ab-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "center",
+        "headingText": "Engineered Mobile Accessories for Modern Devices"
+      },
+      {
+        "id": "ab-2",
+        "type": "subheading",
+        "order": 2,
+        "subheadingAlign": "center",
+        "subheadingText": "Precision engineering, certified safe charging, and uncompromising durability."
+      },
+      {
+        "id": "ab-3",
+        "type": "divider",
+        "order": 3,
+        "dividerStyle": "solid",
+        "dividerSpacing": "md"
+      },
+      {
+        "id": "ab-4",
+        "type": "heading",
+        "order": 4,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Our Heritage & Philosophy"
+      },
+      {
+        "id": "ab-5",
+        "type": "paragraph",
+        "order": 5,
+        "paragraphAlign": "left",
+        "paragraphText": "Founded on precision engineering and uncompromising durability, AL·HAMD is Pakistan's premier destination for high-performance mobile accessories and device protection.\n\nWe curate and engineer everyday essentials—from GaN fast chargers, Kevlar-reinforced braided cables, and military-grade drop cases to studio-fidelity acoustic earbuds—tested to endure the rigorous demands of modern mobile life."
+      },
+      {
+        "id": "ab-6",
+        "type": "heading",
+        "order": 6,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Global Safety & Rigorous Stress Testing"
+      },
+      {
+        "id": "ab-7",
+        "type": "bullet_list",
+        "order": 7,
+        "listItems": [
+          "Certified CE, FCC, RoHS, and Qi2 international safety compliance standards.",
+          "MultiProtect IC chips preventing overvoltage, short-circuits, and smartphone battery degradation.",
+          "10,000+ bend fatigue tolerance on Kevlar braided charging cables.",
+          "Drop-tested military-grade armor cases for maximum impact absorption."
+        ]
+      },
+      {
+        "id": "ab-8",
+        "type": "button",
+        "order": 8,
+        "buttonText": "Shop All Accessories",
+        "buttonLink": "/shop",
+        "buttonVariant": "primary",
+        "buttonAlign": "center"
+      }
+    ]
+  },
+  {
+    "id": "contact",
+    "title": "Contact Customer Concierge",
+    "slug": "contact",
+    "status": "Published",
+    "showInHeader": false,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "customer_service",
+    "seoTitle": "Contact Us | AL-HAMD Mobile Accessories",
+    "seoDescription": "Reach AL-HAMD Mobile Concierge for order tracking, compatibility assistance, and nationwide support across Pakistan.",
+    "targetKeywords": [
+      "contact al hamd",
+      "mobile support pakistan",
+      "order tracking",
+      "customer service"
+    ],
+    "order": 2,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "ct-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "center",
+        "headingText": "Customer Concierge & Support"
+      },
+      {
+        "id": "ct-2",
+        "type": "paragraph",
+        "order": 2,
+        "paragraphAlign": "center",
+        "paragraphText": "Our client advisors are at your service for model compatibility, order tracking, and product assistance across Pakistan."
+      },
+      {
+        "id": "ct-3",
+        "type": "contact_info",
+        "order": 3,
+        "contactEmail": "support@alhamd-mobile.com",
+        "contactPhone": "+92 343 2200995",
+        "contactAddress": "Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan",
+        "contactHours": "Monday – Saturday: 10:00 AM – 9:00 PM PKT",
+        "contactWhatsapp": "+92 343 2200995"
+      },
+      {
+        "id": "ct-4",
+        "type": "heading",
+        "order": 4,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Quick Assistance FAQ"
+      },
+      {
+        "id": "ct-5",
+        "type": "faq",
+        "order": 5,
+        "faqQuestion": "How do I track my nationwide delivery?",
+        "faqAnswer": "As soon as your package is dispatched, an automated SMS containing your live courier tracking link (TCS, Trax, Leopards) is sent directly to your mobile number."
+      },
+      {
+        "id": "ct-6",
+        "type": "faq",
+        "order": 6,
+        "faqQuestion": "Is Cash on Delivery (COD) supported nationwide?",
+        "faqAnswer": "Yes! We offer convenient Cash on Delivery across all cities, towns, and postal areas in Pakistan with zero hidden payment surcharges."
+      }
+    ]
+  },
+  {
+    "id": "shipping-policy",
+    "title": "Shipping Policy",
+    "slug": "shipping-policy",
+    "status": "Published",
+    "showInHeader": false,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "customer_service",
+    "seoTitle": "Shipping & Delivery Policy | AL-HAMD Mobile Accessories",
+    "seoDescription": "Nationwide express delivery across Pakistan with real-time SMS tracking and Cash on Delivery support.",
+    "targetKeywords": [
+      "shipping policy",
+      "delivery time pakistan",
+      "cash on delivery shipping",
+      "express delivery"
+    ],
+    "order": 3,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "sp-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "left",
+        "headingText": "Nationwide Express Shipping Policy"
+      },
+      {
+        "id": "sp-2",
+        "type": "paragraph",
+        "order": 2,
+        "paragraphAlign": "left",
+        "paragraphText": "We ship premium mobile accessories and device protection to every city, town, and district across Pakistan via vetted express courier partners with door-to-door tracking."
+      },
+      {
+        "id": "sp-3",
+        "type": "heading",
+        "order": 3,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Shipping Rates & Free Delivery"
+      },
+      {
+        "id": "sp-4",
+        "type": "bullet_list",
+        "order": 4,
+        "listItems": [
+          "FREE Nationwide Express Delivery on all orders exceeding Rs. 5,000.",
+          "Flat standard delivery rate of Rs. 200 on orders under Rs. 5,000.",
+          "Cash on Delivery (COD) available with no surcharge."
+        ]
+      },
+      {
+        "id": "sp-5",
+        "type": "heading",
+        "order": 5,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Transit Timelines"
+      },
+      {
+        "id": "sp-6",
+        "type": "numbered_list",
+        "order": 6,
+        "listItems": [
+          "Major Metros (Lahore, Karachi, Islamabad, Rawalpindi): 2 to 3 business days.",
+          "Regional Cities (Faisalabad, Multan, Peshawar, Sialkot, Gujranwala): 3 to 4 business days.",
+          "Rest of Pakistan (KPK, Balochistan, Gilgit-Baltistan, AJK): 3 to 5 business days."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "refund-policy",
+    "title": "Refund & Return Policy",
+    "slug": "refund-policy",
+    "status": "Published",
+    "showInHeader": false,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "customer_service",
+    "seoTitle": "Refund & Return Policy | AL-HAMD Mobile Accessories",
+    "seoDescription": "7-day doorstep replacement and return warranty for genuine mobile accessories across Pakistan.",
+    "targetKeywords": [
+      "return policy",
+      "refund guarantee",
+      "7 day replacement",
+      "mobile warranty pakistan"
+    ],
+    "order": 4,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "rf-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "left",
+        "headingText": "7-Day Return & Replacement Policy"
+      },
+      {
+        "id": "rf-2",
+        "type": "paragraph",
+        "order": 2,
+        "paragraphAlign": "left",
+        "paragraphText": "We stand behind every accessory we ship. If an item arrives defective, damaged in transit, or incompatible with your smartphone, we provide a smooth 7-day doorstep return or replacement."
+      },
+      {
+        "id": "rf-3",
+        "type": "heading",
+        "order": 3,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Return Eligibility Guidelines"
+      },
+      {
+        "id": "rf-4",
+        "type": "bullet_list",
+        "order": 4,
+        "listItems": [
+          "Product must remain in original condition with packaging, tags, and accessories intact.",
+          "Replacement requests must be initiated within 7 calendar days of delivery.",
+          "Defective or damaged items receive complimentary doorstep pickup across Pakistan."
+        ]
+      },
+      {
+        "id": "rf-5",
+        "type": "heading",
+        "order": 5,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Simple 3-Step Return Process"
+      },
+      {
+        "id": "rf-6",
+        "type": "numbered_list",
+        "order": 6,
+        "listItems": [
+          "Message our WhatsApp support at +92 343 2200995 with your Order Number and photo/video proof.",
+          "Our logistics partner will collect the return parcel from your doorstep.",
+          "Upon warehouse verification, your exchange is dispatched or refund credited within 3 business days."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "privacy-policy",
+    "title": "Privacy Policy",
+    "slug": "privacy-policy",
+    "status": "Published",
+    "showInHeader": false,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "legal",
+    "seoTitle": "Privacy Policy | AL-HAMD Mobile Accessories",
+    "seoDescription": "Our commitment to data privacy, 256-bit encryption, and safeguarding customer information.",
+    "targetKeywords": [
+      "privacy policy",
+      "data security",
+      "pci dss",
+      "al hamd privacy"
+    ],
+    "order": 5,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "pp-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "left",
+        "headingText": "Privacy & Data Protection Policy"
+      },
+      {
+        "id": "pp-2",
+        "type": "paragraph",
+        "order": 2,
+        "paragraphAlign": "left",
+        "paragraphText": "At AL-HAMD Mobile Accessories, safeguarding your personal data and maintaining your trust is fundamental to our business. This policy explains how we collect, store, and protect your information."
+      },
+      {
+        "id": "pp-3",
+        "type": "heading",
+        "order": 3,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "1. Information We Collect"
+      },
+      {
+        "id": "pp-4",
+        "type": "bullet_list",
+        "order": 4,
+        "listItems": [
+          "Customer identifiers: Full name, shipping address, contact phone number, and email address.",
+          "Order history: Products ordered, quantities, and chosen delivery service.",
+          "Encrypted payment references: Bank or wallet transfer identifiers for payment verification."
+        ]
+      },
+      {
+        "id": "pp-5",
+        "type": "heading",
+        "order": 5,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "2. Strict Confidentiality & Zero Third-Party Selling"
+      },
+      {
+        "id": "pp-6",
+        "type": "paragraph",
+        "order": 6,
+        "paragraphAlign": "left",
+        "paragraphText": "We never sell, rent, or lease customer data to third-party marketing companies or brokers. All information is exclusively used for order fulfillment and customer service."
+      }
+    ]
+  },
+  {
+    "id": "terms",
+    "title": "Terms & Conditions",
+    "slug": "terms",
+    "status": "Published",
+    "showInHeader": false,
+    "showInFooter": true,
+    "showInMobile": true,
+    "footerCategory": "legal",
+    "seoTitle": "Terms & Conditions | AL-HAMD Mobile Accessories",
+    "seoDescription": "Terms of service, warranty rules, and store policies for AL-HAMD Mobile Accessories.",
+    "targetKeywords": [
+      "terms and conditions",
+      "terms of service",
+      "warranty policy"
+    ],
+    "order": 6,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-10-19T16:17:08.078Z",
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "tc-1",
+        "type": "heading",
+        "order": 1,
+        "headingLevel": "h1",
+        "headingAlign": "left",
+        "headingText": "Terms & Conditions of Service"
+      },
+      {
+        "id": "tc-2",
+        "type": "paragraph",
+        "order": 2,
+        "paragraphAlign": "left",
+        "paragraphText": "By accessing and placing an order with AL-HAMD Mobile Accessories, you agree to comply with and be bound by the following terms and conditions."
+      },
+      {
+        "id": "tc-3",
+        "type": "heading",
+        "order": 3,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Product Authenticity & Pricing"
+      },
+      {
+        "id": "tc-4",
+        "type": "bullet_list",
+        "order": 4,
+        "listItems": [
+          "All branded products (Apple, Samsung, Anker, Baseus, UGREEN, Spigen) are guaranteed 100% genuine.",
+          "Prices are listed in Pakistani Rupees (PKR) and include all applicable taxes.",
+          "Orders are confirmed subject to item availability and payment verification."
+        ]
+      },
+      {
+        "id": "tc-5",
+        "type": "heading",
+        "order": 5,
+        "headingLevel": "h2",
+        "headingAlign": "left",
+        "headingText": "Warranty & Replacement Policy"
+      },
+      {
+        "id": "tc-6",
+        "type": "paragraph",
+        "order": 6,
+        "paragraphAlign": "left",
+        "paragraphText": "Products covered by manufacturer warranties are subject to official warranty policies. Physical damage, water ingress, or unauthorized alterations void warranty coverage."
+      }
+    ]
+  }
+]

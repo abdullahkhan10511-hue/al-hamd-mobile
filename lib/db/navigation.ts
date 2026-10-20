@@ -2,22 +2,22 @@ import { NavigationItem } from '@/types/admin';
 import { seedNavigation } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 const COLLECTION_KEY = 'navigation';
 
-export function getNavigation(): NavigationItem[] {
-  const items = getStoredCollection(COLLECTION_KEY, seedNavigation)
-    .filter((n) => n.href !== '/blog' && n.label.toLowerCase() !== 'blog')
+function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
+  const filtered = (items || [])
+    .filter((n) => n && n.href !== '/blog' && n.label?.toLowerCase() !== 'blog')
     .map((n) => {
-      if (n.label.toLowerCase() === 'new arrivals' && n.href !== '/new-arrivals') return { ...n, href: '/new-arrivals' };
-      if (n.label.toLowerCase() === 'best sellers' && n.href !== '/best-sellers') return { ...n, href: '/best-sellers' };
-      if ((n.label.toLowerCase() === 'categories' || n.href === '/#categories') && n.href !== '/categories') return { ...n, href: '/categories' };
+      if (n.label?.toLowerCase() === 'new arrivals' && n.href !== '/new-arrivals') return { ...n, href: '/new-arrivals' };
+      if (n.label?.toLowerCase() === 'best sellers' && n.href !== '/best-sellers') return { ...n, href: '/best-sellers' };
+      if ((n.label?.toLowerCase() === 'categories' || n.href === '/#categories') && n.href !== '/categories') return { ...n, href: '/categories' };
       return n;
     });
 
-  // Ensure Deals navigation link is present if not already in collection
-  if (!items.some((n) => n.href === '/deals' || n.label.toLowerCase() === 'deals')) {
-    items.push({
+  if (!filtered.some((n) => n.href === '/deals' || n.label?.toLowerCase() === 'deals')) {
+    filtered.push({
       id: 'nav-deals',
       label: 'Deals',
       href: '/deals',
@@ -26,14 +26,74 @@ export function getNavigation(): NavigationItem[] {
     });
   }
 
-  return items.sort((a, b) => a.displayOrder - b.displayOrder);
+  return filtered.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+}
+
+let inFlightNavigationPromise: Promise<NavigationItem[]> | null = null;
+
+export async function syncNavigationFromApi(): Promise<NavigationItem[]> {
+  if (typeof window === 'undefined') return getNavigation();
+  if (inFlightNavigationPromise) return inFlightNavigationPromise;
+
+  inFlightNavigationPromise = (async () => {
+    try {
+      const res = await fetch(`/api/navigation?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.items)) {
+          const normalized = normalizeNavigationList(data.items);
+          await persistCollection(COLLECTION_KEY, normalized, true);
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: COLLECTION_KEY, value: normalized },
+            })
+          );
+          return normalized;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not sync navigation from API:', err);
+    } finally {
+      inFlightNavigationPromise = null;
+    }
+    return getNavigation();
+  })();
+
+  return inFlightNavigationPromise;
+}
+
+export function getNavigation(): NavigationItem[] {
+  const items = getStoredCollection(COLLECTION_KEY, seedNavigation);
+  return normalizeNavigationList(items);
 }
 
 export async function updateNavigation(
   items: NavigationItem[],
   adminEmail = 'admin@alhamd.com'
 ): Promise<void> {
-  await persistCollection(COLLECTION_KEY, items);
+  const normalized = normalizeNavigationList(items);
+  await persistCollection(COLLECTION_KEY, normalized);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/admin/navigation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(adminEmail),
+        },
+        body: JSON.stringify({ items: normalized }),
+      });
+      if (!res.ok) {
+        console.warn('Failed to sync navigation to server API, status:', res.status);
+      }
+    } catch (err) {
+      console.warn('Network error saving navigation to server:', err);
+    }
+  }
+
   await logActivity({
     adminEmail,
     action: 'Updated Header Navigation Menu',

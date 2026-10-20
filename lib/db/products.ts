@@ -126,6 +126,11 @@ export async function syncProductsFromApi(forceFresh = false): Promise<
           await persistCollection(COLLECTION_KEY, sanitized);
           hasSyncedProductsFromApi = true;
           lastProductsSyncTimestamp = Date.now();
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: COLLECTION_KEY, value: sanitized },
+            })
+          );
           return sanitized;
         }
       }
@@ -902,26 +907,76 @@ export async function setModelStock(
   const product = products.find((p) => p.id === productId);
   if (!product || !product.models || !Array.isArray(product.models)) return false;
 
-  const model = product.models.find(
+  const num = Number(newStock);
+  if (!Number.isFinite(num) || num < 0 || Math.floor(num) !== num) {
+    return false;
+  }
+
+  const modelIndex = product.models.findIndex(
     (m) => m.id === modelIdOrName || m.name.toLowerCase() === modelIdOrName.toLowerCase()
   );
-  if (!model) return false;
+  if (modelIndex === -1) return false;
 
+  const model = product.models[modelIndex];
   const previousStock = model.stock ?? 0;
-  const safeStock = Math.max(0, Math.round(newStock));
+  const safeStock = Math.max(0, Math.round(num));
   const quantityChange = safeStock - previousStock;
-  model.stock = safeStock;
 
-  // Recalculate parent product stock
-  const totalModelStock = product.models.reduce((sum, m) => sum + (m.stock ?? 0), 0);
-  product.stock = totalModelStock;
+  // Clone models and update target model variant ONLY - siblings remain strictly untouched
+  const updatedModels = product.models.map((m, idx) => {
+    if (idx === modelIndex) {
+      return { ...m, stock: safeStock };
+    }
+    return m;
+  });
 
-  await persistCollection(COLLECTION_KEY, products);
+  // Derived parent stock is sum of all models
+  const totalModelStock = updatedModels.reduce((sum, m) => sum + (m.stock ?? 0), 0);
+
+  let finalProduct: any = {
+    ...product,
+    stock: totalModelStock,
+    models: updatedModels,
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({
+          stock: totalModelStock,
+          models: updatedModels,
+        }),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        console.error('Failed to update model stock on server:', resData.error);
+        return false;
+      }
+      if (resData.product) {
+        finalProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API error updating model stock:', err);
+      return false;
+    }
+  }
+
+  const prodIdx = products.findIndex((p) => p.id === productId);
+  if (prodIdx !== -1) {
+    products[prodIdx] = finalProduct;
+    await persistCollection(COLLECTION_KEY, products);
+  }
 
   if (db && typeof (db as any).type === 'string') {
     try {
       const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: product.stock, models: product.models }, { merge: true });
+      await setDoc(docRef, { stock: finalProduct.stock, models: finalProduct.models }, { merge: true });
     } catch (err) {
       console.warn('Firestore model stock sync notice:', err);
     }
@@ -956,6 +1011,135 @@ export async function setModelStock(
   return true;
 }
 
+export async function setProductModelsStock(
+  productId: string,
+  modelStockMap: Record<string, number>,
+  reason = 'Bulk variant adjustment in Stock Management',
+  adminEmail = 'admin@alhamd.com'
+): Promise<boolean> {
+  const products = getProducts();
+  const product = products.find((p) => p.id === productId);
+  if (!product || !product.models || !Array.isArray(product.models)) return false;
+
+  // Validate all inputs
+  for (const [_, val] of Object.entries(modelStockMap)) {
+    const num = Number(val);
+    if (!Number.isFinite(num) || num < 0 || Math.floor(num) !== num) {
+      return false;
+    }
+  }
+
+  const logsToRecord: Array<{
+    modelName: string;
+    modelSku?: string;
+    previousStock: number;
+    changeAmount: number;
+    newStock: number;
+  }> = [];
+
+  const updatedModels = product.models.map((m) => {
+    const matchKey = Object.keys(modelStockMap).find(
+      (k) => k === m.id || k.toLowerCase() === m.name.toLowerCase()
+    );
+    if (matchKey !== undefined && modelStockMap[matchKey] !== undefined) {
+      const safeStock = Math.max(0, Math.round(Number(modelStockMap[matchKey])));
+      const previousStock = m.stock ?? 0;
+      if (safeStock !== previousStock) {
+        logsToRecord.push({
+          modelName: m.name,
+          modelSku: m.sku,
+          previousStock,
+          changeAmount: safeStock - previousStock,
+          newStock: safeStock,
+        });
+      }
+      return { ...m, stock: safeStock };
+    }
+    return m;
+  });
+
+  const totalModelStock = updatedModels.reduce((sum, m) => sum + (m.stock ?? 0), 0);
+
+  let finalProduct: any = {
+    ...product,
+    stock: totalModelStock,
+    models: updatedModels,
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({
+          stock: totalModelStock,
+          models: updatedModels,
+        }),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        console.error('Failed to update product models stock on server:', resData.error);
+        return false;
+      }
+      if (resData.product) {
+        finalProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API error updating product models stock:', err);
+      return false;
+    }
+  }
+
+  const prodIdx = products.findIndex((p) => p.id === productId);
+  if (prodIdx !== -1) {
+    products[prodIdx] = finalProduct;
+    await persistCollection(COLLECTION_KEY, products);
+  }
+
+  if (db && typeof (db as any).type === 'string') {
+    try {
+      const docRef = doc(db, 'products', productId);
+      await setDoc(docRef, { stock: finalProduct.stock, models: finalProduct.models }, { merge: true });
+    } catch (err) {
+      console.warn('Firestore model stock sync notice:', err);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: COLLECTION_KEY, value: products },
+      })
+    );
+  }
+
+  for (const logItem of logsToRecord) {
+    await recordInventoryLog({
+      productId: product.id,
+      productName: `${product.name} (${logItem.modelName})`,
+      sku: logItem.modelSku || product.sku,
+      previousStock: logItem.previousStock,
+      changeAmount: logItem.changeAmount,
+      newStock: logItem.newStock,
+      reason,
+      adminEmail,
+    });
+  }
+
+  await logActivity({
+    adminEmail,
+    action: 'Bulk Adjusted Model Stock',
+    target: product.name,
+    details: `Updated ${logsToRecord.length} variant(s). Total stock: ${totalModelStock}. Reason: ${reason}`,
+  });
+
+  return true;
+}
+
 export async function setProductStock(
   productId: string,
   newStock: number,
@@ -966,14 +1150,52 @@ export async function setProductStock(
   const product = products.find((p) => p.id === productId);
   if (!product) return false;
 
+  const num = Number(newStock);
+  if (!Number.isFinite(num) || num < 0 || Math.floor(num) !== num) {
+    return false;
+  }
+
   const previousStock = product.stock;
-  const safeStock = Math.max(0, Math.round(newStock));
+  const safeStock = Math.max(0, Math.round(num));
   const quantityChange = safeStock - previousStock;
-  product.stock = safeStock;
 
-  await persistCollection(COLLECTION_KEY, products);
+  let finalProduct: any = {
+    ...product,
+    stock: safeStock,
+  };
 
-  // Direct Firestore doc sync
+  if (typeof window !== 'undefined') {
+    try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ stock: safeStock }),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        console.error('Failed to update product stock on server:', resData.error);
+        return false;
+      }
+      if (resData.product) {
+        finalProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API error updating product stock:', err);
+      return false;
+    }
+  }
+
+  const prodIdx = products.findIndex((p) => p.id === productId);
+  if (prodIdx !== -1) {
+    products[prodIdx] = finalProduct;
+    await persistCollection(COLLECTION_KEY, products);
+  }
+
+  // Direct Firestore doc sync if configured
   if (db && typeof (db as any).type === 'string') {
     try {
       const docRef = doc(db, 'products', productId);
@@ -984,11 +1206,6 @@ export async function setProductStock(
   }
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stock: safeStock }),
-    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: products },
@@ -1033,13 +1250,51 @@ export async function setProductLowStockThreshold(
   const product = products.find((p) => p.id === productId);
   if (!product) return false;
 
+  const num = Number(newThreshold);
+  if (!Number.isFinite(num) || num < 0 || Math.floor(num) !== num) {
+    return false;
+  }
+
   const previousThreshold = getWarningThreshold(product);
-  const safeThreshold = Math.max(0, Math.round(Number(newThreshold) || 0));
-  product.lowStockThreshold = safeThreshold;
+  const safeThreshold = Math.max(0, Math.round(num));
 
-  await persistCollection(COLLECTION_KEY, products);
+  let finalProduct: any = {
+    ...product,
+    lowStockThreshold: safeThreshold,
+  };
 
-  // Direct Firestore doc sync
+  if (typeof window !== 'undefined') {
+    try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(adminEmail),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ lowStockThreshold: safeThreshold }),
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        console.error('Failed to update warning threshold on server:', resData.error);
+        return false;
+      }
+      if (resData.product) {
+        finalProduct = resData.product;
+      }
+    } catch (err: any) {
+      console.error('API error updating warning threshold:', err);
+      return false;
+    }
+  }
+
+  const prodIdx = products.findIndex((p) => p.id === productId);
+  if (prodIdx !== -1) {
+    products[prodIdx] = finalProduct;
+    await persistCollection(COLLECTION_KEY, products);
+  }
+
+  // Direct Firestore doc sync if configured
   if (db && typeof (db as any).type === 'string') {
     try {
       const docRef = doc(db, 'products', productId);
@@ -1050,11 +1305,6 @@ export async function setProductLowStockThreshold(
   }
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lowStockThreshold: safeThreshold }),
-    }).catch(() => {});
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: products },

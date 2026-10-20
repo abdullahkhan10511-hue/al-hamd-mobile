@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { getAnnouncements } from '@/lib/db/announcements';
+import { getAnnouncements, syncAnnouncementsFromApi } from '@/lib/db/announcements';
 import { getStoreSettings } from '@/lib/db/settings';
 import { AnnouncementItem, StoreSettings } from '@/types/admin';
 
@@ -23,6 +23,9 @@ export function AnnouncementBar({ initialSettings }: { initialSettings?: StoreSe
 
   useEffect(() => {
     loadData();
+    syncAnnouncementsFromApi().then(() => {
+      loadData();
+    }).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;

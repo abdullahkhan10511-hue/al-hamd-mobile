@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Product, Category, ProductMediaItem, ProductModelVariant } from '@/types';
-import { Brand, ShopBill, ShopBillItem, Deal, DealProductItem } from '@/types/admin';
+import { Brand, ShopBill, ShopBillItem, Deal, DealProductItem, InventoryLog } from '@/types/admin';
 import { seedProducts, seedBrands } from './seed';
 import { categories as initialCategories } from '@/data/categories';
 import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
@@ -27,6 +27,7 @@ const DEV_PRODUCTS_FILE = path.join(DATA_DIR, 'dev-products.json');
 const DEV_CATEGORIES_FILE = path.join(DATA_DIR, 'dev-categories.json');
 const DEV_BRANDS_FILE = path.join(DATA_DIR, 'dev-brands.json');
 const DEV_DEALS_FILE = path.join(DATA_DIR, 'dev-deals.json');
+const DEV_INVENTORY_LOGS_FILE = path.join(DATA_DIR, 'dev-inventory-logs.json');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -980,4 +981,46 @@ export async function deleteDevDeal(
   }).catch(() => {});
 
   return true;
+}
+
+// ==========================================
+// INVENTORY LOGS DEV STORAGE
+// ==========================================
+
+export function getDevInventoryLogs(limit = 150): InventoryLog[] {
+  assertDevOnly('getDevInventoryLogs');
+  const logs = readJsonFile<InventoryLog[]>(DEV_INVENTORY_LOGS_FILE, []);
+  return logs.slice(0, limit);
+}
+
+export async function recordDevInventoryLog(entry: {
+  productId: string;
+  productName: string;
+  sku: string;
+  type?: string;
+  changeAmount: number;
+  previousStock: number;
+  newStock: number;
+  reason?: string;
+  adminEmail: string;
+}): Promise<InventoryLog> {
+  assertDevOnly('recordDevInventoryLog');
+  const logs = readJsonFile<InventoryLog[]>(DEV_INVENTORY_LOGS_FILE, []);
+  const newLog: InventoryLog = {
+    id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    productId: entry.productId,
+    productName: entry.productName,
+    sku: entry.sku,
+    type: (entry.type as any) || (entry.changeAmount >= 0 ? 'RESTOCK' : 'ORDER_DEDUCT'),
+    changeAmount: entry.changeAmount,
+    previousStock: entry.previousStock,
+    newStock: entry.newStock,
+    reason: entry.reason,
+    adminEmail: entry.adminEmail,
+    timestamp: new Date().toISOString(),
+  };
+
+  const updated = [newLog, ...logs];
+  writeJsonFile(DEV_INVENTORY_LOGS_FILE, updated);
+  return newLog;
 }

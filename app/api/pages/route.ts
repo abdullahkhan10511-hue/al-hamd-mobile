@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllPagesFromDb } from '@/lib/db/repositories/pages';
+import { readPersistentPages } from '@/lib/db/pagesStorage';
 import { seedPages } from '@/lib/db/pages';
 
 export async function GET() {
@@ -12,13 +13,10 @@ export async function GET() {
         pages = await getAllPagesFromDb();
       } catch (err: any) {
         console.error('MySQL error in /api/pages:', err);
-        return NextResponse.json(
-          { success: false, error: 'Failed to fetch pages. Please try again later.' },
-          { status: 500 }
-        );
+        pages = readPersistentPages();
       }
     } else {
-      pages = seedPages;
+      pages = readPersistentPages();
     }
 
     return NextResponse.json(

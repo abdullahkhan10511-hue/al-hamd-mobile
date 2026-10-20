@@ -1,6 +1,7 @@
 import { CustomPage, PageBlock, PageStatus } from '@/types/admin';
 import { getStoredData, setStoredData } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 const STORAGE_KEY = 'static_pages';
 
@@ -613,7 +614,10 @@ let hasSyncedPagesFromApi = false;
 export async function syncPagesFromApi(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/admin/pages', { cache: 'no-store' });
+    const res = await fetch('/api/admin/pages', {
+      cache: 'no-store',
+      headers: getAdminAuthHeaders(),
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.pages) && data.pages.length > 0) {
@@ -730,9 +734,13 @@ export async function savePage(
   await setStoredData(STORAGE_KEY, updatedList);
 
   if (typeof window !== 'undefined') {
+    const authHeaders = {
+      ...getAdminAuthHeaders(adminEmail),
+      'Content-Type': 'application/json',
+    };
     fetch('/api/admin/pages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(updatedPage),
     }).catch(() => {});
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
@@ -794,6 +802,7 @@ export async function deletePage(
   if (typeof window !== 'undefined') {
     fetch(`/api/admin/pages/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      headers: getAdminAuthHeaders(adminEmail),
     }).catch(() => {});
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
   }

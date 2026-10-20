@@ -8,12 +8,14 @@ import {
   updateAnnouncements,
   createAnnouncement,
   deleteAnnouncement,
+  syncAnnouncementsFromApi,
 } from '@/lib/db/announcements';
 import {
   getNavigation,
   updateNavigation,
   createNavigationItem,
   deleteNavigationItem,
+  syncNavigationFromApi,
 } from '@/lib/db/navigation';
 import { getStoreSettings, updateStoreSettings, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { uploadImage, getMediaItems, MediaItem } from '@/lib/db/media';
@@ -70,6 +72,9 @@ export default function AdminNavigationPage() {
 
   useEffect(() => {
     loadData();
+
+    syncNavigationFromApi().then(() => loadData()).catch(() => {});
+    syncAnnouncementsFromApi().then(() => loadData()).catch(() => {});
 
     syncStoreSettingsFromApi().then((fresh) => {
       if (fresh) {

@@ -7,6 +7,13 @@ import {
   deleteHomepageVideoInDb,
   reorderHomepageVideosInDb,
 } from '@/lib/db/repositories/homepageVideos';
+import {
+  readPersistentHomepageVideos,
+  writePersistentHomepageVideos,
+  savePersistentHomepageVideo,
+  deletePersistentHomepageVideo,
+  reorderPersistentHomepageVideos,
+} from '@/lib/db/homepageVideosStorage';
 import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 import { getAdminSession } from '@/lib/db/adminAuth';
@@ -31,10 +38,10 @@ export async function GET(request: NextRequest) {
         items = await getAllHomepageVideosFromDb();
       } catch (err) {
         console.warn('MySQL error in /api/admin/homepage-videos:', err);
-        items = seedHomepageVideos;
+        items = readPersistentHomepageVideos();
       }
     } else {
-      items = seedHomepageVideos;
+      items = readPersistentHomepageVideos();
     }
 
     // Deterministic sort: displayOrder ASC, then id ASC
@@ -73,13 +80,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, items, item, id, updates, orderedIds } = body;
 
-    if (!isDbConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'Database is not configured.' },
-        { status: 503 }
-      );
-    }
-
     const sortDeterministic = (list: HomepageVideo[]) => {
       return list.sort((a, b) => {
         const orderDiff = (a.displayOrder || 0) - (b.displayOrder || 0);
@@ -88,65 +88,115 @@ export async function POST(request: NextRequest) {
       });
     };
 
-    if (action === 'sync' && Array.isArray(items)) {
-      for (let idx = 0; idx < items.length; idx++) {
-        const itm = items[idx];
-        if (!itm) continue;
-        const displayOrder = typeof itm.displayOrder === 'number' && itm.displayOrder > 0 ? itm.displayOrder : idx + 1;
-        await saveHomepageVideoInDb({ ...itm, displayOrder });
+    if (isDbConfigured()) {
+      if (action === 'sync' && Array.isArray(items)) {
+        for (let idx = 0; idx < items.length; idx++) {
+          const itm = items[idx];
+          if (!itm) continue;
+          const displayOrder = typeof itm.displayOrder === 'number' && itm.displayOrder > 0 ? itm.displayOrder : idx + 1;
+          await saveHomepageVideoInDb({ ...itm, displayOrder });
+        }
+
+        const updated = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(updated); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: updated, videos: updated });
       }
 
-      const updated = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, items: updated, videos: updated });
-    }
+      if (action === 'add' && item) {
+        const saved = await saveHomepageVideoInDb(item);
+        const all = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(all); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, item: saved, items: all, videos: all });
+      }
 
-    if (action === 'add' && item) {
-      const saved = await saveHomepageVideoInDb(item);
-      const all = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, item: saved, items: all, videos: all });
-    }
+      if (action === 'update' && id && updates) {
+        const saved = await saveHomepageVideoInDb({ ...updates, id });
+        const all = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(all); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, item: saved, items: all, videos: all });
+      }
 
-    if (action === 'update' && id && updates) {
-      const saved = await saveHomepageVideoInDb({ ...updates, id });
-      const all = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, item: saved, items: all, videos: all });
-    }
+      if (action === 'delete' && id) {
+        await deleteHomepageVideoInDb(id);
+        const all = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(all); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
+      }
 
-    if (action === 'delete' && id) {
-      await deleteHomepageVideoInDb(id);
-      const all = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, items: all, videos: all });
-    }
-
-    if (action === 'reorder' && Array.isArray(orderedIds)) {
-      await reorderHomepageVideosInDb(orderedIds);
-      if (Array.isArray(items)) {
-        for (const itm of items) {
-          if (itm && itm.id) {
-            await saveHomepageVideoInDb(itm);
+      if (action === 'reorder' && Array.isArray(orderedIds)) {
+        await reorderHomepageVideosInDb(orderedIds);
+        if (Array.isArray(items)) {
+          for (const itm of items) {
+            if (itm && itm.id) {
+              await saveHomepageVideoInDb(itm);
+            }
           }
         }
+        const all = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(all); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
       }
-      const all = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, items: all, videos: all });
-    }
 
-    // Direct list upsert without destructive deletion
-    if (Array.isArray(body)) {
-      for (let idx = 0; idx < body.length; idx++) {
-        const itm = body[idx];
-        if (!itm) continue;
-        const displayOrder = typeof itm.displayOrder === 'number' && itm.displayOrder > 0 ? itm.displayOrder : idx + 1;
-        await saveHomepageVideoInDb({ ...itm, displayOrder });
+      // Direct list upsert without destructive deletion
+      if (Array.isArray(body)) {
+        for (let idx = 0; idx < body.length; idx++) {
+          const itm = body[idx];
+          if (!itm) continue;
+          const displayOrder = typeof itm.displayOrder === 'number' && itm.displayOrder > 0 ? itm.displayOrder : idx + 1;
+          await saveHomepageVideoInDb({ ...itm, displayOrder });
+        }
+        const all = sortDeterministic(await getAllHomepageVideosFromDb());
+        try { writePersistentHomepageVideos(all); } catch {}
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
       }
-      const all = sortDeterministic(await getAllHomepageVideosFromDb());
-      try { revalidatePath('/'); } catch {}
-      return NextResponse.json({ success: true, items: all, videos: all });
+    } else {
+      // Disk-based fallback storage
+      if (action === 'sync' && Array.isArray(items)) {
+        writePersistentHomepageVideos(items);
+        const updated = readPersistentHomepageVideos();
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: updated, videos: updated });
+      }
+
+      if (action === 'add' && item) {
+        const saved = savePersistentHomepageVideo(item);
+        const all = readPersistentHomepageVideos();
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, item: saved, items: all, videos: all });
+      }
+
+      if (action === 'update' && id && updates) {
+        const saved = savePersistentHomepageVideo({ ...updates, id });
+        const all = readPersistentHomepageVideos();
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, item: saved, items: all, videos: all });
+      }
+
+      if (action === 'delete' && id) {
+        deletePersistentHomepageVideo(id);
+        const all = readPersistentHomepageVideos();
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
+      }
+
+      if (action === 'reorder' && Array.isArray(orderedIds)) {
+        const all = reorderPersistentHomepageVideos(orderedIds);
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
+      }
+
+      if (Array.isArray(body)) {
+        writePersistentHomepageVideos(body);
+        const all = readPersistentHomepageVideos();
+        try { revalidatePath('/'); } catch {}
+        return NextResponse.json({ success: true, items: all, videos: all });
+      }
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });

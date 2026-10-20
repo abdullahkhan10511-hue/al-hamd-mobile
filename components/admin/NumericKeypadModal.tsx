@@ -9,6 +9,7 @@ interface NumericKeypadModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: Product | null;
+  model?: any | null;
   mode: 'stock' | 'warning';
   currentValue: number;
   onSave: (newValue: number) => Promise<boolean | void>;
@@ -18,6 +19,7 @@ export function NumericKeypadModal({
   isOpen,
   onClose,
   product,
+  model,
   mode,
   currentValue,
   onSave,
@@ -43,10 +45,21 @@ export function NumericKeypadModal({
 
   if (!isOpen || !product) return null;
 
-  const title = mode === 'stock' ? 'Set Available Stock' : 'Set Stock Warning Threshold';
+  const targetName = model ? `${product.name} (${model.name})` : product.name;
+  const targetSku = model ? (model.sku || product.sku) : product.sku;
+
+  const title =
+    mode === 'stock'
+      ? model
+        ? `Set Stock: ${model.name}`
+        : 'Set Warehouse Stock'
+      : 'Set Stock Warning Threshold';
+
   const description =
     mode === 'stock'
-      ? 'Enter the exact quantity of available inventory in the warehouse.'
+      ? model
+        ? `Enter the exact quantity of "${model.name}" inventory in the warehouse.`
+        : 'Enter the exact quantity of available inventory in the warehouse.'
       : 'Alerts when stock drops to or below this minimum quantity.';
 
   const handleDigitClick = (digit: string) => {
@@ -90,7 +103,7 @@ export function NumericKeypadModal({
   const handleQuickAdd = (delta: number) => {
     setErrorMessage(null);
     const curr = parseInt(valStr, 10) || 0;
-    const next = Math.max(0, curr + delta);
+    const next = Math.min(999999, Math.max(0, curr + delta));
     setValStr(next.toString());
   };
 
@@ -100,9 +113,10 @@ export function NumericKeypadModal({
   };
 
   const handleSave = async () => {
-    const parsed = parseInt(valStr, 10);
-    if (isNaN(parsed) || parsed < 0) {
-      setErrorMessage('Please enter a valid non-negative whole number.');
+    if (isSubmitting) return; // Prevent double submission
+    const parsed = Number(valStr);
+    if (!Number.isFinite(parsed) || parsed < 0 || Math.floor(parsed) !== parsed || parsed > 999999) {
+      setErrorMessage('Please enter a valid non-negative whole number (0 - 999,999).');
       return;
     }
 
@@ -114,7 +128,7 @@ export function NumericKeypadModal({
       if (ok !== false) {
         onClose();
       } else {
-        setErrorMessage('Failed to update. Please try again.');
+        setErrorMessage('Failed to update stock. Database update was not saved.');
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Error updating value.');
@@ -161,14 +175,14 @@ export function NumericKeypadModal({
             <div>
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-neutral-100 text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
                 <Hash className="w-3 h-3 text-neutral-500" />
-                <span>{mode === 'stock' ? 'Direct Stock Set' : 'Warning Threshold'}</span>
+                <span>{mode === 'stock' ? (model ? 'Variant Stock Set' : 'Direct Stock Set') : 'Warning Threshold'}</span>
               </div>
               <h3 className="text-base font-bold text-neutral-950 leading-snug">{title}</h3>
-              <p className="text-xs text-neutral-500 line-clamp-1 mt-0.5" title={product.name}>
-                {product.name}
+              <p className="text-xs text-neutral-500 line-clamp-1 mt-0.5" title={targetName}>
+                {targetName}
               </p>
-              {product.sku && (
-                <span className="text-[10px] font-mono text-neutral-400">SKU: {product.sku}</span>
+              {targetSku && (
+                <span className="text-[10px] font-mono text-neutral-400">SKU: {targetSku}</span>
               )}
             </div>
 
@@ -213,69 +227,52 @@ export function NumericKeypadModal({
           </div>
 
           {/* Quick Presets / Modifiers */}
-          <div className="flex items-center justify-center gap-1.5 flex-wrap pt-1">
+          <div className="space-y-1.5 pt-1">
             {mode === 'stock' ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset(0)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  Out (0)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAdd(10)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  +10
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAdd(50)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  +50
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAdd(100)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  +100
-                </button>
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-neutral-400 uppercase font-semibold mr-1">Set:</span>
+                  {[0, 10, 50, 100, 250, 1000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => handleQuickPreset(preset)}
+                      className="px-2 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-neutral-400 uppercase font-semibold mr-1">Add:</span>
+                  {[10, 50, 100, 250].map((delta) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => handleQuickAdd(delta)}
+                      className="px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 text-[11px] font-bold text-violet-700 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      +{delta}
+                    </button>
+                  ))}
+                </div>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset(5)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  5
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset(10)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  10
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset(20)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  20
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset(50)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors"
-                >
-                  50
-                </button>
-              </>
+              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                {[5, 10, 20, 50].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleQuickPreset(preset)}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-semibold text-neutral-700 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 

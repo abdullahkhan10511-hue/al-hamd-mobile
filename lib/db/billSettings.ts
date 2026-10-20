@@ -2,6 +2,7 @@ import { BillSettings, BillFieldToggles } from '@/types/admin';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
 import { DEFAULT_THERMAL_WIDTH, DEFAULT_CUSTOM_WIDTH } from '@/lib/utils/thermalWidth';
+import { getAdminAuthHeaders } from './staff';
 
 const BILL_SETTINGS_KEY = 'bill_settings';
 
@@ -62,7 +63,10 @@ let hasSyncedBillSettingsFromApi = false;
 export async function syncBillSettingsFromApi(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/admin/bill-settings', { cache: 'no-store' });
+    const res = await fetch('/api/admin/bill-settings', {
+      cache: 'no-store',
+      headers: getAdminAuthHeaders(),
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.settings) {
@@ -169,11 +173,24 @@ export async function updateBillSettings(
   setLocal(BILL_SETTINGS_KEY, updated);
 
   if (typeof window !== 'undefined') {
-    fetch('/api/admin/bill-settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    }).catch(() => {});
+    try {
+      const res = await fetch('/api/admin/bill-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(adminEmail),
+        },
+        body: JSON.stringify(settings),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setLocal(BILL_SETTINGS_KEY, data.settings, true);
+        }
+      }
+    } catch (err) {
+      console.warn('Network error updating bill settings:', err);
+    }
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: BILL_SETTINGS_KEY, value: updated },

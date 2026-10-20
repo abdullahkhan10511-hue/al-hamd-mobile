@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getPageBySlugFromDb } from '@/lib/db/repositories/pages';
+import { readPersistentPages } from '@/lib/db/pagesStorage';
 import { seedPages } from '@/lib/db/pages';
 
 export async function GET(
@@ -16,17 +17,16 @@ export async function GET(
     if (isDbConfigured()) {
       try {
         const page = await getPageBySlugFromDb(slug);
-        if (!page) {
-          return NextResponse.json({ success: false, error: 'Page not found' }, { status: 404 });
+        if (page) {
+          return NextResponse.json({ success: true, page });
         }
-        return NextResponse.json({ success: true, page });
       } catch (err: any) {
         console.error('MySQL error in /api/pages/[slug]:', err);
-        return NextResponse.json({ success: false, error: 'Failed to fetch page' }, { status: 500 });
       }
     }
 
-    const fallback = seedPages.find((p) => p.slug.toLowerCase() === slug.toLowerCase());
+    const pages = readPersistentPages();
+    const fallback = pages.find((p) => p.slug.toLowerCase() === slug.toLowerCase());
     if (!fallback) {
       return NextResponse.json({ success: false, error: 'Page not found' }, { status: 404 });
     }

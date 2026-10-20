@@ -1,25 +1,33 @@
 import { InventoryLog } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
+import { getAdminAuthHeaders } from './staff';
 
 const COLLECTION_KEY = 'inventory_logs';
 
 let hasSyncedInventoryLogsFromApi = false;
-export async function syncInventoryLogsFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
+export async function syncInventoryLogsFromApi(force = false): Promise<InventoryLog[]> {
+  if (typeof window === 'undefined') return [];
   try {
-    const res = await fetch('/api/admin/inventory/logs', { cache: 'no-store' });
+    const authHeaders = getAdminAuthHeaders();
+    const res = await fetch('/api/admin/inventory/logs', {
+      headers: authHeaders,
+      cache: 'no-store',
+    });
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
+      if (data.success && Array.isArray(data.logs)) {
         await persistCollection(COLLECTION_KEY, data.logs);
+        hasSyncedInventoryLogsFromApi = true;
         window.dispatchEvent(
           new CustomEvent('alhamd:data-updated', {
             detail: { key: COLLECTION_KEY, value: data.logs },
           })
         );
+        return data.logs;
       }
     }
   } catch {}
+  return getStoredCollection(COLLECTION_KEY, []);
 }
 
 export function getInventoryLogs(): InventoryLog[] {
@@ -36,7 +44,7 @@ export async function recordInventoryLog(
   const logs = getInventoryLogs();
   const newLog: InventoryLog = {
     ...log,
-    id: `inv-${Date.now()}`,
+    id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     timestamp: new Date().toISOString(),
   };
 
@@ -44,11 +52,17 @@ export async function recordInventoryLog(
   await persistCollection(COLLECTION_KEY, updated);
 
   if (typeof window !== 'undefined') {
-    fetch('/api/admin/inventory/logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newLog),
-    }).catch(() => {});
+    try {
+      const authHeaders = {
+        ...getAdminAuthHeaders(log.adminEmail),
+        'Content-Type': 'application/json',
+      };
+      fetch('/api/admin/inventory/logs', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(newLog),
+      }).catch(() => {});
+    } catch {}
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: updated },
@@ -58,3 +72,4 @@ export async function recordInventoryLog(
 
   return newLog;
 }
+

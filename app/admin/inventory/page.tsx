@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Product } from '@/types';
 import { InventoryLog } from '@/types/admin';
@@ -10,10 +10,13 @@ import {
   setProductLowStockThreshold,
   getWarningThreshold,
   setModelStock,
+  setProductModelsStock,
+  syncProductsFromApi,
 } from '@/lib/db/products';
-import { getInventoryLogs } from '@/lib/db/inventory';
+import { getInventoryLogs, syncInventoryLogsFromApi } from '@/lib/db/inventory';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { NumericKeypadModal } from '@/components/admin/NumericKeypadModal';
+import { BulkVariantAdjustModal } from '@/components/admin/BulkVariantAdjustModal';
 import {
   Boxes,
   Search,
@@ -26,6 +29,7 @@ import {
   RefreshCw,
   Check,
   Edit2,
+  Layers,
 } from 'lucide-react';
 
 export default function AdminInventoryPage() {
@@ -40,11 +44,18 @@ export default function AdminInventoryPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Keypad Modal State
   const [keypadProduct, setKeypadProduct] = useState<Product | null>(null);
+  const [keypadModel, setKeypadModel] = useState<any | null>(null);
   const [keypadMode, setKeypadMode] = useState<'stock' | 'warning'>('stock');
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
+
+  // Bulk Variant Adjust Modal State
+  const [bulkVariantProduct, setBulkVariantProduct] = useState<Product | null>(null);
+  const [isBulkVariantOpen, setIsBulkVariantOpen] = useState(false);
+
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Model Variant Expansion State
@@ -55,24 +66,60 @@ export default function AdminInventoryPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const openKeypad = (product: Product, mode: 'stock' | 'warning') => {
+  const openKeypad = (product: Product, mode: 'stock' | 'warning', model?: any | null) => {
     setKeypadProduct(product);
+    setKeypadModel(model || null);
     setKeypadMode(mode);
     setIsKeypadOpen(true);
   };
 
-  const loadData = () => {
+  const openBulkVariantModal = (product: Product) => {
+    setBulkVariantProduct(product);
+    setIsBulkVariantOpen(true);
+  };
+
+  const loadData = useCallback(async (forceFresh = false) => {
+    // 1. Immediately display local cached items for zero delay
     setProducts(getProducts());
     setLogs(getInventoryLogs());
-  };
+
+    // 2. If fresh requested or initial background sync, fetch from API
+    if (forceFresh) {
+      setIsRefreshing(true);
+      try {
+        const freshProducts = await syncProductsFromApi(true);
+        if (freshProducts && freshProducts.length > 0) {
+          setProducts(freshProducts);
+        }
+        await syncInventoryLogsFromApi(true);
+        setLogs(getInventoryLogs());
+        showToast('Inventory synced with database.', 'success');
+      } catch {
+        showToast('Failed to sync latest inventory data.', 'error');
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
 
-    const handleUpdate = () => loadData();
+    // Async background sync on initial page load to verify persistence against server
+    syncProductsFromApi(true).then((fresh) => {
+      if (fresh && fresh.length > 0) setProducts(fresh);
+    }).catch(() => {});
+    syncInventoryLogsFromApi(true).then((freshLogs) => {
+      if (freshLogs && freshLogs.length > 0) setLogs(freshLogs);
+    }).catch(() => {});
+
+    const handleUpdate = () => {
+      setProducts(getProducts());
+      setLogs(getInventoryLogs());
+    };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [loadData]);
 
   const warehouseProducts = products.filter((p) => p.inventoryLocation !== 'SHOP');
   const totalSKUs = warehouseProducts.length;
@@ -183,21 +230,38 @@ export default function AdminInventoryPage() {
   const handleKeypadSave = async (newValue: number): Promise<boolean> => {
     if (!keypadProduct) return false;
     const productId = keypadProduct.id;
-    setSavingId(productId);
+    const key = keypadModel ? `${productId}-${keypadModel.name}` : productId;
+    setSavingId(key);
 
     try {
       if (keypadMode === 'stock') {
-        const ok = await setProductStock(
-          productId,
-          newValue,
-          'Direct manual keypad adjustment',
-          admin?.email || 'admin@alhamd.com'
-        );
-        setSavingId(null);
-        if (ok) {
-          showToast(`Stock updated to ${newValue} units.`, 'success');
-          loadData();
-          return true;
+        if (keypadModel) {
+          const ok = await setModelStock(
+            productId,
+            keypadModel.id || keypadModel.name,
+            newValue,
+            `Direct manual keypad adjustment for ${keypadModel.name}`,
+            admin?.email || 'admin@alhamd.com'
+          );
+          setSavingId(null);
+          if (ok) {
+            showToast(`"${keypadModel.name}" stock updated to ${newValue} units.`, 'success');
+            loadData();
+            return true;
+          }
+        } else {
+          const ok = await setProductStock(
+            productId,
+            newValue,
+            'Direct manual keypad adjustment',
+            admin?.email || 'admin@alhamd.com'
+          );
+          setSavingId(null);
+          if (ok) {
+            showToast(`Stock updated to ${newValue} units.`, 'success');
+            loadData();
+            return true;
+          }
         }
       } else {
         const ok = await setProductLowStockThreshold(
@@ -221,6 +285,33 @@ export default function AdminInventoryPage() {
     }
   };
 
+  const handleSaveAllVariants = async (stockMap: Record<string, number>): Promise<boolean> => {
+    if (!bulkVariantProduct) return false;
+    const productId = bulkVariantProduct.id;
+    setSavingId(productId);
+
+    try {
+      const ok = await setProductModelsStock(
+        productId,
+        stockMap,
+        `Bulk variant stock adjustment for ${bulkVariantProduct.name}`,
+        admin?.email || 'admin@alhamd.com'
+      );
+      setSavingId(null);
+      if (ok) {
+        showToast(`All variant quantities for "${bulkVariantProduct.name}" updated successfully.`, 'success');
+        loadData();
+        return true;
+      }
+      showToast('Failed to save variant stocks.', 'error');
+      return false;
+    } catch (err: any) {
+      setSavingId(null);
+      showToast(err?.message || 'Error saving variant stocks.', 'error');
+      return false;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -236,6 +327,16 @@ export default function AdminInventoryPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => loadData(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+            title="Fetch fresh inventory levels directly from the database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-violet-600' : 'text-neutral-500'}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Data'}</span>
+          </button>
           <Link href="/admin/shop-inventory" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold hover:bg-violet-200 transition-colors">
             Shop Inventory
           </Link>
@@ -408,27 +509,52 @@ export default function AdminInventoryPage() {
 
                           <td className="py-3.5 px-4 text-neutral-600 capitalize">{p.category || '—'}</td>
 
-                          {/* Available Stock: Click to Open Keypad */}
+                          {/* Available Stock */}
                           <td className="py-3.5 px-4 text-center font-bold font-mono text-sm">
-                            <button
-                              type="button"
-                              onClick={() => openKeypad(p, 'stock')}
-                              title="Click to enter exact stock quantity directly"
-                              className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-neutral-100 transition-all cursor-pointer font-bold font-mono text-sm border border-transparent hover:border-neutral-200"
-                            >
-                              <span
-                                className={
-                                  isOut
-                                    ? 'text-rose-600'
-                                    : isLow
-                                    ? 'text-amber-600'
-                                    : 'text-neutral-900'
-                                }
+                            {p.enableModelSelection && Array.isArray(p.models) && p.models.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openBulkVariantModal(p)}
+                                title="Click to adjust variant stock quantities"
+                                className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-violet-50 transition-all cursor-pointer font-bold font-mono text-sm border border-transparent hover:border-violet-200"
                               >
-                                {p.stock} units
-                              </span>
-                              <Edit2 className="w-3 h-3 text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
+                                <span
+                                  className={
+                                    isOut
+                                      ? 'text-rose-600'
+                                      : isLow
+                                      ? 'text-amber-600'
+                                      : 'text-neutral-900'
+                                  }
+                                >
+                                  {p.stock} units
+                                </span>
+                                <span className="text-[10px] font-sans font-semibold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded-md">
+                                  {p.models.length} variants
+                                </span>
+                                <Edit2 className="w-3 h-3 text-violet-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openKeypad(p, 'stock')}
+                                title="Click to enter exact stock quantity directly"
+                                className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-neutral-100 transition-all cursor-pointer font-bold font-mono text-sm border border-transparent hover:border-neutral-200"
+                              >
+                                <span
+                                  className={
+                                    isOut
+                                      ? 'text-rose-600'
+                                      : isLow
+                                      ? 'text-amber-600'
+                                      : 'text-neutral-900'
+                                  }
+                                >
+                                  {p.stock} units
+                                </span>
+                                <Edit2 className="w-3 h-3 text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            )}
                           </td>
 
                           {/* Stock Warning: Click to Open Keypad */}
@@ -463,64 +589,88 @@ export default function AdminInventoryPage() {
                             )}
                           </td>
 
-                          {/* Interactive + / - Controls with Instant Persistence & Keypad Direct Input */}
+                          {/* Interactive Controls */}
                           <td className="py-3.5 px-4 text-right">
-                            <div className="flex flex-col items-end gap-1">
-                              <div className="inline-flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-xl p-1 shadow-2xs">
-                                {/* Minus Button */}
+                            {p.enableModelSelection && Array.isArray(p.models) && p.models.length > 0 ? (
+                              <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => handleQuickDelta(p, -1)}
-                                  disabled={p.stock <= 0 || isSavingThis}
-                                  title="Decrease stock by 1"
-                                  aria-label="Decrease stock"
-                                  className="w-7 h-7 rounded-lg bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-100 flex items-center justify-center font-bold transition-transform active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shadow-2xs"
+                                  onClick={() => openBulkVariantModal(p)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                                  title="Adjust stock quantities for all variants"
                                 >
-                                  <Minus className="w-3 h-3 stroke-[2.5]" />
-                                </button>
-
-                                {/* Current Stock Display / Click to open keypad */}
-                                <button
-                                  type="button"
-                                  onClick={() => openKeypad(p, 'stock')}
-                                  title="Click to enter exact stock number directly"
-                                  className="min-w-8 px-1.5 py-0.5 text-center font-mono font-bold text-xs text-neutral-900 hover:bg-neutral-200/60 rounded-md transition-colors cursor-pointer select-none"
-                                >
-                                  {p.stock}
-                                </button>
-
-                                {/* Plus Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickDelta(p, 1)}
-                                  disabled={isSavingThis}
-                                  title="Increase stock by 1"
-                                  aria-label="Increase stock"
-                                  className="w-7 h-7 rounded-lg bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-100 flex items-center justify-center font-bold transition-transform active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shadow-2xs"
-                                >
-                                  <Plus className="w-3 h-3 stroke-[2.5]" />
+                                  <Layers className="w-3.5 h-3.5 text-violet-600" />
+                                  <span>Adjust Variants</span>
                                 </button>
                               </div>
+                            ) : (
+                              <div className="flex flex-col items-end gap-1">
+                                <div className="inline-flex items-center gap-1 bg-neutral-50 border border-neutral-200 rounded-xl p-1 shadow-2xs">
+                                  {/* Minus Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickDelta(p, -1)}
+                                    disabled={p.stock <= 0 || isSavingThis}
+                                    title="Decrease stock by 1"
+                                    aria-label="Decrease stock"
+                                    className="w-7 h-7 rounded-lg bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-100 flex items-center justify-center font-bold transition-transform active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shadow-2xs"
+                                  >
+                                    <Minus className="w-3 h-3 stroke-[2.5]" />
+                                  </button>
 
-                              {/* Feedback Messages */}
-                              {isSavingThis && (
-                                <div className="text-[10px] font-bold text-neutral-500 flex items-center gap-1 pr-1">
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                  <span>Saving...</span>
+                                  {/* Current Stock Display / Click to open keypad */}
+                                  <button
+                                    type="button"
+                                    onClick={() => openKeypad(p, 'stock')}
+                                    title="Click to enter exact stock number or presets (+10, +50, +100, +250, +1000)"
+                                    className="min-w-8 px-2 py-0.5 text-center font-mono font-bold text-xs text-neutral-900 hover:bg-neutral-200/60 rounded-md transition-colors cursor-pointer select-none"
+                                  >
+                                    {p.stock}
+                                  </button>
+
+                                  {/* Plus Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickDelta(p, 1)}
+                                    disabled={isSavingThis}
+                                    title="Increase stock by 1"
+                                    aria-label="Increase stock"
+                                    className="w-7 h-7 rounded-lg bg-white border border-neutral-200 text-neutral-800 hover:bg-neutral-100 flex items-center justify-center font-bold transition-transform active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shadow-2xs"
+                                  >
+                                    <Plus className="w-3 h-3 stroke-[2.5]" />
+                                  </button>
+
+                                  {/* Direct Keypad Button for bulk adjustment */}
+                                  <button
+                                    type="button"
+                                    onClick={() => openKeypad(p, 'stock')}
+                                    title="Direct keypad / quantity entry (1, 10, 100, 250, 1000)"
+                                    className="w-7 h-7 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
                                 </div>
-                              )}
-                              {isSuccessThis && (
-                                <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 animate-in fade-in duration-200 flex items-center gap-1">
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                  <span>Saved</span>
-                                </div>
-                              )}
-                              {isErrorThis && (
-                                <div className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 animate-in fade-in duration-200">
-                                  Failed
-                                </div>
-                              )}
-                            </div>
+
+                                {/* Feedback Messages */}
+                                {isSavingThis && (
+                                  <div className="text-[10px] font-bold text-neutral-500 flex items-center gap-1 pr-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>Saving...</span>
+                                  </div>
+                                )}
+                                {isSuccessThis && (
+                                  <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 animate-in fade-in duration-200 flex items-center gap-1">
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                    <span>Saved</span>
+                                  </div>
+                                )}
+                                {isErrorThis && (
+                                  <div className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 animate-in fade-in duration-200">
+                                    Failed
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </td>
                         </tr>
                         {/* Expandable Model Rows */}
@@ -551,9 +701,17 @@ export default function AdminInventoryPage() {
                                 </td>
                                 <td className="py-2.5 px-4 text-neutral-400 text-[11px]">Variant</td>
                                 <td className="py-2.5 px-4 text-center font-bold font-mono text-xs">
-                                  <span className={mOut ? 'text-rose-600' : mLow ? 'text-amber-600' : 'text-neutral-800'}>
-                                    {mStock} units
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openKeypad(p, 'stock', m)}
+                                    title={`Click to set exact stock for "${m.name}" or use presets`}
+                                    className="group inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-neutral-200/50 transition-colors cursor-pointer"
+                                  >
+                                    <span className={mOut ? 'text-rose-600' : mLow ? 'text-amber-600' : 'text-neutral-800'}>
+                                      {mStock} units
+                                    </span>
+                                    <Edit2 className="w-2.5 h-2.5 text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </button>
                                 </td>
                                 <td className="py-2.5 px-4 text-center text-[10px] text-neutral-400">
                                   —
@@ -585,9 +743,14 @@ export default function AdminInventoryPage() {
                                       >
                                         <Minus className="w-2.5 h-2.5" />
                                       </button>
-                                      <span className="min-w-6 px-1 text-center font-mono font-bold text-[11px] text-neutral-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => openKeypad(p, 'stock', m)}
+                                        title={`Click to set exact stock or presets for ${m.name}`}
+                                        className="min-w-6 px-1.5 py-0.5 text-center font-mono font-bold text-[11px] text-neutral-800 hover:bg-neutral-100 rounded cursor-pointer"
+                                      >
                                         {mStock}
-                                      </span>
+                                      </button>
                                       <button
                                         type="button"
                                         onClick={() => handleModelQuickDelta(p, m, 1)}
@@ -596,6 +759,14 @@ export default function AdminInventoryPage() {
                                         className="w-6 h-6 rounded bg-neutral-50 hover:bg-neutral-100 text-neutral-700 flex items-center justify-center font-bold text-xs cursor-pointer disabled:opacity-30"
                                       >
                                         <Plus className="w-2.5 h-2.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openKeypad(p, 'stock', m)}
+                                        title={`Direct quantity adjustment (1, 10, 100, 250, 1000) for ${m.name}`}
+                                        className="w-6 h-6 rounded bg-neutral-50 hover:bg-neutral-100 text-neutral-600 hover:text-neutral-900 flex items-center justify-center cursor-pointer"
+                                      >
+                                        <Edit2 className="w-2.5 h-2.5" />
                                       </button>
                                     </div>
                                     {isSavingModel && (
@@ -687,17 +858,32 @@ export default function AdminInventoryPage() {
       {/* Interactive Keypad Modal */}
       <NumericKeypadModal
         isOpen={isKeypadOpen}
-        onClose={() => setIsKeypadOpen(false)}
+        onClose={() => {
+          setIsKeypadOpen(false);
+          setKeypadModel(null);
+        }}
         product={keypadProduct}
+        model={keypadModel}
         mode={keypadMode}
         currentValue={
           keypadProduct
             ? keypadMode === 'stock'
-              ? keypadProduct.stock
+              ? (keypadModel ? (keypadModel.stock ?? 0) : keypadProduct.stock)
               : getWarningThreshold(keypadProduct)
             : 0
         }
         onSave={handleKeypadSave}
+      />
+
+      {/* Multi-Variant Bulk Adjustment Modal */}
+      <BulkVariantAdjustModal
+        isOpen={isBulkVariantOpen}
+        onClose={() => {
+          setIsBulkVariantOpen(false);
+          setBulkVariantProduct(null);
+        }}
+        product={bulkVariantProduct}
+        onSaveAll={handleSaveAllVariants}
       />
 
       {/* Floating Toast Notification */}

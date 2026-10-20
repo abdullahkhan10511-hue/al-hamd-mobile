@@ -15,6 +15,7 @@ import {
   deletePage,
   reorderPages,
   isSlugUnique,
+  syncPagesFromApi,
 } from '@/lib/db/pages';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import PageRenderer from '@/components/ui/PageRenderer';
@@ -100,6 +101,7 @@ export default function AdminPagesManager() {
   const loadData = async () => {
     try {
       setLoading(true);
+      await syncPagesFromApi().catch(() => {});
       const list = await getPages();
       setPages(list);
     } catch (e) {

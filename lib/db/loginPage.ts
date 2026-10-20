@@ -1,5 +1,6 @@
 import { getLocal, setLocal, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 export type MediaTransitionType = 'fade' | 'slide' | 'zoom' | 'crossfade';
 
@@ -232,7 +233,7 @@ export async function fetchLoginPageSettings(): Promise<LoginPageSettings> {
     return getLoginPageSettings();
   }
   try {
-    const res = await fetch('/api/admin/login-page/settings', { cache: 'no-store' });
+    const res = await fetch(`/api/login-page/settings?t=${Date.now()}`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       const settingsObj = data?.settings && typeof data.settings === 'object' ? data.settings : data;
@@ -268,7 +269,10 @@ export async function updateLoginPageSettings(
       try {
         await fetch('/api/admin/login-page/settings', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAdminAuthHeaders(operatorEmail),
+          },
           body: JSON.stringify(merged),
         });
       } catch {
@@ -321,7 +325,7 @@ export async function fetchLoginPageMedia(): Promise<LoginPageMediaItem[]> {
     return getLoginPageMedia();
   }
   try {
-    const res = await fetch('/api/admin/login-page/media', { cache: 'no-store' });
+    const res = await fetch(`/api/login-page/media?t=${Date.now()}`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       const list = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : null);
@@ -382,7 +386,10 @@ export async function addLoginPageMedia(
     try {
       await fetch('/api/admin/login-page/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ action: 'sync', items: updated }),
       });
     } catch {}
@@ -427,7 +434,10 @@ export async function updateLoginPageMedia(
     try {
       await fetch('/api/admin/login-page/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ action: 'sync', items: list }),
       });
     } catch {}
@@ -459,7 +469,10 @@ export async function deleteLoginPageMedia(
     try {
       await fetch('/api/admin/login-page/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ action: 'sync', items: filtered }),
       });
     } catch {}
@@ -526,7 +539,10 @@ export async function reorderLoginPageMedia(
     try {
       await fetch('/api/admin/login-page/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ action: 'sync', items: reordered }),
       });
     } catch {}
@@ -554,12 +570,18 @@ export async function resetLoginPageToDefault(
     try {
       await fetch('/api/admin/login-page/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify(DEFAULT_LOGIN_PAGE_SETTINGS),
       });
       await fetch('/api/admin/login-page/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ action: 'sync', items: DEFAULT_LOGIN_PAGE_MEDIA }),
       });
     } catch {}

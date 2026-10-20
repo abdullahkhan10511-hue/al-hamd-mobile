@@ -36,6 +36,7 @@ import {
   getEnabledPaymentMethods,
   getPaymentSecuritySettings,
   seedPaymentSecuritySettings,
+  syncPaymentMethodsFromApi,
 } from '@/lib/db/paymentMethods';
 import { subscribeToKey } from '@/lib/db/storage';
 import InvoiceModal from '@/components/admin/InvoiceModal';
@@ -170,6 +171,7 @@ export default function CheckoutPage() {
     };
 
     syncPaymentData();
+    syncPaymentMethodsFromApi().then(() => syncPaymentData()).catch(() => {});
 
     const unsubMethods = subscribeToKey('payment_methods', syncPaymentData);
     const unsubSec = subscribeToKey('payment_security_settings', syncPaymentData);

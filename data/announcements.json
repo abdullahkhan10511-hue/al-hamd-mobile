@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ann-1",
+    "text": "Free Nationwide Delivery on Mobile Accessories Over Rs. 5,000",
+    "link": "/shop",
+    "linkText": "Shop Now",
+    "active": true,
+    "displayOrder": 1
+  },
+  {
+    "id": "ann-2",
+    "text": "Flash Sale: Up to 50% Off On GaN Fast Chargers & Power Banks — Code: FAST50",
+    "link": "/shop?filter=sale",
+    "linkText": "Explore Deals",
+    "active": true,
+    "displayOrder": 2
+  },
+  {
+    "id": "ann-3",
+    "text": "Cash on Delivery (COD) Available Nationwide Across Pakistan",
+    "link": "/shop",
+    "linkText": "Order Today",
+    "active": true,
+    "displayOrder": 3
+  }
+]

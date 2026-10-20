@@ -1,0 +1,58 @@
+[
+  {
+    "id": "nav-1",
+    "label": "Home",
+    "href": "/",
+    "displayOrder": 1,
+    "visible": true
+  },
+  {
+    "id": "nav-2",
+    "label": "Shop",
+    "href": "/shop",
+    "displayOrder": 2,
+    "visible": true
+  },
+  {
+    "id": "nav-3",
+    "label": "New Arrivals",
+    "href": "/new-arrivals",
+    "displayOrder": 3,
+    "visible": true
+  },
+  {
+    "id": "nav-4",
+    "label": "Best Sellers",
+    "href": "/best-sellers",
+    "displayOrder": 4,
+    "visible": true
+  },
+  {
+    "id": "nav-5",
+    "label": "Categories",
+    "href": "/categories",
+    "displayOrder": 5,
+    "visible": true
+  },
+  {
+    "id": "nav-6",
+    "label": "About",
+    "href": "/about",
+    "displayOrder": 6,
+    "visible": true
+  },
+  {
+    "id": "nav-7",
+    "label": "Contact",
+    "href": "/contact",
+    "displayOrder": 7,
+    "visible": true
+  },
+  {
+    "id": "nav-8",
+    "label": "Deals",
+    "href": "/deals",
+    "displayOrder": 8,
+    "visible": true
+  }
+]

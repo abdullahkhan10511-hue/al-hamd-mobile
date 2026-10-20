@@ -5,6 +5,7 @@ import { StoreSettings } from '@/types/admin';
 import {
   getStoreSettings,
   updateStoreSettings,
+  syncStoreSettingsFromApi,
   toggleSocialPlatformStatus,
   updateSocialPlatformUrl,
   STANDARD_SOCIAL_PLATFORMS,
@@ -158,6 +159,9 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     loadData();
+    syncStoreSettingsFromApi().then((fresh) => {
+      if (fresh) setSettings(fresh);
+    }).catch(() => {});
 
     const handleUpdate = () => loadData();
     window.addEventListener('alhamd:data-updated', handleUpdate);

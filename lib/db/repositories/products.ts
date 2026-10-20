@@ -1023,6 +1023,19 @@ export async function adjustStockInDb(
           'UPDATE product_models SET stock = ? WHERE id = ?',
           [mNew, modRows[0].id]
         );
+
+        // Recalculate parent product stock to prevent parent-child desync
+        const [sumRows] = await conn.query<RowDataPacket[]>(
+          'SELECT SUM(stock) as total FROM product_models WHERE product_id = ?',
+          [productId]
+        );
+        if (sumRows && sumRows.length > 0) {
+          const totalStock = Number(sumRows[0].total) || 0;
+          await conn.execute(
+            'UPDATE products SET stock = ? WHERE id = ?',
+            [totalStock, productId]
+          );
+        }
       }
     }
 

@@ -27,6 +27,7 @@ import {
   getPaymentSecuritySettings,
   updatePaymentSecuritySettings,
   resetPaymentMethodsToDefault,
+  syncPaymentMethodsFromApi,
 } from '@/lib/db/paymentMethods';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
@@ -58,6 +59,11 @@ export default function AdminPaymentMethodsPage() {
 
   useEffect(() => {
     loadData();
+    syncPaymentMethodsFromApi().then(() => loadData()).catch(() => {});
+
+    const handleUpdate = () => loadData();
+    window.addEventListener('alhamd:data-updated', handleUpdate);
+    return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
 
   const triggerNotice = (msg: string) => {

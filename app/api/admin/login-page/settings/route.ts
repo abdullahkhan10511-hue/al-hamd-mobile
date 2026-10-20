@@ -1,38 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import fs from 'fs';
+import path from 'path';
 import { isDbConfigured } from '@/lib/db/mysql';
 import {
   getLoginPageSettingsFromDb,
   updateLoginPageSettingsInDb,
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
+import { getAdminSession } from '@/lib/db/adminAuth';
 
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
+const DATA_DIR = path.join(process.cwd(), 'data');
+const SETTINGS_FILE = path.join(DATA_DIR, 'login-page-settings.json');
 
-  if (!cookieVal) return null;
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
 
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
+function extractCleanSettings(parsed: any): any {
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (parsed.id || parsed.mainHeading || parsed.brandName) {
+    const { '0': _zero, '1': _one, ...topLevel } = parsed;
+    return topLevel;
+  }
+  if (parsed['0']) {
+    return extractCleanSettings(parsed['0']);
+  }
+  return parsed;
+}
+
+function readLocalLoginPageSettings(): LoginPageSettings {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
+      const clean = extractCleanSettings(parsed);
+      if (clean && typeof clean === 'object' && !Array.isArray(clean)) {
+        return { ...DEFAULT_LOGIN_PAGE_SETTINGS, ...clean };
       }
     }
+  } catch (err) {
+    console.warn('Error reading login-page-settings.json:', err);
   }
+  return DEFAULT_LOGIN_PAGE_SETTINGS;
+}
 
-  return null;
+function writeLocalLoginPageSettings(settings: LoginPageSettings): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to write login-page-settings.json:', err);
+  }
 }
 
 export async function GET() {
@@ -44,10 +69,10 @@ export async function GET() {
         settings = await getLoginPageSettingsFromDb();
       } catch (err) {
         console.warn('MySQL error in /api/admin/login-page/settings:', err);
-        settings = DEFAULT_LOGIN_PAGE_SETTINGS;
+        settings = readLocalLoginPageSettings();
       }
     } else {
-      settings = DEFAULT_LOGIN_PAGE_SETTINGS;
+      settings = readLocalLoginPageSettings();
     }
 
     return NextResponse.json({ success: true, settings });
@@ -59,8 +84,6 @@ export async function GET() {
   }
 }
 
-import { getAdminSession } from '@/lib/db/adminAuth';
-
 export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
@@ -71,15 +94,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isDbConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'Database is not configured.' },
-        { status: 503 }
-      );
+    const body = await request.json();
+    let updated: LoginPageSettings;
+
+    if (isDbConfigured()) {
+      try {
+        updated = await updateLoginPageSettingsInDb(body);
+        writeLocalLoginPageSettings(updated);
+      } catch (dbErr) {
+        console.warn('MySQL error saving login page settings, fallback to disk:', dbErr);
+        const current = readLocalLoginPageSettings();
+        updated = { ...current, ...body, updatedAt: new Date().toISOString() };
+        writeLocalLoginPageSettings(updated);
+      }
+    } else {
+      const current = readLocalLoginPageSettings();
+      updated = { ...current, ...body, updatedAt: new Date().toISOString() };
+      writeLocalLoginPageSettings(updated);
     }
 
-    const body = await request.json();
-    const updated = await updateLoginPageSettingsInDb(body);
+    try {
+      revalidatePath('/login');
+      revalidatePath('/admin/login-page');
+      revalidatePath('/api/login-page/settings');
+    } catch {}
 
     return NextResponse.json({ success: true, settings: updated });
   } catch (err: any) {

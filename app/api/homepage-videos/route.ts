@@ -4,6 +4,7 @@ import {
   getAllHomepageVideosFromDb,
   getActiveHomepageVideosFromDb,
 } from '@/lib/db/repositories/homepageVideos';
+import { readPersistentHomepageVideos } from '@/lib/db/homepageVideosStorage';
 import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
@@ -19,11 +20,11 @@ export async function GET() {
         items = await getActiveHomepageVideosFromDb();
       } catch (err) {
         console.warn('MySQL error in /api/homepage-videos:', err);
-        items = [];
+        items = readPersistentHomepageVideos();
       }
     } else {
-      // Development mock fallback only when DB is not configured
-      items = seedHomepageVideos.filter((v) => Boolean(v.active && v.url && v.url.trim()));
+      // Disk-persisted storage fallback when DB is not configured
+      items = readPersistentHomepageVideos();
     }
 
     // Filter strictly for active items with valid non-empty URLs

@@ -1,6 +1,7 @@
 import { PaymentMethodConfig, PaymentSecuritySettings } from '@/types/admin';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 const METHODS_KEY = 'payment_methods';
 const SECURITY_KEY = 'payment_security_settings';
@@ -75,9 +76,49 @@ export const seedPaymentSecuritySettings: PaymentSecuritySettings = {
   manualVerificationEnabled: true,
 };
 
+let inFlightPaymentPromise: Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> | null = null;
+
+export async function syncPaymentMethodsFromApi(): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
+  if (typeof window === 'undefined') {
+    return { methods: getPaymentMethods(), security: getPaymentSecuritySettings() };
+  }
+  if (inFlightPaymentPromise) return inFlightPaymentPromise;
+
+  inFlightPaymentPromise = (async () => {
+    try {
+      const res = await fetch(`/api/payment-methods?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.methods)) {
+          const sorted = data.methods.sort((a: PaymentMethodConfig, b: PaymentMethodConfig) => (a.displayOrder || 0) - (b.displayOrder || 0));
+          await persistCollection(METHODS_KEY, sorted, true);
+          if (data.security) {
+            setLocal(SECURITY_KEY, data.security);
+          }
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: METHODS_KEY, value: sorted },
+            })
+          );
+          return { methods: sorted, security: data.security || getPaymentSecuritySettings() };
+        }
+      }
+    } catch (err) {
+      console.warn('Could not sync payment methods from API:', err);
+    } finally {
+      inFlightPaymentPromise = null;
+    }
+    return { methods: getPaymentMethods(), security: getPaymentSecuritySettings() };
+  })();
+
+  return inFlightPaymentPromise;
+}
+
 export function getPaymentMethods(): PaymentMethodConfig[] {
   const methods = getStoredCollection<PaymentMethodConfig>(METHODS_KEY, seedPaymentMethods);
-  return [...methods].sort((a, b) => a.displayOrder - b.displayOrder);
+  return [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }
 
 export function getEnabledPaymentMethods(): PaymentMethodConfig[] {
@@ -86,6 +127,28 @@ export function getEnabledPaymentMethods(): PaymentMethodConfig[] {
 
 export function getPaymentMethodById(id: string): PaymentMethodConfig | undefined {
   return getPaymentMethods().find((m) => m.id === id);
+}
+
+async function savePaymentConfigToServer(
+  payload: { methods?: PaymentMethodConfig[]; security?: PaymentSecuritySettings },
+  adminEmail = 'admin@alhamd.com'
+): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/admin/payment-methods', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.warn('Failed to save payment configuration to server API, status:', res.status);
+    }
+  } catch (err) {
+    console.warn('Network error saving payment configuration to server:', err);
+  }
 }
 
 export async function updatePaymentMethod(
@@ -106,6 +169,7 @@ export async function updatePaymentMethod(
 
   methods[index] = updatedItem;
   await persistCollection(METHODS_KEY, methods);
+  await savePaymentConfigToServer({ methods }, adminEmail);
 
   await logActivity({
     adminEmail,
@@ -154,6 +218,7 @@ export async function reorderPaymentMethods(
 
   updated.sort((a, b) => a.displayOrder - b.displayOrder);
   await persistCollection(METHODS_KEY, updated);
+  await savePaymentConfigToServer({ methods: updated }, adminEmail);
 
   await logActivity({
     adminEmail,
@@ -176,6 +241,7 @@ export async function updatePaymentSecuritySettings(
   const current = getPaymentSecuritySettings();
   const updated = { ...current, ...updates };
   setLocal(SECURITY_KEY, updated);
+  await savePaymentConfigToServer({ security: updated }, adminEmail);
 
   await logActivity({
     adminEmail,
@@ -192,6 +258,10 @@ export async function resetPaymentMethodsToDefault(
 ): Promise<PaymentMethodConfig[]> {
   await persistCollection(METHODS_KEY, seedPaymentMethods);
   setLocal(SECURITY_KEY, seedPaymentSecuritySettings);
+  await savePaymentConfigToServer(
+    { methods: seedPaymentMethods, security: seedPaymentSecuritySettings },
+    adminEmail
+  );
 
   await logActivity({
     adminEmail,
