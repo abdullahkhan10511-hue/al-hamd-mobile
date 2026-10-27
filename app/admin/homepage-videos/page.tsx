@@ -34,6 +34,8 @@ import {
   deleteHomepageVideo,
 } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
+import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { persistCollection } from '@/lib/db/storage';
 
 export default function HomepageVideosPage() {
   const [videos, setVideos] = useState<HomepageVideo[]>([]);
@@ -67,7 +69,10 @@ export default function HomepageVideosPage() {
     loadData();
 
     // Fetch authoritative list directly from API on mount
-    fetch('/api/admin/homepage-videos', { cache: 'no-store' })
+    fetch(`/api/admin/homepage-videos?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: getAdminAuthHeaders(),
+    })
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data.items)
@@ -77,6 +82,7 @@ export default function HomepageVideosPage() {
           : [];
         if (data.success && Array.isArray(list)) {
           setVideos(list);
+          persistCollection('homepage_videos', list, true);
         }
       })
       .catch(() => {});

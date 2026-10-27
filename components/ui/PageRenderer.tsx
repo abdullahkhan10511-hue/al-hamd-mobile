@@ -19,7 +19,7 @@ interface PageRendererProps {
   isPreview?: boolean;
 }
 
-export default function PageRenderer({ page, isPreview = false }: PageRendererProps) {
+export default function PageRenderer({ page, isPreview: _isPreview = false }: PageRendererProps) {
   const blocks = page.blocks && page.blocks.length > 0 ? page.blocks : [];
 
   // Fallback for pages that only have raw text content

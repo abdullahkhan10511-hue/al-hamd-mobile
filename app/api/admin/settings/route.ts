@@ -5,38 +5,9 @@ import path from 'path';
 import { seedStoreSettings } from '@/lib/db/seed';
 import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { getStoreSettingsFromDb, updateStoreSettingsInDb } from '@/lib/db/repositories/settings';
+import { getStoreSettingsFromDb, updateStoreSettingsInDb, invalidateStoreSettingsCache } from '@/lib/db/repositories/settings';
 import { normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
 import { getAdminSession } from '@/lib/db/adminAuth';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (!cookieVal) return null;
-
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
-      }
-    }
-  }
-
-  return null;
-}
 
 const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
 
@@ -80,6 +51,9 @@ async function writeServerSettings(settings: StoreSettings): Promise<void> {
       console.warn('MySQL updateStoreSettingsInDb notice:', err);
     }
   }
+
+  // Invalidate in-memory server cache
+  invalidateStoreSettingsCache();
 
   // Persistent file cache on disk so file-based reads & local fallback stay synchronized
   try {
@@ -169,6 +143,9 @@ export async function POST(request: NextRequest) {
     try {
       revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/api/settings');
+      revalidatePath('/admin/settings');
+      revalidatePath('/admin/settings/seo');
     } catch (revalidateErr) {
       console.warn('revalidatePath notice:', revalidateErr);
     }

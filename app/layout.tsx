@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
@@ -12,7 +13,7 @@ import { StoreSettings } from '@/types/admin';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-async function loadServerSettings(): Promise<StoreSettings> {
+const loadServerSettings = cache(async (): Promise<StoreSettings> => {
   let settings = getStoreSettings();
   if (isDbConfigured()) {
     try {
@@ -25,7 +26,7 @@ async function loadServerSettings(): Promise<StoreSettings> {
     }
   }
   return settings;
-}
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await loadServerSettings();
@@ -182,8 +183,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const settings = await loadServerSettings();
-
-  const customFavicon = resolveFaviconUrl(settings.faviconUrl, settings.seo?.faviconUrl);
 
   const rawSiteName =
     (settings.storeName && typeof settings.storeName === 'string' && settings.storeName.trim()) || '';

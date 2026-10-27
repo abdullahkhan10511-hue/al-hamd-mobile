@@ -7,7 +7,6 @@ import { motion } from 'framer-motion';
 import {
   Sparkles,
   CheckCircle2,
-  ArrowRight,
   Package,
   Clock,
   Calendar,
@@ -153,7 +152,7 @@ export interface DealCardProps {
   index?: number;
 }
 
-export function DealCard({ deal, onViewDetails, index = 0 }: DealCardProps) {
+export function DealCard({ deal, onViewDetails: _onViewDetails, index = 0 }: DealCardProps) {
   const { addDealToCart } = useCart();
   const router = useRouter();
   const [isAdding, setIsAdding] = useState(false);
@@ -167,25 +166,13 @@ export function DealCard({ deal, onViewDetails, index = 0 }: DealCardProps) {
   const upcoming = isDealUpcoming(deal);
   const expired = isDealExpired(deal);
 
-  // Validate shop inventory across all included products
-  const isOutOfStock =
-    !Array.isArray(deal.products) ||
-    deal.products.length === 0 ||
-    deal.products.some((p) => (p.shopStock ?? 0) <= 0);
-
-  const canPurchase = !upcoming && !expired && !isOutOfStock;
+  const canPurchase = !upcoming && !expired;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorToast('Deal is currently unavailable because one or more included products are out of stock.');
-        setTimeout(() => setErrorToast(null), 3500);
-      }
-      return;
-    }
+    if (!canPurchase) return;
 
     if (isAdding || justAdded) return;
 
@@ -206,15 +193,9 @@ export function DealCard({ deal, onViewDetails, index = 0 }: DealCardProps) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorToast('Deal is currently unavailable because one or more included products are out of stock.');
-        setTimeout(() => setErrorToast(null), 3500);
-      }
-      return;
-    }
+    if (!canPurchase) return;
 
-    const res = addDealToCart(deal, 1);
+    const res = addDealToCart(deal, 1, { openDrawer: false, showToast: false });
     if (res.success) {
       router.push('/checkout');
     } else if (res.error) {
@@ -287,16 +268,6 @@ export function DealCard({ deal, onViewDetails, index = 0 }: DealCardProps) {
             <span className="font-semibold text-amber-400/90 uppercase tracking-wider">
               {deal.products?.length || 0} Items Bundle
             </span>
-            {isOutOfStock ? (
-              <span className="text-rose-400 font-bold uppercase tracking-wider text-[10px]">
-                Out of Stock
-              </span>
-            ) : (
-              <span className="text-emerald-400 font-medium flex items-center gap-1 text-[10px]">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>In Stock</span>
-              </span>
-            )}
           </div>
 
           <Link href={`/deals/${deal.slug}`} className="block">

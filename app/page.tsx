@@ -10,11 +10,15 @@ import { BestSellers } from '@/components/home/BestSellers';
 import { DealsSection } from '@/components/home/DealsSection';
 import { AllProductsSection } from '@/components/home/AllProductsSection';
 import { FinalTrustBar } from '@/components/home/FinalTrustBar';
-import { getHomepageSections, syncHomepageSettingsFromApi } from '@/lib/db/homepage';
+import { getHomepageSections, getCanonicalHomepageSections, syncHomepageSettingsFromApi } from '@/lib/db/homepage';
 import { HomepageSection } from '@/types/admin';
 
 export default function HomePage() {
-  const [sections, setSections] = useState<HomepageSection[]>([]);
+  const [sections, setSections] = useState<HomepageSection[]>(() => {
+    return getCanonicalHomepageSections()
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.order - b.order);
+  });
 
   const loadData = () => {
     const list = getHomepageSections()
@@ -24,6 +28,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    // Sync any custom stored order and fetch latest API settings post-hydration
     loadData();
     syncHomepageSettingsFromApi().then(() => {
       loadData();
@@ -31,8 +36,7 @@ export default function HomePage() {
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
-      const HOME_KEYS = ['homepage_sections', 'homepage_all_products_config', 'store_settings', 'brands', 'categories', 'store_deals', 'products'];
-      if (key && !HOME_KEYS.includes(key)) return;
+      if (key && key !== 'homepage_sections') return;
       loadData();
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
@@ -70,18 +74,11 @@ export default function HomePage() {
       {sections.length > 0
         ? sections.map((s) => renderSection(s.id))
         : (
-          // Default fallback
-          <>
-            <HeroSection />
-            <TrustBenefitsBar />
-            <ShopByCategories />
-            <ShopByBrands />
-            <NewArrivals />
-            <BestSellers />
-            <DealsSection />
-            <AllProductsSection />
-            <FinalTrustBar />
-          </>
+          // Default fallback matching canonical enabled sections configuration
+          getCanonicalHomepageSections()
+            .filter((s) => s.enabled)
+            .sort((a, b) => a.order - b.order)
+            .map((s) => renderSection(s.id))
         )}
     </div>
   );

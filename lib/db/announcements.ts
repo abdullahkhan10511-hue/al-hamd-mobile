@@ -51,7 +51,18 @@ export async function syncAnnouncementsFromApi(): Promise<AnnouncementItem[]> {
 }
 
 export function getAnnouncements(): AnnouncementItem[] {
-  const items = getStoredCollection(COLLECTION_KEY, seedAnnouncements);
+  let fallback = seedAnnouncements;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentAnnouncements } = require('./announcementsStorage');
+      const saved = readPersistentAnnouncements();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
+  const items = getStoredCollection(COLLECTION_KEY, fallback);
   return normalizeAnnouncementsList(items);
 }
 

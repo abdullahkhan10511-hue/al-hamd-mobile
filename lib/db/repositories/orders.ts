@@ -188,7 +188,10 @@ function mapRowsToOrder(orderRow: OrderRow, itemRows: OrderItemRow[]): Order {
     total: Number(orderRow.total),
     currency: orderRow.currency,
     deliveryMethod: orderRow.delivery_method as any,
-    paymentMethod: orderRow.payment_method,
+    paymentMethod:
+      orderRow.payment_method && typeof orderRow.payment_method === 'string' && orderRow.payment_method.trim()
+        ? orderRow.payment_method.trim()
+        : 'Not recorded',
     paymentMethodId: orderRow.payment_method_id || undefined,
     paymentStatus: orderRow.payment_status,
     paymentReference: orderRow.payment_reference || undefined,
@@ -383,12 +386,13 @@ export async function createOrderInDb(
             );
             if (mRows && mRows.length > 0) {
               availableShopStock = Number(mRows[0].shop_stock || 0);
-              if (availableShopStock < neededQty) {
+              if (isPosOrder && availableShopStock < neededQty) {
                 throw new Error(
                   `Deal "${item.dealName || item.productName}" cannot be purchased: Insufficient shop stock for "${dp.productName} (${mRows[0].name || mId})". Available: ${availableShopStock}, required: ${neededQty}.`
                 );
               }
-              const newModelShopStock = availableShopStock - neededQty;
+              const deductQty = isPosOrder ? neededQty : Math.min(availableShopStock, neededQty);
+              const newModelShopStock = Math.max(0, availableShopStock - deductQty);
               await conn.execute(
                 'UPDATE product_models SET shop_stock = ? WHERE id = ?',
                 [newModelShopStock, mRows[0].id]
@@ -404,53 +408,58 @@ export async function createOrderInDb(
                 [newParentShopStock, dp.productId]
               );
 
-              await conn.execute(
-                `INSERT INTO inventory_logs (
-                  id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-                ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
-                [
-                  `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                  dp.productId,
-                  `${product.name} (${mRows[0].name || mId}) [Shop Stock]`,
-                  product.sku,
-                  -neededQty,
-                  availableShopStock,
-                  newModelShopStock,
-                  `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
-                ]
-              );
+              if (deductQty > 0) {
+                await conn.execute(
+                  `INSERT INTO inventory_logs (
+                    id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+                  ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+                  [
+                    `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                    dp.productId,
+                    `${product.name} (${mRows[0].name || mId}) [Shop Stock]`,
+                    product.sku,
+                    -deductQty,
+                    availableShopStock,
+                    newModelShopStock,
+                    `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
+                  ]
+                );
+              }
               continue;
             }
           }
 
           // Product-level shop stock deduction
-          if (availableShopStock < neededQty) {
+          if (isPosOrder && availableShopStock < neededQty) {
             throw new Error(
               `Deal "${item.dealName || item.productName}" cannot be purchased: Insufficient shop stock for "${dp.productName}". Available: ${availableShopStock}, required: ${neededQty}.`
             );
           }
 
-          const newShopStock = availableShopStock - neededQty;
+          const deductShopQty = isPosOrder ? neededQty : Math.min(availableShopStock, neededQty);
+          const newShopStock = Math.max(0, availableShopStock - deductShopQty);
           await conn.execute(
             'UPDATE products SET shop_stock = ? WHERE id = ?',
             [newShopStock, dp.productId]
           );
 
-          await conn.execute(
-            `INSERT INTO inventory_logs (
-              id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
-            ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
-            [
-              `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              dp.productId,
-              `${product.name} [Shop Stock]`,
-              product.sku,
-              -neededQty,
-              availableShopStock,
-              newShopStock,
-              `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
-            ]
-          );
+          if (deductShopQty > 0) {
+            await conn.execute(
+              `INSERT INTO inventory_logs (
+                id, product_id, product_name, sku, type, change_amount, previous_stock, new_stock, reason, admin_email, timestamp
+              ) VALUES (?, ?, ?, ?, 'DEAL_DEDUCT', ?, ?, ?, ?, 'system', NOW())`,
+              [
+                `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                dp.productId,
+                `${product.name} [Shop Stock]`,
+                product.sku,
+                -deductShopQty,
+                availableShopStock,
+                newShopStock,
+                `Deal Order #${orderId}: Shop stock deducted for Deal "${item.dealName || item.productName}"`,
+              ]
+            );
+          }
         }
         (item as any).fulfilledQuantity = item.quantity;
         (item as any).backorderedQuantity = 0;
@@ -696,7 +705,9 @@ export async function createOrderInDb(
         orderData.total,
         orderData.currency || 'PKR',
         orderData.deliveryMethod || 'standard',
-        orderData.paymentMethod || 'Cash on Delivery',
+        orderData.paymentMethod && orderData.paymentMethod.trim()
+          ? orderData.paymentMethod.trim()
+          : (isPosOrder ? 'Cash' : 'Not recorded'),
         orderData.paymentMethodId || null,
         orderData.paymentStatus || 'Pending',
         orderData.paymentReference || null,

@@ -40,6 +40,11 @@ const nextConfig: NextConfig = {
         destination: '/admin/promo-codes',
         permanent: false,
       },
+      {
+        source: '/admin/admins',
+        destination: '/admin/staff',
+        permanent: false,
+      },
     ];
   },
   async rewrites() {

@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Minus, Plus, Trash2, Package } from 'lucide-react';
 import { CartItem as CartItemType } from '@/types';

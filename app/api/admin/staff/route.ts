@@ -13,83 +13,33 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
+import {
+  getAdminSession,
+  hasAdminPermission,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
+async function getAuthenticatedStaff(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
+  const session = getAdminSession(request);
+  if (!session || !session.email) return null;
 
-async function getSessionUser(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email) {
-          const fresh = await getServerStaffByEmail(parsed.email);
-          if (fresh && fresh.status !== 'inactive') {
-            return fresh;
-          } else if (fresh && fresh.status === 'inactive') {
-            return null; // Deactivated account cannot act as admin
-          }
-          if (parsed.status !== 'inactive') {
-            return parsed;
-          }
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
+  const fresh = await getServerStaffByEmail(session.email);
+  if (fresh) {
+    if (fresh.status === 'inactive') return null;
+    return fresh;
   }
 
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    let emailToFind = '';
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) {
-        emailToFind = parsed.email;
-      }
-    } catch {
-      try {
-        const parsed = JSON.parse(token);
-        if (parsed && parsed.email) {
-          emailToFind = parsed.email;
-        }
-      } catch {
-        if (token.includes('@')) {
-          emailToFind = token;
-        }
-      }
-    }
-
-    if (emailToFind) {
-      const fresh = await getServerStaffByEmail(emailToFind);
-      if (fresh) {
-        if (fresh.status === 'inactive') return null;
-        return fresh;
-      }
-      return {
-        id: 'admin-fallback',
-        name: 'Administrator',
-        email: emailToFind,
-        role: 'ADMIN',
-        status: 'active',
-        isOwner: emailToFind.toLowerCase() === 'admin@alhamdmobile.com',
-        permissions: [...ALL_PERMISSION_KEYS],
-        createdAt: new Date().toISOString(),
-      } as any;
-    }
-  }
-
-  return null;
+  return {
+    id: session.id || 'admin-root',
+    name: session.name || 'Administrator',
+    email: session.email,
+    role: session.role || 'ADMIN',
+    status: 'active',
+    isOwner: Boolean(session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'),
+    permissions: Array.isArray(session.permissions) ? session.permissions : [...ALL_PERMISSION_KEYS],
+    createdAt: new Date().toISOString(),
+  } as any;
 }
 
 /**
@@ -98,13 +48,12 @@ async function getSessionUser(request: NextRequest): Promise<(StaffUser & { role
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    const session = await getAuthenticatedStaff(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'staff.view')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to view staff accounts.');
     }
 
     const allStaff = await getServerStaffUsers();
@@ -129,30 +78,30 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    const session = await getAuthenticatedStaff(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'staff.add')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to create staff accounts.');
     }
 
     const body = await request.json();
     const { name, email, password, role, phone, avatar, status, permissions } = body;
 
     // 1. Validate required fields
-    if (!name || typeof name !== 'string' || !name.trim()) {
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return NextResponse.json(
-        { success: false, error: 'Full name is required.' },
+        { success: false, error: 'Full name is required (minimum 2 characters).' },
         { status: 400 }
       );
     }
 
     const normalizedEmail = (email || '').trim().toLowerCase();
-    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
       return NextResponse.json(
-        { success: false, error: 'Valid email address is required.' },
+        { success: false, error: 'A valid email address is required.' },
         { status: 400 }
       );
     }
@@ -174,18 +123,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Cryptographic password hashing
+    // 3. RBAC & Privilege Escalation Prevention
+    const isSessionSuperAdmin = Boolean(
+      session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'
+    );
+    const isSessionAdmin = isSessionSuperAdmin || session.role === 'ADMIN';
+
+    const assignedRole = role || 'Manager';
+
+    if (
+      (assignedRole === 'SUPER_ADMIN' || assignedRole === 'OWNER' || Boolean(body.isOwner)) &&
+      !isSessionSuperAdmin
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Super Admins can assign Super Admin or Owner privileges.' },
+        { status: 403 }
+      );
+    }
+
+    if (assignedRole === 'ADMIN' && !isSessionAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Administrators can create Administrator accounts.' },
+        { status: 403 }
+      );
+    }
+
+    // Prevent non-superadmins from granting permissions they do not possess
+    if (!isSessionSuperAdmin && Array.isArray(permissions)) {
+      const sessionPerms = new Set(session.permissions || []);
+      if (permissions.includes('*') || permissions.some((p: string) => !sessionPerms.has(p))) {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden: You cannot grant permissions higher than your own.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 4. Cryptographic password hashing
     const salt = generateServerSalt(16);
     const passwordHash = hashServerPassword(password, salt);
 
-    // 4. Role & Permissions assignment
-    const assignedRole = role || 'Manager';
+    // 5. Role & Permissions assignment
     const assignedPermissions =
       Array.isArray(permissions) && permissions.length > 0
         ? permissions
-        : ROLE_DEFAULT_PERMISSIONS[assignedRole] || (assignedRole === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
+        : ROLE_DEFAULT_PERMISSIONS[assignedRole] ||
+          (assignedRole === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
 
-    // 5. Construct new staff record
+    // 6. Construct new staff record
     const newStaff: StaffUser = {
       id: `staff-${Date.now()}`,
       name: name.trim(),
@@ -197,14 +182,14 @@ export async function POST(request: NextRequest) {
         (avatar || '').trim() ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
       status: status === 'inactive' ? 'inactive' : 'active',
-      isOwner: false,
+      isOwner: (Boolean(body.isOwner) || assignedRole === 'OWNER') && isSessionSuperAdmin,
       salt,
       passwordHash,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    // 6. Save to MySQL or server storage
+    // 7. Save to MySQL or server storage
     let createdStaffUser: StaffUser | null = null;
     if (isDbConfigured()) {
       createdStaffUser = await createStaffInDb({
@@ -227,14 +212,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 7. Strip sensitive credentials before returning in API response
+    // 8. Strip sensitive credentials before returning in API response
     const { passwordHash: _, salt: __, ...safeStaff } = createdStaffUser || newStaff;
 
     return NextResponse.json(
       {
         success: true,
         staff: safeStaff,
-        message: 'Member created successfully.',
+        message: 'Staff member created successfully.',
       },
       { status: 201 }
     );
@@ -256,13 +241,9 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    const session = await getAuthenticatedStaff(request);
+    if (!session) {
+      return unauthorizedResponse();
     }
 
     const body = await request.json();
@@ -270,6 +251,31 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Staff ID is required.' }, { status: 400 });
+    }
+
+    // Role-specific permission enforcement
+    const isPasswordResetOnly = Boolean(
+      (newPassword || body.resetPassword || body.password) &&
+      name === undefined &&
+      phone === undefined &&
+      avatar === undefined &&
+      status === undefined &&
+      role === undefined &&
+      permissions === undefined
+    );
+
+    if (isPasswordResetOnly) {
+      if (!hasAdminPermission(session, 'staff.reset_passwords') && !hasAdminPermission(session, 'staff.edit')) {
+        return forbiddenResponse('Forbidden: Insufficient permissions to reset staff passwords.');
+      }
+    } else if (role !== undefined || permissions !== undefined) {
+      if (!hasAdminPermission(session, 'staff.change_roles') && !hasAdminPermission(session, 'staff.edit')) {
+        return forbiddenResponse('Forbidden: Insufficient permissions to change staff roles or permissions.');
+      }
+    } else {
+      if (!hasAdminPermission(session, 'staff.edit')) {
+        return forbiddenResponse('Forbidden: Insufficient permissions to edit staff accounts.');
+      }
     }
 
     const allStaff = await getServerStaffUsers();
@@ -282,46 +288,56 @@ export async function PATCH(request: NextRequest) {
     }
 
     const target = allStaff[index];
-    const isSessionAdmin =
-      Boolean(session?.isOwner) ||
-      session?.role === 'ADMIN' ||
-      session?.role === 'SUPER_ADMIN' ||
-      session?.email?.toLowerCase() === 'admin@alhamdmobile.com';
+    const isSessionSuperAdmin = Boolean(
+      session?.isOwner || session?.role === 'SUPER_ADMIN' || session?.role === 'OWNER'
+    );
+    const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
 
-    // Prevent self-deactivation
-    if (
-      status === 'inactive' &&
-      ((session?.id && target.id === session.id) ||
-        (session?.email && target.email.toLowerCase() === session.email.toLowerCase()))
-    ) {
+    const isSelf = Boolean(
+      (session?.id && target.id === session.id) ||
+      (session?.email && target.email.toLowerCase() === session.email.toLowerCase())
+    );
+
+    // 1. Prevent self-deactivation
+    if (status === 'inactive' && isSelf) {
       return NextResponse.json(
         { success: false, error: 'You cannot delete or deactivate the currently logged-in administrator.' },
         { status: 400 }
       );
     }
 
-    // Protect primary Admin / Owner from deactivation or role downgrading
-    if (target.isOwner || target.email.toLowerCase() === 'admin@alhamdmobile.com') {
-      if (status === 'inactive') {
-        return NextResponse.json(
-          { success: false, error: 'The primary Admin/Owner account cannot be deactivated.' },
-          { status: 400 }
-        );
-      }
-      if (role && role !== 'SUPER_ADMIN' && role !== 'ADMIN') {
-        return NextResponse.json(
-          { success: false, error: 'The primary Admin/Owner role cannot be modified.' },
-          { status: 400 }
-        );
-      }
+    // 2. Prevent self-role elevation and self-permission modifications
+    if (isSelf && role !== undefined && role !== target.role) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot modify your own role or elevate your privileges.' },
+        { status: 403 }
+      );
+    }
+    if (isSelf && permissions !== undefined) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot modify your own permissions.' },
+        { status: 403 }
+      );
+    }
+    if (isSelf && body.isOwner !== undefined && Boolean(body.isOwner) !== Boolean(target.isOwner)) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot change your own ownership status.' },
+        { status: 403 }
+      );
     }
 
-    // Prevent non-admins from modifying admin accounts
-    const isTargetAdmin =
-      target.isOwner ||
-      target.role === 'ADMIN' ||
-      target.role === 'SUPER_ADMIN' ||
-      target.email.toLowerCase() === 'admin@alhamdmobile.com';
+    // 3. Target Admin & Super Admin protections
+    const isTargetOwner =
+      Boolean(target.isOwner) || target.role === 'OWNER' || target.id === 'staff-owner-1';
+    const isTargetSuperAdmin = isTargetOwner || target.role === 'SUPER_ADMIN';
+    const isTargetAdmin = isTargetSuperAdmin || target.role === 'ADMIN';
+
+    if (isTargetSuperAdmin && !isSessionSuperAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Super Admins have permission to manage Super Admin accounts.' },
+        { status: 403 }
+      );
+    }
 
     if (isTargetAdmin && !isSessionAdmin) {
       return NextResponse.json(
@@ -330,15 +346,122 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Check email uniqueness if email is changed
-    if (email && email.trim().toLowerCase() !== target.email.toLowerCase()) {
-      const newEmail = email.trim().toLowerCase();
-      if (allStaff.some((u) => u.id !== target.id && u.email.toLowerCase() === newEmail)) {
+    // 4. Role privilege escalation prevention
+    if (
+      (role === 'SUPER_ADMIN' || role === 'OWNER' || Boolean(body.isOwner)) &&
+      !isSessionSuperAdmin
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Super Admins can assign Super Admin or Owner privileges.' },
+        { status: 403 }
+      );
+    }
+
+    if (role === 'ADMIN' && !isSessionAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Administrators can assign Administrator roles.' },
+        { status: 403 }
+      );
+    }
+
+    if (!isSessionSuperAdmin && Array.isArray(permissions)) {
+      const sessionPerms = new Set(session.permissions || []);
+      if (permissions.includes('*') || permissions.some((p: string) => !sessionPerms.has(p))) {
         return NextResponse.json(
-          { success: false, error: `Email "${newEmail}" is already in use by another account.` },
+          { success: false, error: 'Forbidden: You cannot grant permissions higher than your own.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 5. Protect last active administrator from deactivation or role downgrading
+    if (isTargetAdmin) {
+      const activeAdmins = allStaff.filter(
+        (u) =>
+          u.status === 'active' &&
+          (Boolean(u.isOwner) || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
+      );
+
+      if (activeAdmins.length <= 1) {
+        if (status === 'inactive') {
+          return NextResponse.json(
+            { success: false, error: 'Cannot deactivate the last remaining active administrator account.' },
+            { status: 400 }
+          );
+        }
+        if (
+          role &&
+          role !== 'SUPER_ADMIN' &&
+          role !== 'ADMIN' &&
+          role !== 'OWNER'
+        ) {
+          return NextResponse.json(
+            { success: false, error: 'Cannot change the role of the last remaining active administrator.' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // 6. Protect last active super admin
+    if (isTargetSuperAdmin) {
+      const activeSuperAdmins = allStaff.filter(
+        (u) =>
+          u.status === 'active' &&
+          (Boolean(u.isOwner) || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
+      );
+
+      if (activeSuperAdmins.length <= 1) {
+        if (status === 'inactive') {
+          return NextResponse.json(
+            { success: false, error: 'Cannot deactivate the last remaining active Super Admin account.' },
+            { status: 400 }
+          );
+        }
+        if (role && role !== 'SUPER_ADMIN' && role !== 'OWNER') {
+          return NextResponse.json(
+            { success: false, error: 'Cannot downgrade the role of the last remaining active Super Admin.' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // 7. Input validation
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2)) {
+      return NextResponse.json(
+        { success: false, error: 'Full name must be at least 2 characters.' },
+        { status: 400 }
+      );
+    }
+
+    if (email !== undefined) {
+      const trimmedEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+        return NextResponse.json(
+          { success: false, error: 'A valid email address is required.' },
           { status: 400 }
         );
       }
+      if (trimmedEmail !== target.email.toLowerCase()) {
+        const emailExists = allStaff.some(
+          (u) => u.id !== target.id && u.email.toLowerCase() === trimmedEmail
+        );
+        if (emailExists) {
+          return NextResponse.json(
+            { success: false, error: `Email "${trimmedEmail}" is already in use by another account.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    if (status !== undefined && status !== 'active' && status !== 'inactive') {
+      return NextResponse.json(
+        { success: false, error: 'Status must be either active or inactive.' },
+        { status: 400 }
+      );
     }
 
     const updated: StaffUser = {
@@ -413,13 +536,12 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    const session = await getAuthenticatedStaff(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'staff.delete')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to delete staff accounts.');
     }
 
     const { searchParams } = new URL(request.url);
@@ -449,27 +571,30 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Protect primary Admin / Owner
-    if (target.isOwner || target.email.toLowerCase() === 'admin@alhamdmobile.com') {
+    const isSessionSuperAdmin =
+      Boolean(session?.isOwner) || session?.role === 'SUPER_ADMIN';
+
+    const isSessionAdmin =
+      isSessionSuperAdmin || session?.role === 'ADMIN' || session?.role === 'OWNER';
+
+    const isTargetOwner =
+      Boolean(target.isOwner) || target.role === 'OWNER' || target.id === 'staff-owner-1';
+
+    const isTargetSuperAdmin =
+      isTargetOwner || target.role === 'SUPER_ADMIN';
+
+    const isTargetAdmin =
+      isTargetSuperAdmin || target.role === 'ADMIN';
+
+    // 1. Strict Owner Account Protection: Only an authenticated Super Admin may delete the Owner account
+    if (isTargetSuperAdmin && !isSessionSuperAdmin) {
       return NextResponse.json(
-        { success: false, error: 'The primary Admin account cannot be deleted.' },
-        { status: 400 }
+        { success: false, error: 'Forbidden: Only a Super Admin has permission to delete the Owner account.' },
+        { status: 403 }
       );
     }
 
-    const isSessionAdmin =
-      Boolean(session?.isOwner) ||
-      session?.role === 'ADMIN' ||
-      session?.role === 'SUPER_ADMIN' ||
-      session?.email?.toLowerCase() === 'admin@alhamdmobile.com';
-
-    // Prevent non-admins from deleting admin accounts
-    const isTargetAdmin =
-      target.isOwner ||
-      target.role === 'ADMIN' ||
-      target.role === 'SUPER_ADMIN' ||
-      target.email.toLowerCase() === 'admin@alhamdmobile.com';
-
+    // 2. Only administrators have permission to delete administrator accounts
     if (isTargetAdmin && !isSessionAdmin) {
       return NextResponse.json(
         { success: false, error: 'Only administrators have permission to delete administrator accounts.' },
@@ -477,13 +602,36 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Prevent deleting the last super admin
-    const activeSuperAdmins = allStaff.filter((u) => u.role === 'SUPER_ADMIN' && u.status === 'active');
-    if (target.role === 'SUPER_ADMIN' && activeSuperAdmins.length <= 1) {
-      return NextResponse.json(
-        { success: false, error: 'Cannot delete the last remaining active SUPER_ADMIN account.' },
-        { status: 400 }
+    // 3. Prevent deleting the last remaining active administrator
+    if (isTargetAdmin) {
+      const activeAdmins = allStaff.filter(
+        (u) =>
+          u.status === 'active' &&
+          (Boolean(u.isOwner) || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
       );
+      if (activeAdmins.length <= 1) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot delete the last remaining active administrator account.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 4. Never leave the system without a usable Super Admin account
+    if (isTargetOwner || target.role === 'SUPER_ADMIN') {
+      const remainingSuperAdmins = allStaff.filter(
+        (u) =>
+          u.id !== target.id &&
+          u.email.toLowerCase() !== target.email.toLowerCase() &&
+          u.status === 'active' &&
+          (Boolean(u.isOwner) || u.role === 'SUPER_ADMIN')
+      );
+      if (remainingSuperAdmins.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot delete the last remaining active Super Admin account.' },
+          { status: 400 }
+        );
+      }
     }
 
     if (isDbConfigured()) {

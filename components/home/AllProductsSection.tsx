@@ -2,36 +2,36 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ArrowRight, Layers } from 'lucide-react';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
-import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
+import { getProducts, getCanonicalProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getActiveCategories, getCanonicalCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product, Category } from '@/types';
 
-export function AllProductsSection() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [isLoaded, setIsLoaded] = useState(false);
+type ProductItem = Product & { status?: string; isActive?: boolean };
 
-  const loadData = () => {
-    const allProds = getProducts().filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
+export function AllProductsSection() {
+  const [products, setProducts] = useState<Product[]>(() => getCanonicalProducts());
+  const [categories, setCategories] = useState<Category[]>(() => getCanonicalCategories());
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [visibleCount, setVisibleCount] = useState<number>(12);
+  const [isLoaded, setIsLoaded] = useState(true);
+
+  const loadData = React.useCallback(() => {
+    const allProds = getProducts().filter((p) => {
+      const item = p as ProductItem;
+      return item.status !== 'archived' && item.status !== 'inactive' && item.isActive !== false;
+    });
     setProducts(allProds);
 
     const cats = deduplicateCategoriesById(getActiveCategories());
     setCategories(cats);
     setIsLoaded(true);
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-
     Promise.all([
       syncProductsFromApi().catch(() => {}),
       syncCategoriesFromApi().catch(() => {}),
@@ -47,14 +47,12 @@ export function AllProductsSection() {
 
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [loadData]);
 
-  const [visibleCount, setVisibleCount] = useState<number>(12);
-
-  // Reset visibleCount when category filter changes
-  useEffect(() => {
+  const handleSelectCategory = (slug: string) => {
+    setSelectedCategory(slug);
     setVisibleCount(12);
-  }, [selectedCategory]);
+  };
 
   // Filter products by selected category pill and sort Price: High to Low by default
   const filteredProducts = useMemo(() => {
@@ -145,27 +143,25 @@ export function AllProductsSection() {
         </div>
 
         {/* Quick Category Filter Pills */}
-        {filterPills.length > 2 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 sm:mb-8 scrollbar-none no-scrollbar">
-            {filterPills.map((pill) => {
-              const isActive = selectedCategory === pill.slug;
-              return (
-                <button
-                  key={pill.id || pill.slug}
-                  type="button"
-                  onClick={() => setSelectedCategory(pill.slug)}
-                  className={`px-4 py-2 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer border ${
-                    isActive
-                      ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs'
-                      : 'bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100/80 border-neutral-200'
-                  }`}
-                >
-                  {pill.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 sm:mb-8 scrollbar-none no-scrollbar">
+          {filterPills.map((pill) => {
+            const isActive = selectedCategory === pill.slug;
+            return (
+              <button
+                key={pill.id || pill.slug}
+                type="button"
+                onClick={() => handleSelectCategory(pill.slug)}
+                className={`px-4 py-2 rounded-full text-xs font-semibold transition-all shrink-0 cursor-pointer border ${
+                  isActive
+                    ? 'bg-neutral-950 text-white border-neutral-950 shadow-xs'
+                    : 'bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100/80 border-neutral-200'
+                }`}
+              >
+                {pill.name}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Product Cards Grid: 2 cols on mobile, 3 on tablet, 4 on desktop, 6 on extra-large screens */}
         {displayedProducts.length > 0 ? (
@@ -173,10 +169,10 @@ export function AllProductsSection() {
             {displayedProducts.map((product, index) => (
               <motion.div
                 key={product.id}
-                initial={{ opacity: 0, y: 14 }}
+                initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.12) }}
+                viewport={{ once: true, margin: '60px' }}
+                transition={{ duration: 0.22, delay: Math.min(index * 0.02, 0.08) }}
               >
                 <ProductCard product={product} />
               </motion.div>

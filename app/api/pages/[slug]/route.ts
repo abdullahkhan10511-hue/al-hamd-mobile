@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getPageBySlugFromDb } from '@/lib/db/repositories/pages';
 import { readPersistentPages } from '@/lib/db/pagesStorage';
-import { seedPages } from '@/lib/db/pages';
 
 export async function GET(
   request: NextRequest,

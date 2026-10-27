@@ -125,8 +125,11 @@ function LoginContent() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: identifier, password: loginPassword }),
           });
-          const adminData = await adminRes.json();
-          if (adminRes.ok && adminData.success) {
+          const adminContentType = adminRes.headers.get('content-type') || '';
+          const adminData = adminContentType.includes('application/json')
+            ? await adminRes.json().catch(() => null)
+            : null;
+          if (adminRes.ok && adminData?.success) {
             try {
               localStorage.setItem('alhamd_current_admin', JSON.stringify(adminData.user));
             } catch {}

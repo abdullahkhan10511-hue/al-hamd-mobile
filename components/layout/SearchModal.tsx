@@ -124,10 +124,10 @@ export function SearchModal() {
   };
 
   useEffect(() => {
-    loadData();
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
       if (key && key !== 'products') return;
+      if (!isSearchOpen) return;
       const prods = getProducts();
       const filtered = prods.filter(
         (p) =>
@@ -139,7 +139,7 @@ export function SearchModal() {
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [isSearchOpen]);
 
   // Sync debounce & search query
   useEffect(() => {
@@ -402,15 +402,6 @@ export function SearchModal() {
                                       {product.category}
                                     </span>
                                   </>
-                                )}
-                                {product.stock > 0 ? (
-                                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                                    In Stock
-                                  </span>
-                                ) : (
-                                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 border border-neutral-200">
-                                    Out of Stock
-                                  </span>
                                 )}
                               </div>
 

@@ -8,9 +8,17 @@ const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 function parseValidAdminSession(raw: string | undefined): boolean {
   if (!raw) return false;
   let curr = raw.trim();
-  for (let i = 0; i < 3; i++) {
+  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
+    curr = curr.slice(1, -1);
+  }
+
+  for (let i = 0; i < 4; i++) {
     try {
       const session = JSON.parse(curr);
+      if (typeof session === 'string') {
+        curr = session;
+        continue;
+      }
       if (
         session &&
         typeof session === 'object' &&
@@ -18,7 +26,11 @@ function parseValidAdminSession(raw: string | undefined): boolean {
         session.email.includes('@') &&
         session.status !== 'inactive'
       ) {
-        const notExpired = !session.expiresAt || typeof session.expiresAt !== 'number' || session.expiresAt > Date.now();
+        const notExpired = Boolean(
+          session.expiresAt &&
+            typeof session.expiresAt === 'number' &&
+            session.expiresAt > Date.now()
+        );
         const roleNormalized = (session.role || '').toUpperCase();
         if (
           notExpired &&

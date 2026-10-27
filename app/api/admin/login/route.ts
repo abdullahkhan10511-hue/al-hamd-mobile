@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStaffUsers, getStaffByEmail, INITIAL_STAFF_USERS } from '@/lib/db/staff';
+import { getStaffByEmail, INITIAL_STAFF_USERS } from '@/lib/db/staff';
 import { getServerStaffByEmail, verifyServerPassword } from '@/lib/db/staff-server';
 import { verifyPassword, hashPassword, generateSalt } from '@/lib/crypto';
 import { StaffUser } from '@/types/admin';
@@ -121,8 +121,8 @@ export async function POST(request: NextRequest) {
     const role = staffUser.role || 'SUPER_ADMIN';
     const isOwner = Boolean(
       staffUser.isOwner ||
-      normalizedEmail === 'admin@alhamdmobile.com' ||
-      normalizedEmail === 'admin@alhamd.com' ||
+      role === 'SUPER_ADMIN' ||
+      role === 'OWNER' ||
       (envAdminEmail && normalizedEmail === envAdminEmail)
     );
 
@@ -177,15 +177,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
-  try {
-    const session = JSON.parse(decodeURIComponent(cookie));
-    if (session && session.email && session.status !== 'inactive') {
-      const notExpired = !session.expiresAt || session.expiresAt > Date.now();
-      if (notExpired) {
-        return NextResponse.json({ authenticated: true, user: session });
+  let curr = cookie.trim();
+  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
+    curr = curr.slice(1, -1);
+  }
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      const session = JSON.parse(curr);
+      if (typeof session === 'string') {
+        curr = session;
+        continue;
+      }
+      if (session && session.email && session.status !== 'inactive') {
+        const notExpired = !session.expiresAt || session.expiresAt > Date.now();
+        if (notExpired) {
+          return NextResponse.json({ authenticated: true, user: session });
+        }
+      }
+      break;
+    } catch {
+      try {
+        const decoded = decodeURIComponent(curr);
+        if (decoded === curr) break;
+        curr = decoded;
+      } catch {
+        break;
       }
     }
-  } catch {}
+  }
 
   return NextResponse.json({ authenticated: false }, { status: 401 });
 }

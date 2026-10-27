@@ -391,7 +391,8 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // ---------------------------------------------------------------------------
   // 4. STORE SETTINGS & SEO
   // ---------------------------------------------------------------------------
-  let setImp = 0, setSkip = 0, setErr = 0;
+  let setImp = 0, setErr = 0;
+  const setSkip = 0;
   try {
     let rawSettings = seedStoreSettings;
     const settingsPath = path.join(process.cwd(), 'data', 'store-settings.json');
@@ -481,7 +482,8 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // ---------------------------------------------------------------------------
   // 5. BILL SETTINGS
   // ---------------------------------------------------------------------------
-  let billImp = 0, billSkip = 0, billErr = 0;
+  let billImp = 0, billErr = 0;
+  const billSkip = 0;
   try {
     const bs = defaultBillSettings;
     await execute(

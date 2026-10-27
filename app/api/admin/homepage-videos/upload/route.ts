@@ -1,35 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { saveMediaBuffer, deleteMediaFile } from '@/lib/mediaStorage';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (!cookieVal) return null;
-
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
-      }
-    }
-  }
-
-  return null;
-}
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 const ALLOWED_VIDEO_MIME_TYPES = new Set([
   'video/mp4',
@@ -44,9 +16,8 @@ const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024; // 100MB limit for high-res hero
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    const session = getAdminSession(request);
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to upload homepage videos.' },
         { status: 401 }
@@ -116,9 +87,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    const session = getAdminSession(request);
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized.' },
         { status: 401 }

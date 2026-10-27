@@ -4,7 +4,6 @@ import path from 'path';
 import {
   getServerStaffUsers,
   saveServerStaffUsers,
-  getServerStaffByEmail,
   verifyServerPassword,
   generateServerSalt,
   hashServerPassword,
@@ -12,48 +11,10 @@ import {
 } from '@/lib/db/staff-server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { StaffUser } from '@/types/admin';
+import { getAdminSession, unauthorizedResponse } from '@/lib/db/adminAuth';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { id?: string; email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email && parsed.status !== 'inactive') {
-          return parsed;
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) return parsed;
-    } catch {
-      if (token.includes('@')) {
-        return { email: token, role: 'SUPER_ADMIN' };
-      }
-    }
-  }
-
-  return null;
-}
 
 /**
  * Updates seed constant files on disk when primary administrator changes their password
@@ -95,14 +56,9 @@ function syncSeedFiles(email: string, salt: string, passwordHash: string) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
-
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin session required.' },
-        { status: 401 }
-      );
+    const session = getAdminSession(request);
+    if (!session) {
+      return unauthorizedResponse('Unauthorized. Active admin session required to change password.');
     }
 
     const body = await request.json();

@@ -227,17 +227,23 @@ export default function A4BillTemplate({
             </div>
           )}
 
-          {toggles.showPaymentMethod && order.paymentMethod && (
-            <div className="sm:justify-end flex items-center gap-2 pt-1">
+          {toggles.showPaymentMethod && (
+            <div className="sm:justify-end flex items-center gap-2 pt-1 flex-wrap">
               <span className="text-neutral-500">Payment:</span>
               <span className="font-bold text-neutral-900 uppercase">
-                {order.paymentMethod}
+                {order.paymentMethod && order.paymentMethod.trim()
+                  ? order.paymentMethod
+                  : 'Not recorded'}
               </span>
               {order.paymentStatus && (
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
                     order.paymentStatus.toLowerCase() === 'paid'
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : order.paymentStatus.toLowerCase() === 'awaiting verification'
+                      ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                      : order.paymentStatus.toLowerCase() === 'failed'
+                      ? 'bg-red-100 text-red-800 border border-red-300'
                       : 'bg-amber-100 text-amber-800 border border-amber-300'
                   }`}
                 >

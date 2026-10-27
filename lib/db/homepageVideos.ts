@@ -11,7 +11,7 @@ export const seedHomepageVideos: HomepageVideo[] = [
     id: 'video-1',
     title: 'AL-HAMD Mobile Ecosystem Showcase',
     url: '/uploads/videos/alhamd_hero_showcase_1.mp4',
-    thumbnailUrl: '',
+    thumbnailUrl: '/uploads/videos/alhamd_hero_showcase_1_poster.jpg',
     active: true,
     displayOrder: 1,
     duration: 5,
@@ -24,7 +24,7 @@ export const seedHomepageVideos: HomepageVideo[] = [
     id: 'video-2',
     title: 'GaN Fast Charging & Premium Accessories',
     url: '/uploads/videos/alhamd_hero_showcase_2.mp4',
-    thumbnailUrl: '',
+    thumbnailUrl: '/uploads/videos/alhamd_hero_showcase_2_poster.jpg',
     active: true,
     displayOrder: 2,
     duration: 52,
@@ -35,68 +35,97 @@ export const seedHomepageVideos: HomepageVideo[] = [
   },
 ];
 
-let hasSyncedHomepageVideosFromApi = false;
-export async function syncHomepageVideosFromApi(): Promise<HomepageVideo[]> {
+let inFlightVideosPromise: Promise<HomepageVideo[]> | null = null;
+let lastVideosSyncTimestamp = 0;
+const VIDEOS_SYNC_DEBOUNCE_MS = 30000;
+
+export async function syncHomepageVideosFromApi(forceFresh = false): Promise<HomepageVideo[]> {
   if (typeof window === 'undefined') return [];
-  try {
-    const res = await fetch(`/api/homepage-videos?t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-      },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success) {
-        const list: HomepageVideo[] = Array.isArray(data.videos)
-          ? data.videos
-          : Array.isArray(data.activeVideos)
-          ? data.activeVideos
-          : Array.isArray(data.items)
-          ? data.items
-          : [];
-
-        // Strictly active videos with non-empty URLs
-        const validActive = list
-          .filter((v) => {
-            if (!v) return false;
-            const isActive =
-              (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
-              v.active !== false &&
-              (v.active as any) !== 0 &&
-              (v.active as any) !== '0' &&
-              (v.active as any) !== 'false';
-            const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
-            return Boolean(isActive && hasUrl);
-          })
-          .sort((a, b) => {
-            const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
-            const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
-            if (orderA !== orderB) return orderA - orderB;
-            return (a.id || '').localeCompare(b.id || '');
-          });
-
-        await persistCollection(ACTIVE_COLLECTION_KEY, validActive, true);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: ACTIVE_COLLECTION_KEY, value: validActive },
-          })
-        );
-        return validActive;
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to sync homepage videos from API:', err);
+  if (inFlightVideosPromise && !forceFresh) {
+    return inFlightVideosPromise;
   }
-  return [];
+  if (!forceFresh && Date.now() - lastVideosSyncTimestamp < VIDEOS_SYNC_DEBOUNCE_MS) {
+    return getActiveHomepageVideos();
+  }
+
+  inFlightVideosPromise = (async () => {
+    try {
+      const url = forceFresh ? `/api/homepage-videos?t=${Date.now()}` : `/api/homepage-videos`;
+      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const list: HomepageVideo[] = Array.isArray(data.videos)
+            ? data.videos
+            : Array.isArray(data.activeVideos)
+            ? data.activeVideos
+            : Array.isArray(data.items)
+            ? data.items
+            : [];
+
+          // Strictly active videos with non-empty URLs
+          const validActive = list
+            .filter((v) => {
+              if (!v) return false;
+              const isActive =
+                (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+                v.active !== false &&
+                (v.active as any) !== 0 &&
+                (v.active as any) !== '0' &&
+                (v.active as any) !== 'false';
+              const hasUrl = typeof v.url === 'string' && v.url.trim().length > 0;
+              return Boolean(isActive && hasUrl);
+            })
+            .sort((a, b) => {
+              const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
+              const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
+              if (orderA !== orderB) return orderA - orderB;
+              return (a.id || '').localeCompare(b.id || '');
+            });
+
+          await persistCollection(ACTIVE_COLLECTION_KEY, validActive, true);
+          await persistCollection(COLLECTION_KEY, list, true);
+          lastVideosSyncTimestamp = Date.now();
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: ACTIVE_COLLECTION_KEY, value: validActive },
+            })
+          );
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: COLLECTION_KEY, value: list },
+            })
+          );
+          return validActive;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to sync homepage videos from API:', err);
+    } finally {
+      inFlightVideosPromise = null;
+    }
+    return getActiveHomepageVideos();
+  })();
+
+  return inFlightVideosPromise;
 }
 
 /**
  * Get all homepage videos ordered deterministically by displayOrder ASC, then id ASC
  */
 export function getHomepageVideos(): HomepageVideo[] {
-  const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, seedHomepageVideos);
+  let fallback = seedHomepageVideos;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentHomepageVideos } = require('./homepageVideosStorage');
+      const saved = readPersistentHomepageVideos();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
+  const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, fallback);
   return items.sort((a, b) => {
     const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
     const orderB = typeof b.displayOrder === 'number' && !isNaN(b.displayOrder) ? b.displayOrder : 0;
@@ -109,7 +138,18 @@ export function getHomepageVideos(): HomepageVideo[] {
  * Get only ACTIVE homepage videos for the live storefront sequence
  */
 export function getActiveHomepageVideos(): HomepageVideo[] {
-  const items = getStoredCollection<HomepageVideo>(ACTIVE_COLLECTION_KEY, []);
+  let fallback: HomepageVideo[] = [];
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentHomepageVideos } = require('./homepageVideosStorage');
+      const saved = readPersistentHomepageVideos();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
+  const items = getStoredCollection<HomepageVideo>(ACTIVE_COLLECTION_KEY, fallback);
   return items
     .filter((v) => {
       if (!v) return false;

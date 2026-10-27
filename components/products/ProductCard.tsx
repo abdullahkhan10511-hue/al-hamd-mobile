@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Check, Loader2 } from 'lucide-react';
+import { Heart, ShoppingBag, Check } from 'lucide-react';
 import { Product } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -28,41 +27,18 @@ export const ProductCard = React.memo(function ProductCard({
   const { addToCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const { isWholesale, isSuperWholesale } = useCustomerAuth();
-  const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
-  const [outOfStockToast, setOutOfStockToast] = useState(false);
-  const [toastText, setToastText] = useState('This product is currently out of stock.');
 
   const isFavorited = isInWishlist(product.id);
-  // Authoritative Rule 8: Public availability is TOTAL AVAILABLE = WAREHOUSE STOCK + SHOP STOCK
-  const totalAvailableStock = (product.stock ?? 0) + (product.shopStock ?? 0);
-  const isOutOfStock = totalAvailableStock <= 0;
-  const isWarehouseAvailable = (product.stock ?? 0) > 0;
 
-  const handleQuickAdd = async (e: React.MouseEvent) => {
+  const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (isOutOfStock) {
-      setToastText('This product is currently out of stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
+    if (justAdded) return;
 
-    if (!isWarehouseAvailable) {
-      setToastText('Available at physical shop. Online delivery requires warehouse stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
-
-    if (isAdding || justAdded) return;
-
-    setIsAdding(true);
     addToCart(product, 1);
-    setIsAdding(false);
     setJustAdded(true);
     setTimeout(() => {
       setJustAdded(false);
@@ -83,20 +59,11 @@ export const ProductCard = React.memo(function ProductCard({
       <div className="relative">
         {/* Badges */}
         <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 items-start">
-          {isOutOfStock ? (
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white shadow-xs">
-              Out of Stock
-            </span>
-          ) : (
-            <>
-              {product.isNew && <Badge variant="new">New</Badge>}
-              {product.isSale && product.discountPercentage && (
-                <Badge variant="sale">-{product.discountPercentage}%</Badge>
-              )}
-              {product.isBestSeller && <Badge variant="bestseller">Best Seller</Badge>}
-
-            </>
+          {product.isNew && <Badge variant="new">New</Badge>}
+          {product.isSale && product.discountPercentage && (
+            <Badge variant="sale">-{product.discountPercentage}%</Badge>
           )}
+          {product.isBestSeller && <Badge variant="bestseller">Best Seller</Badge>}
         </div>
 
         {/* Wishlist Button */}
@@ -110,15 +77,15 @@ export const ProductCard = React.memo(function ProductCard({
           }`}
           aria-label={isFavorited ? 'Remove from wishlist' : 'Add to wishlist'}
         >
-          <motion.div
-            whileTap={{ scale: 0.8 }}
-            animate={isFavorited ? { scale: [1, 1.25, 1] } : { scale: 1 }}
-            transition={{ duration: 0.2 }}
+          <span
+            className={`inline-flex items-center justify-center transition-transform duration-200 active:scale-80 ${
+              isFavorited ? 'scale-110' : 'scale-100'
+            }`}
           >
             <Heart
               className={`w-4 h-4 ${isFavorited ? 'fill-rose-500 text-rose-500' : ''}`}
             />
-          </motion.div>
+          </span>
         </button>
 
         {/* Product Image Link */}
@@ -229,23 +196,14 @@ export const ProductCard = React.memo(function ProductCard({
           <button
             type="button"
             onClick={handleQuickAdd}
-            disabled={isAdding}
-            aria-disabled={isOutOfStock}
-            title={isOutOfStock ? 'This product is currently out of stock.' : undefined}
-            className={`px-3.5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 ${
-              isOutOfStock
-                ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed border border-neutral-200'
-                : justAdded
-                ? 'bg-emerald-600 text-white cursor-pointer'
-                : 'bg-neutral-950 text-white hover:bg-neutral-800 cursor-pointer'
+            className={`px-3.5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-95 cursor-pointer ${
+              justAdded
+                ? 'bg-emerald-600 text-white'
+                : 'bg-neutral-950 text-white hover:bg-neutral-800'
             }`}
-            aria-label={isOutOfStock ? `${product.name} is out of stock` : `Quick add ${product.name} to cart`}
+            aria-label={`Quick add ${product.name} to cart`}
           >
-            {isOutOfStock ? (
-              <span className="text-[11px] font-medium">Out of Stock</span>
-            ) : isAdding ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : justAdded ? (
+            {justAdded ? (
               <>
                 <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span className="hidden xs:inline">Added</span>
@@ -259,22 +217,6 @@ export const ProductCard = React.memo(function ProductCard({
           </button>
         </div>
       </div>
-
-      {/* Animated Out of Stock Toast */}
-      <AnimatePresence>
-        {outOfStockToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-x-3 bottom-14 z-30 p-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-xl shadow-xl text-center border border-neutral-800 flex items-center justify-center gap-1.5 pointer-events-none"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            <span>{toastText}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 });

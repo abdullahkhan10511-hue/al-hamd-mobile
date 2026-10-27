@@ -548,8 +548,8 @@ export async function getProductBySlugFromDb(slug: string): Promise<(Product & {
   const cleanSlug = slug.trim().toLowerCase();
   return serverCache.getOrSet(`products:slug:${cleanSlug}`, async () => {
     const rows = await query<ProductRow[]>(
-      'SELECT * FROM products WHERE slug = ? LIMIT 1',
-      [cleanSlug]
+      'SELECT * FROM products WHERE LOWER(TRIM(slug)) = ? OR LOWER(TRIM(id)) = ? LIMIT 1',
+      [cleanSlug, cleanSlug]
     );
 
     if (!rows || rows.length === 0) return null;

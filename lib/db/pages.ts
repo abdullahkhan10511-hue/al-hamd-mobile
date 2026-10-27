@@ -639,11 +639,22 @@ export async function syncPagesFromApi(): Promise<void> {
 }
 
 export async function getPages(): Promise<CustomPage[]> {
+  let fallback = seedPages;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentPages } = require('./pagesStorage');
+      const saved = readPersistentPages();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
   if (typeof window !== 'undefined' && !hasSyncedPagesFromApi) {
     hasSyncedPagesFromApi = true;
     syncPagesFromApi().catch(() => {});
   }
-  const rawList = await getStoredData<any[]>(STORAGE_KEY, seedPages);
+  const rawList = await getStoredData<any[]>(STORAGE_KEY, fallback);
   const normalized = rawList.map((item, idx) => normalizePage(item, idx));
   return normalized.sort((a, b) => a.order - b.order);
 }

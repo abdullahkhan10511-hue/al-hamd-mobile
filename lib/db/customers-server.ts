@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
-import { Customer, CustomerType } from '@/types/admin';
+import { Customer } from '@/types/admin';
 import { isDbConfigured } from './mysql';
 import {
   getAllCustomersFromDb,
@@ -25,7 +24,7 @@ const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
 export type SanitizedCustomer = Omit<Customer, 'passwordHash' | 'passwordSalt'>;
 
 export function sanitizeCustomer(customer: Customer): SanitizedCustomer {
-  const { passwordHash, passwordSalt, ...safe } = customer;
+  const { passwordHash: _passwordHash, passwordSalt: _passwordSalt, ...safe } = customer;
   return safe;
 }
 

@@ -102,6 +102,15 @@ export interface PaymentVerificationRecord {
   status: 'verified' | 'rejected';
 }
 
+export interface CustomInfoBlock {
+  id: string;
+  title: string;
+  content: string;
+  type?: 'info' | 'warning' | 'security' | 'tip';
+  enabled: boolean;
+  displayOrder?: number;
+}
+
 export interface PaymentMethodConfig {
   id: string; // 'cod' | 'card' | 'easypaisa' | 'jazzcash'
   name: string;
@@ -117,12 +126,32 @@ export interface PaymentMethodConfig {
   isConfigured?: boolean;
   createdAt: string;
   updatedAt: string;
+  // Dynamic Content Fields
+  badgeText?: string;
+  detailsHeading?: string;
+  accountSectionHeading?: string;
+  accountNameLabel?: string;
+  accountNumberLabel?: string;
+  accountHelpText?: string;
+  referenceLabel?: string;
+  referencePlaceholder?: string;
+  referenceHelpText?: string;
+  minReferenceLength?: number;
+  maxReferenceLength?: number;
+  referenceValidationMessage?: string;
+  warningHeading?: string;
+  warningMessage?: string;
+  infoMessage?: string;
 }
 
 export interface PaymentSecuritySettings {
   securityNotice: string;
   processingMessage: string;
   manualVerificationEnabled: boolean;
+  sectionHeading?: string;
+  securitySubheading?: string;
+  generalInstructions?: string;
+  customInfoBlocks?: CustomInfoBlock[];
 }
 
 export interface OrderItem {

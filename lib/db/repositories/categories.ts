@@ -76,8 +76,8 @@ export async function getCategoryBySlugFromDb(slug: string): Promise<Category | 
   const cleanSlug = slug.trim().toLowerCase();
   return serverCache.getOrSet(`categories:slug:${cleanSlug}`, async () => {
     const rows = await query<CategoryRow[]>(
-      'SELECT * FROM categories WHERE slug = ? LIMIT 1',
-      [cleanSlug]
+      'SELECT * FROM categories WHERE LOWER(TRIM(slug)) = ? OR LOWER(TRIM(id)) = ? OR LOWER(TRIM(name)) = ? LIMIT 1',
+      [cleanSlug, cleanSlug, cleanSlug]
     );
 
     if (!rows || rows.length === 0) return null;

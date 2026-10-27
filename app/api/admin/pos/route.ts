@@ -3,54 +3,13 @@ import { createPosSale, getPosDailySummary, getPosOrders } from '@/lib/db/pos';
 import { createPosSaleInDb, getPosDailySummaryFromDb } from '@/lib/db/repositories/pos';
 import { getAllOrdersFromDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured } from '@/lib/db/mysql';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { id?: string; name?: string; email: string; role: string; permissions?: string[] } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email && parsed.status !== 'inactive') {
-          return parsed;
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) return parsed;
-    } catch {
-      if (token.includes('@')) {
-        return { email: token, role: 'ADMIN' };
-      }
-    }
-  }
-
-  return null;
-}
+import { getAdminSession, unauthorizedResponse } from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Staff session required.' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Staff session required.');
     }
 
     const body = await request.json();
@@ -67,6 +26,13 @@ export async function POST(request: NextRequest) {
       notes,
       catalogSnapshot,
     } = body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ success: false, error: 'Sale must have at least one item.' }, { status: 400 });
+    }
+    if (items.length > 200) {
+      return NextResponse.json({ success: false, error: 'Sale cannot contain more than 200 items.' }, { status: 400 });
+    }
 
     // Check discount permission if a manual discount is specified
     if (discountValue && Number(discountValue) > 0) {
@@ -119,9 +85,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Staff session required.' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Staff session required.');
     }
 
     const { searchParams } = new URL(request.url);

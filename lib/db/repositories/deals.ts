@@ -1,6 +1,6 @@
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Deal, DealProductItem } from '@/types/admin';
-import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { RowDataPacket } from 'mysql2/promise';
 import { serverCache } from '@/lib/cache/memoryCache';
 
 export function invalidateDealCache(): void {

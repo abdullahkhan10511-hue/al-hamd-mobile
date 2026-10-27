@@ -2,18 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldCheck,
   Truck,
   CheckCircle2,
   Lock,
-  ArrowRight,
-  ShoppingBag,
   ArrowLeft,
-  Printer,
-  FileText,
   Banknote,
   Building2,
   Smartphone,
@@ -25,6 +20,8 @@ import {
   Package,
   Tag,
   Edit,
+  ArrowRight,
+  Info,
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
@@ -36,10 +33,10 @@ import {
   getEnabledPaymentMethods,
   getPaymentSecuritySettings,
   seedPaymentSecuritySettings,
+  seedPaymentMethods,
   syncPaymentMethodsFromApi,
 } from '@/lib/db/paymentMethods';
 import { subscribeToKey } from '@/lib/db/storage';
-import InvoiceModal from '@/components/admin/InvoiceModal';
 
 const PAKISTAN_PROVINCES = [
   'Punjab',
@@ -74,13 +71,13 @@ export default function CheckoutPage() {
     subtotal,
     shipping,
     discount,
-    total,
     clearCart,
     appliedPromo,
     applyPromoCode,
     removePromoCode,
+    hasHydrated,
   } = useCart();
-  const { customer, isAuthenticated, updateProfile } = useCustomerAuth();
+  const { customer, updateProfile } = useCustomerAuth();
   const isSuperWholesale = customer?.customerType === 'SUPER_WHOLESALE';
   const isWholesale = customer?.customerType === 'WHOLESALE';
   const isWholesaleTier = isWholesale || isSuperWholesale;
@@ -97,7 +94,12 @@ export default function CheckoutPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
 
-
+  // Pakistan address fields
+  const [province, setProvince] = useState('Punjab');
+  const [city, setCity] = useState('Lahore');
+  const [area, setArea] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('54000');
 
   // Auto-populate customer details if logged in
   useEffect(() => {
@@ -126,14 +128,6 @@ export default function CheckoutPage() {
   }, [customer]);
 
 
-  // Pakistan address fields
-  const [province, setProvince] = useState('Punjab');
-  const [city, setCity] = useState('Lahore');
-  const [area, setArea] = useState('');
-  const [streetAddress, setStreetAddress] = useState('');
-  const [postalCode, setPostalCode] = useState('54000');
-  const country = 'Pakistan';
-
   // Wholesale details memory & editing state
   const [isEditingWholesaleDetails, setIsEditingWholesaleDetails] = useState(false);
   const hasSavedWholesaleInfo = Boolean(
@@ -144,7 +138,14 @@ export default function CheckoutPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<'standard' | 'express'>('standard');
 
   // Dynamic Payment Methods from Database
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>(() => {
+    try {
+      const enabled = getEnabledPaymentMethods();
+      return enabled.length > 0 ? enabled : seedPaymentMethods.filter((m) => m.enabled);
+    } catch {
+      return seedPaymentMethods.filter((m) => m.enabled);
+    }
+  });
   const [selectedMethodId, setSelectedMethodId] = useState<string>('cod');
   const [paymentReference, setPaymentReference] = useState('');
   const [securitySettings, setSecuritySettings] = useState<PaymentSecuritySettings>(seedPaymentSecuritySettings);
@@ -154,7 +155,6 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderError, setOrderError] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
-  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
   // Load & subscribe to payment configuration
   useEffect(() => {
@@ -283,17 +283,36 @@ export default function CheckoutPage() {
     // Security check: Card gateway unconfigured
     if (selectedMethod.id === 'card' && !selectedMethod.isConfigured) {
       setOrderError(
+        selectedMethod.warningMessage ||
         'Online Credit/Debit card gateway is currently undergoing official banking PCI-DSS certification in Pakistan. Please select Cash on Delivery, Easypaisa, or JazzCash for immediate order dispatch.'
       );
       return;
     }
 
     // Wallet TID requirement check
-    if (selectedMethod.requiresReference && !paymentReference.trim()) {
-      setOrderError(
-        `Please enter your ${selectedMethod.name} Transaction ID (TID) / Payment Reference from your SMS before placing the order.`
-      );
-      return;
+    if (selectedMethod.requiresReference) {
+      const ref = paymentReference.trim();
+      if (!ref) {
+        setOrderError(
+          selectedMethod.referenceValidationMessage ||
+          `Please enter your ${selectedMethod.name} Transaction ID (TID) / Payment Reference from your SMS before placing the order.`
+        );
+        return;
+      }
+      if (selectedMethod.minReferenceLength && ref.length < selectedMethod.minReferenceLength) {
+        setOrderError(
+          selectedMethod.referenceValidationMessage ||
+          `${selectedMethod.name} Transaction ID must be at least ${selectedMethod.minReferenceLength} digits.`
+        );
+        return;
+      }
+      if (selectedMethod.maxReferenceLength && ref.length > selectedMethod.maxReferenceLength) {
+        setOrderError(
+          selectedMethod.referenceValidationMessage ||
+          `${selectedMethod.name} Transaction ID must not exceed ${selectedMethod.maxReferenceLength} digits.`
+        );
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -403,10 +422,10 @@ export default function CheckoutPage() {
         total: grandTotal,
         currency: 'PKR',
         deliveryMethod,
-        paymentMethod: selectedMethod.name,
-        paymentMethodId: selectedMethod.id,
+        paymentMethod: selectedMethod?.name || 'Cash on Delivery',
+        paymentMethodId: selectedMethod?.id || 'cod',
         paymentStatus: initialPaymentStatus,
-        paymentReference: selectedMethod.requiresReference ? paymentReference.trim() : undefined,
+        paymentReference: selectedMethod?.requiresReference ? paymentReference.trim() : undefined,
         status: 'Confirmed',
         notes: paymentReference ? `Payment Ref: ${paymentReference.trim()}` : undefined,
         orderSource: 'ONLINE',
@@ -448,94 +467,134 @@ export default function CheckoutPage() {
 
   if (createdOrder) {
     return (
-      <div className="min-h-screen bg-neutral-50 py-16 sm:py-24">
-        <div className="max-w-2xl mx-auto px-4 text-center">
+      <div className="min-h-screen bg-neutral-50 py-12 sm:py-20 flex items-center justify-center">
+        <div className="max-w-xl w-full mx-auto px-4 sm:px-6">
           <motion.div
-            initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.35 }}
-            className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-neutral-200/80"
+            initial={{ scale: 0.92, opacity: 0, y: 16 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-white rounded-3xl p-6 sm:p-10 shadow-xl border border-neutral-200/80 text-center"
           >
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-6">
-              <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
+            {/* Subtle animated success badge */}
+            <div className="relative w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-emerald-100/70 animate-ping opacity-25" />
+              <div className="relative w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-500/20 text-emerald-600 flex items-center justify-center shadow-inner">
+                <CheckCircle2 className="w-10 h-10 stroke-[2.2]" />
+              </div>
             </div>
 
-            <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">
-              Order Confirmed
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 mt-2">
-              Order Confirmed!
+            {/* Impressive Thank You Message & Status */}
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold tracking-wider uppercase mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Order Placed Successfully
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight leading-snug">
+              Thank You for Your Order!
             </h1>
-            <p className="text-sm text-neutral-600 mt-2">
-              Shukriya, {createdOrder.customer.firstName}! Your order #{createdOrder.id} has been confirmed. You will receive an SMS and WhatsApp confirmation at{' '}
-              <strong className="text-neutral-900">{createdOrder.customer.phone}</strong>.
+
+            <p className="text-sm sm:text-base text-neutral-600 mt-4 leading-relaxed font-normal px-1 sm:px-3">
+              &ldquo;Thank you for choosing AL-HAMD SHOP. We truly appreciate your trust and support. Your order has been received successfully, and we&apos;re grateful for the opportunity to serve you. We look forward to making your shopping experience wonderful!&rdquo;
             </p>
 
-            <div className="my-6 p-5 rounded-2xl bg-neutral-50 border border-neutral-200/80 font-mono text-xs sm:text-sm text-neutral-800 space-y-2.5 text-left">
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-500 font-sans text-xs">Order ID:</span>
-                <strong className="text-neutral-950 font-bold">#{createdOrder.id}</strong>
+            {/* Clear Order Reference Card */}
+            <div className="mt-8 mb-8 p-5 sm:p-6 rounded-2xl bg-neutral-50/90 border border-neutral-200/80 text-left space-y-3">
+              <div className="flex justify-between items-center pb-3 border-b border-neutral-200/70">
+                <span className="text-neutral-500 text-xs font-medium">Order Number:</span>
+                <span className="font-mono font-extrabold text-base sm:text-lg text-neutral-950 tracking-tight">
+                  #{createdOrder.id}
+                </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-500 font-sans text-xs">Invoice Number:</span>
-                <strong className="text-neutral-800 font-semibold">{createdOrder.invoiceNumber}</strong>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-500 font-sans text-xs">Order Status:</span>
-                <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+
+              {createdOrder.invoiceNumber && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-500">Invoice Number:</span>
+                  <span className="font-mono font-semibold text-neutral-800">{createdOrder.invoiceNumber}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-neutral-500">Order Status:</span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   Confirmed
                 </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-500 font-sans text-xs">Payment Method:</span>
-                <strong className="text-neutral-900 font-semibold">{createdOrder.paymentMethod}</strong>
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-neutral-500">Payment Method:</span>
+                <span className="font-semibold text-neutral-900">{createdOrder.paymentMethod}</span>
               </div>
+
               {createdOrder.paymentReference && (
-                <div className="flex justify-between items-center border-t border-neutral-200 pt-2">
-                  <span className="text-neutral-500 font-sans text-xs">Payment Reference (TID):</span>
-                  <span className="font-bold text-neutral-950">{createdOrder.paymentReference}</span>
+                <div className="flex justify-between items-center text-xs pt-1 border-t border-neutral-200/60">
+                  <span className="text-neutral-500">Payment Reference (TID):</span>
+                  <span className="font-mono font-bold text-neutral-950">{createdOrder.paymentReference}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center border-t border-neutral-200 pt-2 text-emerald-700 font-bold">
-                <span className="font-sans text-xs">Amount Payable:</span>
-                <span>{formatPrice(createdOrder.total)}</span>
+
+              <div className="flex justify-between items-center pt-3 border-t border-neutral-200/70">
+                <span className="text-neutral-600 text-xs font-semibold">Total Amount:</span>
+                <span className="font-mono font-extrabold text-lg text-emerald-600">
+                  {formatPrice(createdOrder.total)}
+                </span>
               </div>
             </div>
 
-            <div className="space-y-3 max-w-sm mx-auto">
-              <button
-                onClick={() => setIsInvoiceOpen(true)}
-                className="w-full py-3.5 px-6 rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs tracking-wider uppercase transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print Invoice / Bill (A4 & Thermal)</span>
-              </button>
+            {/* Customer notification notice */}
+            {createdOrder.customer?.phone && (
+              <p className="text-xs text-neutral-500 mb-6">
+                A confirmation has also been dispatched to{' '}
+                <strong className="text-neutral-800 font-semibold">{createdOrder.customer.phone}</strong>.
+              </p>
+            )}
 
-              <Link
-                href={`/account/orders/${createdOrder.id}`}
-                className="block w-full py-3 px-6 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-semibold text-xs tracking-wider uppercase transition-colors text-center cursor-pointer"
-              >
-                Track in My Orders
-              </Link>
-
+            {/* Single Primary Action: Continue Shopping */}
+            <div className="max-w-sm mx-auto">
               <Link
                 href="/shop"
-                className="block w-full py-3 px-6 rounded-full border border-neutral-200 text-neutral-800 font-semibold text-xs tracking-wider uppercase hover:bg-neutral-50 transition-colors text-center"
+                className="w-full py-4 px-8 rounded-full bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
-                Continue Shopping
+                <span>Continue Shopping</span>
+                <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           </motion.div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Instant Printable Invoice */}
-        {isInvoiceOpen && (
-          <InvoiceModal
-            isOpen={isInvoiceOpen}
-            order={createdOrder}
-            onClose={() => setIsInvoiceOpen(false)}
-          />
-        )}
+  if (!hasHydrated) {
+    return (
+      <div className="bg-neutral-50 min-h-screen py-24 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-neutral-900 border-t-transparent animate-spin" />
+          <span className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">
+            Loading Checkout...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasHydrated && cart.length === 0 && !createdOrder) {
+    return (
+      <div className="bg-neutral-50 min-h-screen py-20 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-8 sm:p-10 bg-white rounded-3xl border border-neutral-200/80 shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4 text-neutral-400">
+            <Package className="w-8 h-8 stroke-1" />
+          </div>
+          <h2 className="text-xl font-extrabold text-neutral-950 mb-2">Your Shopping Bag is Empty</h2>
+          <p className="text-xs text-neutral-500 mb-6">
+            There are no items in your cart. Add products to your bag or click Buy It Now to proceed with checkout.
+          </p>
+          <Link
+            href="/shop"
+            className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-neutral-950 text-white text-xs font-semibold uppercase tracking-wider hover:bg-neutral-800 transition-colors shadow-sm"
+          >
+            Explore Catalog
+          </Link>
+        </div>
       </div>
     );
   }
@@ -794,7 +853,7 @@ export default function CheckoutPage() {
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
-                        Email Address (Optional for Invoice dispatch)
+                        Email Address (optional)
                       </label>
                       <input
                         type="email"
@@ -979,10 +1038,7 @@ export default function CheckoutPage() {
                     </div>
                     <div>
                       <p className="text-xs sm:text-sm font-bold text-neutral-900">
-                        Express Overnight Priority
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        Air priority dispatch (1 to 2 business days)
+                        Express Delivery
                       </p>
                     </div>
                   </div>
@@ -997,12 +1053,19 @@ export default function CheckoutPage() {
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-neutral-200/80 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base sm:text-lg font-bold text-neutral-950">
-                  4. Choose Payment Method
+                  {securitySettings.sectionHeading || '4. Choose Payment Method'}
                 </h2>
                 <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> 100% Secure Checkout
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {securitySettings.securitySubheading || '100% Secure Checkout'}
                 </span>
               </div>
+
+              {securitySettings.generalInstructions && (
+                <div className="text-xs text-neutral-600 bg-neutral-50 p-3 rounded-xl border border-neutral-200/60 leading-relaxed whitespace-pre-line">
+                  {securitySettings.generalInstructions}
+                </div>
+              )}
 
               {paymentMethods.length === 0 ? (
                 <div className="p-4 rounded-xl bg-neutral-50 text-neutral-500 text-xs text-center">
@@ -1039,9 +1102,16 @@ export default function CheckoutPage() {
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              {renderMethodIcon(m.id)}
-                              <span className="text-xs font-bold text-neutral-950">{m.name}</span>
+                            <div className="flex items-center justify-between gap-1.5 mb-1">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {renderMethodIcon(m.id)}
+                                <span className="text-xs font-bold text-neutral-950 truncate">{m.name}</span>
+                              </div>
+                              {m.badgeText && (
+                                <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-200/80 text-neutral-700 shrink-0 uppercase font-mono">
+                                  {m.badgeText}
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">
                               {m.description}
@@ -1052,7 +1122,7 @@ export default function CheckoutPage() {
                     })}
                   </div>
 
-                  {/* Expandable Payment Information Panel (Requirement 7) */}
+                  {/* Expandable Payment Information Panel */}
                   <AnimatePresence mode="wait">
                     {selectedMethod && (
                       <motion.div
@@ -1065,7 +1135,7 @@ export default function CheckoutPage() {
                       >
                         <div className="flex items-center justify-between border-b border-neutral-200/70 pb-3">
                           <span className="text-xs font-bold uppercase tracking-wider text-neutral-900">
-                            Payment Details: {selectedMethod.name}
+                            {selectedMethod.detailsHeading || `Payment Details: ${selectedMethod.name}`}
                           </span>
                           <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest font-mono">
                             {selectedMethod.type === 'cod'
@@ -1078,30 +1148,45 @@ export default function CheckoutPage() {
 
                         {/* Admin Configured Description & Instructions */}
                         <div className="text-xs text-neutral-700 leading-relaxed whitespace-pre-line bg-white p-4 rounded-xl border border-neutral-200/80">
-                          <p className="font-semibold text-neutral-900 mb-1">{selectedMethod.description}</p>
+                          {selectedMethod.description && (
+                            <p className="font-semibold text-neutral-900 mb-1">{selectedMethod.description}</p>
+                          )}
                           <p className="text-neutral-600">{selectedMethod.instructions}</p>
                         </div>
 
-                        {/* Unconfigured Card Gateway Notice (Requirement 3 & 25) */}
-                        {selectedMethod.id === 'card' && !selectedMethod.isConfigured && (
+                        {/* Configured Warning or Unconfigured Card Gateway Notice */}
+                        {(selectedMethod.warningMessage || (selectedMethod.id === 'card' && !selectedMethod.isConfigured)) && (
                           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-900">
                             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-bold">Card Gateway Under Banking Certification</p>
-                              <p className="text-amber-800 text-[11px] mt-0.5">
-                                Direct credit/debit card processing is currently undergoing banking PCI-DSS integration with State Bank of Pakistan compliant gateways. To place your order immediately, please select <strong>Cash on Delivery</strong>, <strong>Easypaisa</strong>, or <strong>JazzCash</strong>.
+                              <p className="font-bold">
+                                {selectedMethod.warningHeading || 'Notice'}
+                              </p>
+                              <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed whitespace-pre-line">
+                                {selectedMethod.warningMessage ||
+                                  'Direct credit/debit card processing is currently undergoing banking PCI-DSS integration with State Bank of Pakistan compliant gateways. To place your order immediately, please select Cash on Delivery, Easypaisa, or JazzCash.'}
                               </p>
                             </div>
                           </div>
                         )}
 
-                        {/* Official Payment Account Label (Requirement 13) */}
+                        {/* Informational Message if configured */}
+                        {selectedMethod.infoMessage && (
+                          <div className="p-3.5 rounded-xl bg-blue-50/80 border border-blue-200 flex items-start gap-2.5 text-xs text-blue-900">
+                            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                            <p className="text-[11px] leading-relaxed whitespace-pre-line">
+                              {selectedMethod.infoMessage}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Official Payment Account Label */}
                         {(selectedMethod.merchantName || selectedMethod.merchantIdentifier) && (
                           <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/90 space-y-3">
                             <div className="flex items-center justify-between">
                               <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
                                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                                Official Payment Account
+                                {selectedMethod.accountSectionHeading || 'Official Payment Account'}
                               </span>
                               <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/80 px-2 py-0.5 rounded-full">
                                 Verified Store Account
@@ -1112,7 +1197,7 @@ export default function CheckoutPage() {
                               {selectedMethod.merchantName && (
                                 <div className="bg-white p-3 rounded-lg border border-emerald-200/60">
                                   <span className="text-[10px] font-sans uppercase font-bold text-neutral-500 block mb-0.5">
-                                    Account / Business Name
+                                    {selectedMethod.accountNameLabel || 'Account / Business Name'}
                                   </span>
                                   <span className="font-bold text-neutral-900 text-xs">
                                     {selectedMethod.merchantName}
@@ -1124,7 +1209,7 @@ export default function CheckoutPage() {
                                 <div className="bg-white p-3 rounded-lg border border-emerald-200/60 flex items-center justify-between">
                                   <div>
                                     <span className="text-[10px] font-sans uppercase font-bold text-neutral-500 block mb-0.5">
-                                      Official Payment Number / ID
+                                      {selectedMethod.accountNumberLabel || 'Official Payment Number / ID'}
                                     </span>
                                     <span className="font-bold text-neutral-900 text-xs">
                                       {selectedMethod.merchantIdentifier}
@@ -1146,18 +1231,20 @@ export default function CheckoutPage() {
                               )}
                             </div>
 
-                            <p className="text-[11px] text-emerald-900/80 font-sans">
-                              💡 <em>Please include your customer contact number or upcoming Order ID in the payment message so our accounts team can verify immediately.</em>
-                            </p>
+                            {selectedMethod.accountHelpText && (
+                              <p className="text-[11px] text-emerald-900/80 font-sans whitespace-pre-line">
+                                {selectedMethod.accountHelpText}
+                              </p>
+                            )}
                           </div>
                         )}
 
-                        {/* Customer Transaction Reference Input (Requirement 8) */}
+                        {/* Customer Transaction Reference Input */}
                         {selectedMethod.requiresReference && (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
                               <label className="block text-xs font-semibold text-neutral-800">
-                                Payment Reference / Transaction ID (TID) *
+                                {selectedMethod.referenceLabel || 'Payment Reference / Transaction ID (TID) *'}
                               </label>
                               <span className="text-[10px] font-mono text-neutral-500">
                                 {selectedMethod.referenceFormat || 'Required for verification'}
@@ -1168,20 +1255,68 @@ export default function CheckoutPage() {
                               required
                               value={paymentReference}
                               onChange={(e) => setPaymentReference(e.target.value)}
-                              placeholder={selectedMethod.referenceFormat || 'e.g. TID: 109823019'}
+                              placeholder={
+                                selectedMethod.referencePlaceholder ||
+                                selectedMethod.referenceFormat ||
+                                'e.g. TID: 109823019'
+                              }
                               className="w-full px-4 py-3 bg-white border border-neutral-300 rounded-xl text-xs sm:text-sm font-mono text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-950 focus:border-neutral-950"
                             />
-                            <p className="text-[11px] text-neutral-500">
-                              After sending payment from your mobile wallet, paste the reference ID from your SMS above.
-                            </p>
+                            {selectedMethod.referenceHelpText && (
+                              <p className="text-[11px] text-neutral-500 whitespace-pre-line">
+                                {selectedMethod.referenceHelpText}
+                              </p>
+                            )}
                           </div>
                         )}
 
-                        {/* Anti-Scam / Anti-Fraud Notice (Requirement 12) */}
-                        <div className="p-3.5 rounded-xl bg-neutral-100 border border-neutral-200/80 flex items-start gap-2.5 text-[11px] text-neutral-600 leading-relaxed">
-                          <Lock className="w-3.5 h-3.5 text-neutral-700 shrink-0 mt-0.5" />
-                          <p>{securitySettings.securityNotice}</p>
-                        </div>
+                        {/* Anti-Scam / Anti-Fraud Notice */}
+                        {securitySettings.securityNotice && (
+                          <div className="p-3.5 rounded-xl bg-neutral-100 border border-neutral-200/80 flex items-start gap-2.5 text-[11px] text-neutral-600 leading-relaxed">
+                            <Lock className="w-3.5 h-3.5 text-neutral-700 shrink-0 mt-0.5" />
+                            <p className="whitespace-pre-line">{securitySettings.securityNotice}</p>
+                          </div>
+                        )}
+
+                        {/* Custom Informational Blocks */}
+                        {Array.isArray(securitySettings.customInfoBlocks) &&
+                          securitySettings.customInfoBlocks.filter((b) => b.enabled).length > 0 && (
+                            <div className="space-y-2 pt-1 border-t border-neutral-200/70">
+                              {securitySettings.customInfoBlocks
+                                .filter((b) => b.enabled)
+                                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                                .map((block) => {
+                                  const isWarn = block.type === 'warning';
+                                  const isSec = block.type === 'security';
+                                  return (
+                                    <div
+                                      key={block.id}
+                                      className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+                                        isWarn
+                                          ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                          : isSec
+                                          ? 'bg-blue-50/70 border-blue-200 text-blue-950'
+                                          : 'bg-emerald-50/60 border-emerald-200/80 text-emerald-950'
+                                      }`}
+                                    >
+                                      {isWarn ? (
+                                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                      ) : isSec ? (
+                                        <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                      ) : (
+                                        <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                      )}
+                                      <div>
+                                        <p className="font-bold text-xs">{block.title}</p>
+                                        <p className="text-[11px] mt-0.5 leading-relaxed opacity-90 whitespace-pre-line">
+                                          {block.content}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          )}
                       </motion.div>
                     )}
                   </AnimatePresence>

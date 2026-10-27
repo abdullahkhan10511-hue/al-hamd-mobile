@@ -493,7 +493,11 @@ export default function AdminOrderDetailPage() {
             <div className="text-xs space-y-2.5 pt-1">
               <div className="flex justify-between items-center">
                 <span className="text-neutral-500">Method:</span>
-                <span className="font-bold text-neutral-900">{order.paymentMethod}</span>
+                <span className="font-bold text-neutral-900">
+                  {order.paymentMethod && order.paymentMethod.trim()
+                    ? order.paymentMethod
+                    : 'Not recorded'}
+                </span>
               </div>
 
               <div className="flex justify-between items-center">

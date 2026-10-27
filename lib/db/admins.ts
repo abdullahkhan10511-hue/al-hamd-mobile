@@ -47,8 +47,6 @@ export function canAccessAdminRoute(
     if (userOrRole.status === 'inactive') return false;
     const roleNormalized = (userOrRole.role || '').toLowerCase().replace(/[\s_-]/g, '');
     const isMainAdmin =
-      userOrRole.email?.toLowerCase() === 'admin@alhamdmobile.com' ||
-      userOrRole.email?.toLowerCase() === 'admin@alhamd.com' ||
       Boolean(userOrRole.isOwner) ||
       roleNormalized === 'superadmin' ||
       roleNormalized === 'admin' ||
@@ -81,8 +79,8 @@ export function canAccessAdminRoute(
   // Dashboard (/admin and /admin/dashboard) is accessible to any active staff member
   if (cleanPath === '/admin' || cleanPath === '/admin/dashboard') return true;
 
-  // Staff Management (Legacy /admin/admins and new /admin/staff)
-  if (pathname.startsWith('/admin/staff') || pathname.startsWith('/admin/admins')) {
+  // Staff Management (/admin/staff)
+  if (pathname.startsWith('/admin/staff')) {
     return has('staff.view');
   }
 

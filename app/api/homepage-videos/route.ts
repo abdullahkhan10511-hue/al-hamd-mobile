@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
-import {
-  getAllHomepageVideosFromDb,
-  getActiveHomepageVideosFromDb,
-} from '@/lib/db/repositories/homepageVideos';
+import { getActiveHomepageVideosFromDb } from '@/lib/db/repositories/homepageVideos';
 import { readPersistentHomepageVideos } from '@/lib/db/homepageVideosStorage';
-import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export const dynamic = 'force-dynamic';
@@ -57,9 +53,7 @@ export async function GET() {
       },
       {
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
         },
       }
     );

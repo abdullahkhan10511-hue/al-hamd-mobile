@@ -1,35 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { saveMediaBuffer } from '@/lib/mediaStorage';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (!cookieVal) return null;
-
-  let raw = cookieVal;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.status !== 'inactive') {
-        return parsed;
-      }
-    } catch {
-      try {
-        raw = decodeURIComponent(raw);
-      } catch {
-        break;
-      }
-    }
-  }
-
-  return null;
-}
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 const ALLOWED_IMAGE_MIMES = new Set([
   'image/jpeg',
@@ -43,10 +15,9 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
-    const authHeader = request.headers.get('authorization');
+    const session = getAdminSession(request);
 
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized: Admin credentials required to upload deal images.' },
         { status: 401 }

@@ -2,11 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { ArrowRight, Tag } from 'lucide-react';
 import { getDeals, syncDealsFromApi, isDealCurrentlyActive } from '@/lib/db/deals';
 import { Deal } from '@/types/admin';
 import { DealCard } from '@/components/deals/DealCard';
-import { DealModal } from '@/components/deals/DealModal';
+
+const DealModal = dynamic(
+  () => import('@/components/deals/DealModal').then((mod) => mod.DealModal),
+  { ssr: false }
+);
 
 const HOMEPAGE_DEALS_LIMIT = 2;
 
@@ -27,25 +32,11 @@ export function DealsSection() {
   useEffect(() => {
     loadData();
 
-    // Fetch fresh active deals from public API
-    fetch('/api/deals?homepage=true')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.deals)) {
-          const activeList = data.deals
-            .filter((d: Deal) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d))
-            .sort((a: Deal, b: Deal) => (a.displayOrder || 1) - (b.displayOrder || 1));
-          if (activeList.length > 0) {
-            setDeals(activeList);
-          }
-        }
-        setIsLoaded(true);
-      })
+    syncDealsFromApi()
+      .then(() => loadData())
       .catch(() => {
         setIsLoaded(true);
       });
-
-    syncDealsFromApi().then(() => loadData());
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;

@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { ArrowRight, Trash2, Minus, Plus, ShoppingBag, ShieldCheck, Tag, Package } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { FreeShippingBar } from '@/components/cart/FreeShippingBar';

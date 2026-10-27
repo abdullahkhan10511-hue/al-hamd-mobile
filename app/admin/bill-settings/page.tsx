@@ -22,7 +22,7 @@ import {
   Check,
 } from 'lucide-react';
 import { BillSettings, BillFieldToggles, Order, ThermalPaperWidth } from '@/types/admin';
-import { getBillSettings, updateBillSettings, defaultBillFieldToggles } from '@/lib/db/billSettings';
+import { getBillSettings, updateBillSettings, defaultBillFieldToggles, syncBillSettingsFromApi } from '@/lib/db/billSettings';
 import { uploadMediaFile } from '@/lib/db/media';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { subscribeToKey } from '@/lib/db/storage';
@@ -104,6 +104,14 @@ export default function StoreBillSettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    syncBillSettingsFromApi()
+      .then(() => {
+        const fresh = getBillSettings();
+        setSettings(fresh);
+        setSavedBaseline(JSON.stringify(fresh));
+      })
+      .catch(() => {});
+
     const initial = getBillSettings();
     setSettings(initial);
     setSavedBaseline(JSON.stringify(initial));

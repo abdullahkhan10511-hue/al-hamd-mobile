@@ -81,7 +81,7 @@ function SearchContent() {
     );
     setProductsList(all);
 
-    let cats = deduplicateCategoriesById(getActiveCategories());
+    const cats = deduplicateCategoriesById(getActiveCategories());
     setCategoriesList(cats);
     syncCategoriesFromApi().then(() => {
       setCategoriesList(deduplicateCategoriesById(getActiveCategories()));

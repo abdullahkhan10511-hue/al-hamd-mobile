@@ -9,7 +9,9 @@ const STORAGE_KEY = 'customers';
 export type SanitizedCustomer = Omit<Customer, 'passwordHash' | 'passwordSalt'>;
 
 export function sanitizeCustomer(customer: Customer): SanitizedCustomer {
-  const { passwordHash, passwordSalt, ...safe } = customer;
+  const safe = { ...customer };
+  delete (safe as Partial<Customer>).passwordHash;
+  delete (safe as Partial<Customer>).passwordSalt;
   return safe;
 }
 
@@ -1031,12 +1033,30 @@ export async function changeCustomerPassword(
 /**
  * Request password reset without leaking account existence.
  */
-export async function requestCustomerPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+export async function requestCustomerPasswordReset(
+  email: string,
+  portal: 'customer' | 'staff' | 'wholesale' = 'customer'
+): Promise<{ success: boolean; message: string }> {
   const normalized = email.trim().toLowerCase();
-  return {
-    success: true,
-    message: `If an account associated with ${normalized} exists, password reset instructions have been dispatched.`,
-  };
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalized, portal }),
+    });
+    const data = await res.json();
+    return {
+      success: true,
+      message:
+        data.message ||
+        `If an account associated with ${normalized} exists, password reset instructions have been dispatched.`,
+    };
+  } catch {
+    return {
+      success: true,
+      message: `If an account associated with ${normalized} exists, password reset instructions have been dispatched.`,
+    };
+  }
 }
 
 /**

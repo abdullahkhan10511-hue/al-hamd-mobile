@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
 import { useWishlist } from '@/context/WishlistContext';
 import { useCart } from '@/context/CartContext';
@@ -20,38 +19,9 @@ function WishlistItemCard({
   onRemove: () => void;
   onAddToCart: () => void;
 }) {
-  const [outOfStockToast, setOutOfStockToast] = useState(false);
-  const [toastText, setToastText] = useState('This product is currently out of stock.');
-  const totalAvailableStock = (product.stock ?? 0) + (product.shopStock ?? 0);
-  const isOutOfStock = totalAvailableStock <= 0;
-  const isWarehouseAvailable = (product.stock ?? 0) > 0;
-
-  const handleAction = () => {
-    if (isOutOfStock) {
-      setToastText('This product is currently out of stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
-    if (!isWarehouseAvailable) {
-      setToastText('Available at physical shop. Online delivery requires warehouse stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
-    onAddToCart();
-  };
-
   return (
     <div className="group relative bg-white rounded-2xl border border-neutral-200/80 p-4 flex flex-col justify-between hover:shadow-lg transition-all">
       <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-neutral-100">
-        {isOutOfStock && (
-          <div className="absolute top-2.5 left-2.5 z-10">
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white shadow-xs">
-              Out of Stock
-            </span>
-          </div>
-        )}
         <Image
           src={getProductImage(product)}
           alt={product.name}
@@ -86,35 +56,15 @@ function WishlistItemCard({
         <div className="mt-4 pt-3 border-t border-neutral-100">
           <button
             type="button"
-            onClick={handleAction}
-            aria-disabled={isOutOfStock}
-            title={isOutOfStock ? 'This product is currently out of stock.' : undefined}
-            className={`w-full py-2.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-              isOutOfStock
-                ? 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed select-none'
-                : 'bg-neutral-950 hover:bg-neutral-800 text-white'
-            }`}
+            onClick={onAddToCart}
+            className="w-full py-2.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-neutral-950 hover:bg-neutral-800 text-white"
+            aria-label={`Move ${product.name} to bag`}
           >
             <ShoppingBag className="w-3.5 h-3.5" />
-            <span>{isOutOfStock ? 'Out of Stock' : 'Move to Bag'}</span>
+            <span>Move to Bag</span>
           </button>
         </div>
       </div>
-
-      <AnimatePresence>
-        {outOfStockToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-x-3 bottom-14 z-30 p-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-xl shadow-xl text-center border border-neutral-800 flex items-center justify-center gap-1.5 pointer-events-none"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            <span>{toastText}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -124,7 +74,7 @@ export default function WishlistPage() {
   const { addToCart } = useCart();
 
   const handleAddAll = () => {
-    wishlistProducts.filter((p) => (p.stock ?? 0) > 0).forEach((p) => addToCart(p, 1));
+    wishlistProducts.forEach((p) => addToCart(p, 1));
   };
 
   return (

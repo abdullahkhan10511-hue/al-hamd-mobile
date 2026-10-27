@@ -632,4 +632,26 @@ CREATE TABLE IF NOT EXISTS `deal_products` (
   CONSTRAINT `fk_dp_deal` FOREIGN KEY (`deal_id`) REFERENCES `deals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------------------------
+-- 25. PASSWORD RESET TOKENS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+  `id` VARCHAR(100) NOT NULL,
+  `user_type` ENUM('customer', 'staff') NOT NULL DEFAULT 'customer',
+  `user_id` VARCHAR(100) NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `token_hash` VARCHAR(64) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `is_used` TINYINT(1) NOT NULL DEFAULT 0,
+  `used_at` DATETIME NULL,
+  `ip_address` VARCHAR(45) NULL,
+  `user_agent` VARCHAR(500) NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_prt_token_hash` (`token_hash`),
+  KEY `idx_prt_email_type` (`email`, `user_type`),
+  KEY `idx_prt_status_expires` (`is_used`, `expires_at`),
+  KEY `idx_prt_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

@@ -226,40 +226,35 @@ export function getStoreSettings(): StoreSettings {
     ogImageUrl,
   };
 
-  // Currency migrations
-  if (!base.currency || base.currency === 'USD') {
+  // Currency fallbacks if unset
+  if (!base.currency) {
     base.currency = 'PKR';
     base.currencySymbol = 'Rs.';
-    base.freeShippingThreshold = base.freeShippingThreshold && base.freeShippingThreshold > 500 ? base.freeShippingThreshold : 5000;
-    base.standardShippingFee = base.standardShippingFee && base.standardShippingFee >= 50 ? base.standardShippingFee : 200;
-    base.expressShippingFee = base.expressShippingFee && base.expressShippingFee >= 100 ? base.expressShippingFee : 450;
+  }
+  if (base.freeShippingThreshold === undefined || base.freeShippingThreshold === null) {
+    base.freeShippingThreshold = 5000;
+  }
+  if (base.standardShippingFee === undefined || base.standardShippingFee === null) {
+    base.standardShippingFee = 200;
+  }
+  if (base.expressShippingFee === undefined || base.expressShippingFee === null) {
+    base.expressShippingFee = 450;
   }
 
-  // Address/phone/email migrations
-  if (!base.phone || base.phone.includes('+1') || base.phone.includes('+92 300 1234567')) {
+  // Address/phone/email fallbacks only if completely missing
+  if (!base.phone || !base.phone.trim()) {
     base.phone = '+92 343 2200995';
   }
-  if (!base.whatsapp || base.whatsapp.includes('923001234567')) {
+  if (!base.whatsapp || !base.whatsapp.trim()) {
     base.whatsapp = '+923432200995';
   }
-  if (!base.email || base.email.includes('alhamd-accessories.com') || base.email.includes('example.com')) {
+  if (!base.email || !base.email.trim()) {
     base.email = 'support@alhamd-mobile.com';
   }
-  if (
-    !base.address ||
-    base.address.includes('New York') ||
-    base.address.includes('Lahore') ||
-    base.address.includes('MM Alam') ||
-    base.address.includes('Commercial Plaza') ||
-    base.address.includes('Gulberg')
-  ) {
+  if (!base.address || !base.address.trim()) {
     base.address = 'Mobile Street, Opposite Habib Bank, Katchery Road, Mandi Bahauddin, Pakistan';
   }
-  if (
-    !base.footerDescription ||
-    base.footerDescription.includes('premier destination for high-performance') ||
-    base.footerDescription.includes('military-grade')
-  ) {
+  if (!base.footerDescription || !base.footerDescription.trim()) {
     base.footerDescription =
       'Quality mobile accessories, chargers, cables, cases, audio products and everyday smartphone essentials, serving customers across Pakistan.';
   }
@@ -271,34 +266,50 @@ export function getStoreSettings(): StoreSettings {
 }
 
 let inFlightSettingsPromise: Promise<StoreSettings> | null = null;
+let lastSettingsSyncTimestamp = 0;
+const SETTINGS_SYNC_DEBOUNCE_MS = 60000; // 60s client-side sync debounce
 
-export async function syncStoreSettingsFromApi(): Promise<StoreSettings> {
+export async function syncStoreSettingsFromApi(forceFresh = false): Promise<StoreSettings> {
   if (typeof window === 'undefined') return getStoreSettings();
-  if (inFlightSettingsPromise) {
+  if (inFlightSettingsPromise && !forceFresh) {
     return inFlightSettingsPromise;
+  }
+  if (!forceFresh && Date.now() - lastSettingsSyncTimestamp < SETTINGS_SYNC_DEBOUNCE_MS) {
+    return getStoreSettings();
   }
 
   inFlightSettingsPromise = (async () => {
     try {
-      const res = await fetch('/api/settings', { cache: 'no-store' });
+      const url = forceFresh ? `/api/settings?t=${Date.now()}` : '/api/settings';
+      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.settings) {
-          const current = getStoreSettings();
-          const merged: StoreSettings = {
-            ...current,
-            ...data.settings,
-            websiteTitle: data.settings.websiteTitle || data.settings.seo?.websiteTitle || current.websiteTitle,
-            canonicalUrl: normalizeCanonicalUrl(data.settings.canonicalUrl || data.settings.seo?.canonicalUrl || current.canonicalUrl),
-            ogImageUrl: data.settings.ogImageUrl || data.settings.seo?.ogImageUrl || current.ogImageUrl,
+          const serverData: StoreSettings = data.settings;
+          const freshSettings: StoreSettings = {
+            ...seedStoreSettings,
+            ...serverData,
+            storeName: serverData.storeName || 'AL-HAMD SHOP',
+            websiteTitle: serverData.websiteTitle || serverData.seo?.websiteTitle || 'AL-HAMD SHOP | Mobile Accessories Pakistan',
+            canonicalUrl: normalizeCanonicalUrl(serverData.canonicalUrl || serverData.seo?.canonicalUrl || 'https://alhamdshop.com'),
+            ogImageUrl: serverData.ogImageUrl || serverData.seo?.ogImageUrl || '',
             seo: {
-              ...current.seo,
-              ...(data.settings.seo || {}),
+              ...seedStoreSettings.seo,
+              ...(serverData.seo || {}),
+              websiteTitle: serverData.websiteTitle || serverData.seo?.websiteTitle || 'AL-HAMD SHOP | Mobile Accessories Pakistan',
+              canonicalUrl: normalizeCanonicalUrl(serverData.canonicalUrl || serverData.seo?.canonicalUrl || 'https://alhamdshop.com'),
+              ogImageUrl: serverData.ogImageUrl || serverData.seo?.ogImageUrl || '',
             },
+            socialLinks: normalizeSocialLinks(serverData.socialLinks),
           };
-          setLocal(SETTINGS_KEY, merged);
-          window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY } }));
-          return merged;
+          const current = getStoreSettings();
+          const hasChanged = JSON.stringify(current) !== JSON.stringify(freshSettings);
+          setLocal(SETTINGS_KEY, freshSettings, true);
+          lastSettingsSyncTimestamp = Date.now();
+          if (hasChanged) {
+            window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY, value: freshSettings } }));
+          }
+          return freshSettings;
         }
       }
     } catch (err) {

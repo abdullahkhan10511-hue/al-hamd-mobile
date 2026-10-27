@@ -54,6 +54,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (Array.isArray(body.images) && body.images.length > 50) {
+      return NextResponse.json(
+        { success: false, error: 'Maximum 50 images allowed per product.' },
+        { status: 400 }
+      );
+    }
+
+    if (Array.isArray(body.models) && body.models.length > 200) {
+      return NextResponse.json(
+        { success: false, error: 'Maximum 200 models/variants allowed per product.' },
+        { status: 400 }
+      );
+    }
+
     if (isDbConfigured()) {
       const product = await insertProductToDb(body, session.email);
       try {

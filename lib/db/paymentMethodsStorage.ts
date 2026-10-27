@@ -25,7 +25,10 @@ export function readPersistentPaymentConfig(): PersistentPaymentConfig {
       const parsed = JSON.parse(content);
       if (parsed && typeof parsed === 'object') {
         const methods = Array.isArray(parsed.methods) && parsed.methods.length > 0
-          ? parsed.methods
+          ? parsed.methods.map((pm: PaymentMethodConfig) => {
+              const seed = seedPaymentMethods.find((s) => s.id === pm.id);
+              return seed ? { ...seed, ...pm } : pm;
+            })
           : seedPaymentMethods;
         const security = parsed.security && typeof parsed.security === 'object'
           ? { ...seedPaymentSecuritySettings, ...parsed.security }

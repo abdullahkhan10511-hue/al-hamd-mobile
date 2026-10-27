@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Product, Category, ProductMediaItem, ProductModelVariant } from '@/types';
-import { Brand, ShopBill, ShopBillItem, Deal, DealProductItem, InventoryLog } from '@/types/admin';
+import { Brand, ShopBill, Deal, DealProductItem, InventoryLog } from '@/types/admin';
 import { seedProducts, seedBrands } from './seed';
 import { categories as initialCategories } from '@/data/categories';
 import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
@@ -379,7 +379,27 @@ export async function deleteDevProduct(id: string, adminEmail = 'admin@alhamd.co
 export function getDevBrands(activeOnly = false): Brand[] {
   assertDevOnly('getDevBrands');
   const brands = readJsonFile<Brand[]>(DEV_BRANDS_FILE, seedBrands);
-  return activeOnly ? brands.filter((b) => b.status === 'active') : brands;
+  const products = readJsonFile<any[]>(DEV_PRODUCTS_FILE, seedProducts);
+
+  const counts: Record<string, number> = {};
+  for (const p of products) {
+    if (p.status === 'archived' || p.status === 'inactive' || p.isActive === false) continue;
+    const bName = (p.brand || '').trim().toLowerCase();
+    const bSlug = (p.brandSlug || '').trim().toLowerCase();
+    const bId = (p.brandId || '').toString().trim().toLowerCase();
+    if (bName) counts[bName] = (counts[bName] || 0) + 1;
+    if (bSlug && bSlug !== bName) counts[bSlug] = (counts[bSlug] || 0) + 1;
+    if (bId) counts[bId] = (counts[bId] || 0) + 1;
+  }
+
+  const enriched = brands.map((b) => ({
+    ...b,
+    productCount: b.productCount !== undefined && b.productCount > 0
+      ? b.productCount
+      : (counts[b.name.toLowerCase().trim()] || counts[b.slug.toLowerCase().trim()] || 0),
+  }));
+
+  return activeOnly ? enriched.filter((b) => b.status === 'active') : enriched;
 }
 
 export function getDevBrandByIdOrSlug(idOrSlug: string): Brand | null {

@@ -319,11 +319,14 @@ export default function ThermalBillTemplate({
       </div>
 
       {/* Payment info - wraps properly without clipping long statuses */}
-      {toggles.showPaymentMethod && order.paymentMethod && (
+      {toggles.showPaymentMethod && (
         <div className="mt-2 pt-2 border-t border-dashed border-neutral-300 text-[10px] flex justify-between items-start gap-2">
           <span className="shrink-0">Payment:</span>
           <span className="font-bold uppercase text-right break-words min-w-0">
-            {order.paymentMethod} {order.paymentStatus ? `(${order.paymentStatus})` : ''}
+            {order.paymentMethod && order.paymentMethod.trim()
+              ? order.paymentMethod
+              : 'Not recorded'}
+            {order.paymentStatus ? ` [${order.paymentStatus}]` : ''}
           </span>
         </div>
       )}

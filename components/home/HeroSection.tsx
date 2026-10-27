@@ -1,29 +1,37 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Image from 'next/image';
 import { Volume2, VolumeX, ChevronDown } from 'lucide-react';
-import { getActiveHomepageVideos, syncHomepageVideosFromApi } from '@/lib/db/homepageVideos';
+import { seedHomepageVideos, syncHomepageVideosFromApi } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 
 export function HeroSection() {
-  // Safe SSR initialization - identical on server and client to avoid hydration mismatch
-  const [videos, setVideos] = useState<HomepageVideo[]>([]);
+  // Deterministic seed initialization matching server & client to avoid hydration mismatch
+  const [videos, setVideos] = useState<HomepageVideo[]>(() =>
+    seedHomepageVideos.filter((v) => {
+      const isActive =
+        v &&
+        (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
+        v.active !== false &&
+        (v.active as any) !== 0 &&
+        (v.active as any) !== '0';
+      return Boolean(isActive && v.url && v.url.trim());
+    })
+  );
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
-  const [canLoadVideo, setCanLoadVideo] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [isSlowConnection, setIsSlowConnection] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const failedVideoIdsRef = useRef<Set<string>>(new Set());
   const activeVideoIdRef = useRef<string | null>(null);
 
-  // Detect slow network or Data Saver mode to conserve bandwidth
+  // Detect slow cellular network or Data Saver mode to optimize preload
   useEffect(() => {
     if (typeof window !== 'undefined' && 'connection' in navigator) {
       const conn = (navigator as any).connection;
@@ -43,14 +51,14 @@ export function HeroSection() {
     }
   }, []);
 
-  // Check reduced-motion preference
+  // Detect reduced-motion preference
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && window.matchMedia) {
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
       setPrefersReducedMotion(mq.matches);
-      const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
-      mq.addEventListener('change', listener);
-      return () => mq.removeEventListener('change', listener);
+      const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+      mq.addEventListener?.('change', handler);
+      return () => mq.removeEventListener?.('change', handler);
     }
   }, []);
 
@@ -58,27 +66,10 @@ export function HeroSection() {
   useEffect(() => {
     let isMounted = true;
 
-    // Immediately restore cached local active videos after client mount
-    try {
-      const cached = getActiveHomepageVideos();
-      const valid = cached.filter((v) => {
-        const isActive =
-          v &&
-          (v.active === true || (v.active as any) === 1 || (v.active as any) === '1' || (v.active as any) === 'true') &&
-          v.active !== false &&
-          (v.active as any) !== 0 &&
-          (v.active as any) !== '0';
-        return Boolean(isActive && v.url && v.url.trim());
-      });
-      if (valid.length > 0 && isMounted) {
-        setVideos(valid);
-      }
-    } catch {}
-
     // Refresh authoritative active playlist from API
     syncHomepageVideosFromApi()
       .then((freshList) => {
-        if (isMounted) {
+        if (isMounted && Array.isArray(freshList) && freshList.length > 0) {
           setVideos(freshList);
         }
       })
@@ -106,7 +97,9 @@ export function HeroSection() {
             (a: HomepageVideo, b: HomepageVideo) =>
               ((a.displayOrder || 0) - (b.displayOrder || 0)) || (a.id || '').localeCompare(b.id || '')
           );
-        setVideos(valid);
+        if (valid.length > 0) {
+          setVideos(valid);
+        }
       }
     };
 
@@ -114,31 +107,6 @@ export function HeroSection() {
     return () => {
       isMounted = false;
       window.removeEventListener('alhamd:data-updated', handleUpdate);
-    };
-  }, []);
-
-  // CRITICAL: Defer video attachment until after initial page render and hydration.
-  useEffect(() => {
-    let idleId: number;
-    let timeoutId: NodeJS.Timeout;
-
-    const startLoading = () => {
-      setCanLoadVideo(true);
-    };
-
-    if (typeof window !== 'undefined') {
-      if ('requestIdleCallback' in window) {
-        idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts: { timeout: number }) => number }).requestIdleCallback(startLoading, { timeout: 600 });
-      } else {
-        timeoutId = setTimeout(startLoading, 200);
-      }
-    }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (idleId && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
-        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
-      }
     };
   }, []);
 
@@ -204,9 +172,9 @@ export function HeroSection() {
     }
 
     if (attempts >= videos.length) {
-      // All active videos have failed; fail quietly to solid black
       setHasError(true);
       setIsReady(false);
+      setHasStartedPlaying(false);
       return;
     }
 
@@ -217,8 +185,14 @@ export function HeroSection() {
 
   // Video error handling - safely attempts next eligible video without infinite loop
   const handleVideoError = useCallback(() => {
+    const video = videoRef.current;
+    // Ignore harmless aborts caused by source changing
+    if (video?.error?.code === 1 /* MEDIA_ERR_ABORTED */) {
+      return;
+    }
+
     if (!activeVideo) return;
-    console.warn(`Homepage video failed or aborted: ${activeVideo.url}`);
+    console.warn(`Homepage video playback error: ${activeVideo.url}`);
     failedVideoIdsRef.current.add(activeVideo.id);
 
     const remaining = videos.filter((v) => !failedVideoIdsRef.current.has(v.id));
@@ -227,47 +201,48 @@ export function HeroSection() {
     } else {
       setHasError(true);
       setIsReady(false);
+      setHasStartedPlaying(false);
     }
   }, [activeVideo, videos, advanceToNextVideo]);
 
-  // Watchdog fallback for hanging video requests
+  // Autoplay handler: muted autoplay begins immediately on page load
   useEffect(() => {
-    if (!canLoadVideo || isReady || hasStartedPlaying || !activeVideo) return;
+    const video = videoRef.current;
+    if (!video || !activeVideo?.url) return;
 
-    const timeout = setTimeout(() => {
-      if (!isReady && !hasStartedPlaying) {
-        console.warn(`Homepage video timed out waiting for media stream: ${activeVideo.url}`);
-        handleVideoError();
-      }
-    }, 12000);
+    // Strict browser autoplay policy requirements: must be muted and playsInline
+    video.muted = isMuted;
+    video.defaultMuted = true;
+    video.playsInline = true;
 
-    return () => clearTimeout(timeout);
-  }, [canLoadVideo, currentIndex, isReady, hasStartedPlaying, activeVideo, handleVideoError]);
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          // Playback initiated successfully; onPlaying event will reveal frames
+        })
+        .catch(() => {
+          // If browser restricted playback, ensure muted state and retry once
+          if (!video.muted) {
+            video.muted = true;
+            setIsMuted(true);
+            video
+              .play()
+              .then(() => {})
+              .catch(() => {
+                // Autoplay blocked by user-agent strict setting
+              });
+          }
+        });
+    }
+  }, [activeVideo?.url, isMuted]);
 
   // Media lifecycle events
-  const handleLoadStart = () => {
-    if (!hasStartedPlaying) {
-      setIsReady(false);
-    }
-  };
-
-  const handleLoadedData = () => {
-    setIsReady(true);
-  };
-
   const handleCanPlay = () => {
-    setIsReady(true);
     const video = videoRef.current;
     if (video && video.paused) {
       video.muted = isMuted;
-      video.play().catch(() => {
-        // Autoplay policy prevented immediate playback; try muted fallback
-        if (!video.muted) {
-          video.muted = true;
-          setIsMuted(true);
-          video.play().catch(() => {});
-        }
-      });
+      video.play().catch(() => {});
     }
   };
 
@@ -277,8 +252,12 @@ export function HeroSection() {
     setHasError(false);
   };
 
-  const handleWaiting = () => {};
-  const handleStalled = () => {};
+  const handleTimeUpdate = () => {
+    if (!hasStartedPlaying && videoRef.current && videoRef.current.currentTime > 0) {
+      setIsReady(true);
+      setHasStartedPlaying(true);
+    }
+  };
 
   // Video ended event: single video loops seamlessly, multiple videos advance
   const handleEnded = useCallback(() => {
@@ -292,45 +271,6 @@ export function HeroSection() {
     }
     advanceToNextVideo();
   }, [videos.length, advanceToNextVideo]);
-
-  // Autoplay attempt with resilient muted fallback
-  useEffect(() => {
-    if (!canLoadVideo) return;
-    const video = videoRef.current;
-    if (!video || !activeVideo?.url) return;
-
-    video.muted = isMuted;
-    setIsReady(false);
-    setHasStartedPlaying(false);
-
-    try {
-      video.load();
-    } catch {}
-
-    const playPromise = video.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          setIsReady(true);
-          setHasStartedPlaying(true);
-          setHasError(false);
-        })
-        .catch(() => {
-          // Autoplay restricted by browser; retry muted
-          if (!video.muted) {
-            video.muted = true;
-            setIsMuted(true);
-            video.play()
-              .then(() => {
-                setIsReady(true);
-                setHasStartedPlaying(true);
-                setHasError(false);
-              })
-              .catch(() => {});
-          }
-        });
-    }
-  }, [canLoadVideo, currentIndex, activeVideo?.url, isMuted]);
 
   // Toggle audio
   const toggleMute = () => {
@@ -348,6 +288,8 @@ export function HeroSection() {
     setHasStartedPlaying(false);
     setCurrentIndex(idx);
   };
+
+  const isVideoVisible = isReady && hasStartedPlaying;
 
   // If permanently errored or no active videos exist: solid clean black container
   if (!activeVideo || hasError || videos.length === 0) {
@@ -375,63 +317,49 @@ export function HeroSection() {
       aria-label="Homepage Hero Video"
     >
       {/*
-        Solid black backdrop:
-        Permanently present at z-0. Guarantees that the container is solid black
-        prior to video frame decoding, during buffering, or if media fails.
+        Pure solid black backdrop (#000000):
+        Permanently present at z-0. Guarantees that the hero video area is solid pure black (#000000)
+        on fresh load, page reload, slow network, video buffering, and switching between videos.
+        No default, fallback, previous-video, or unrelated video poster/thumbnail is displayed.
+        (activeVideo.thumbnailUrl is intentionally omitted to avoid picture flash).
       */}
       <div className="absolute inset-0 bg-black z-0" aria-hidden="true" />
 
-      {/* Lightweight poster image fallback on slow connections or prior to playback */}
-      {activeVideo.thumbnailUrl && (
-        <Image
-          src={activeVideo.thumbnailUrl}
-          alt={activeVideo.title || 'Homepage Hero'}
-          fill
-          priority
-          sizes="100vw"
-          className={`absolute inset-0 w-full h-full object-cover z-5 transition-opacity duration-700 ${
-            isReady ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
-        />
-      )}
-
       {/* 
         HTML5 Video Element:
-        - Non-blocking: 'src' is attached only after client hydration/idle queue.
-        - preload is "none" on slow/data-saver connections, "metadata" on standard.
-        - muted + playsInline conforms strictly with mobile autoplay standards.
-        - opacity-0 until first frame decoded, transitioning smoothly to opacity-100.
+        - autoPlay: Begins playback automatically upon page mount.
+        - muted + playsInline: Complies with browser autoplay security policies across iOS, Android & Desktop.
+        - preload: "none" on slow network, "metadata" on standard connection.
+        - Opacity transition: Stays completely invisible (opacity-0) until valid frames are actively playing.
+        - NO poster attribute to prevent any thumbnail or previous/unrelated media flash.
       */}
       <video
         ref={videoRef}
-        src={canLoadVideo ? activeVideo.url : undefined}
-        poster={activeVideo.thumbnailUrl || undefined}
-        autoPlay={!prefersReducedMotion}
-        muted={isMuted}
+        key={activeVideo.url}
+        src={activeVideo.url}
+        autoPlay
+        muted
         playsInline
         preload={isSlowConnection || prefersReducedMotion ? 'none' : 'metadata'}
-        onLoadStart={handleLoadStart}
-        onLoadedData={handleLoadedData}
+        loop={videos.length === 1}
         onCanPlay={handleCanPlay}
         onPlaying={handlePlaying}
-        onWaiting={handleWaiting}
-        onStalled={handleStalled}
+        onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
         onError={handleVideoError}
-        loop={videos.length === 1}
-        className={`absolute inset-0 w-full h-full object-cover z-10 transition-opacity ${
-          prefersReducedMotion ? 'duration-0' : 'duration-700'
-        } ease-out ${isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 w-full h-full object-cover z-10 transition-opacity duration-700 ease-out ${
+          isVideoVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
       />
 
       {/* Subtle bottom vignette to blend naturally into following sections */}
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-20" />
 
-      {/* Multiple Video Sequence Navigation Indicators - Fades in only once video is ready */}
+      {/* Multiple Video Sequence Navigation Indicators - Fades in only once video is playing */}
       {videos.length > 1 && (
         <div
           className={`absolute bottom-8 sm:bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-opacity duration-500 ${
-            isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            isVideoVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
           {videos.map((vid, idx) => {
@@ -454,10 +382,10 @@ export function HeroSection() {
         </div>
       )}
 
-      {/* Audio Mute/Unmute Toggle - Fades in only once video is ready */}
+      {/* Audio Mute/Unmute Toggle - Fades in only once video is playing */}
       <div
         className={`absolute bottom-3 sm:bottom-6 md:bottom-8 right-3 sm:right-6 md:right-10 z-30 transition-opacity duration-500 ${
-          isReady ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          isVideoVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
         <button

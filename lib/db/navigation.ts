@@ -30,26 +30,35 @@ function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
 }
 
 let inFlightNavigationPromise: Promise<NavigationItem[]> | null = null;
+let lastNavigationSyncTimestamp = 0;
+const NAVIGATION_SYNC_DEBOUNCE_MS = 60000; // 60s client-side sync debounce
 
-export async function syncNavigationFromApi(): Promise<NavigationItem[]> {
+export async function syncNavigationFromApi(forceFresh = false): Promise<NavigationItem[]> {
   if (typeof window === 'undefined') return getNavigation();
-  if (inFlightNavigationPromise) return inFlightNavigationPromise;
+  if (inFlightNavigationPromise && !forceFresh) return inFlightNavigationPromise;
+  if (!forceFresh && Date.now() - lastNavigationSyncTimestamp < NAVIGATION_SYNC_DEBOUNCE_MS) {
+    return getNavigation();
+  }
 
   inFlightNavigationPromise = (async () => {
     try {
-      const res = await fetch(`/api/navigation?t=${Date.now()}`, {
-        cache: 'no-store',
-      });
+      const url = forceFresh ? `/api/navigation?t=${Date.now()}` : '/api/navigation';
+      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.items)) {
           const normalized = normalizeNavigationList(data.items);
+          const current = getNavigation();
+          const hasChanged = JSON.stringify(current) !== JSON.stringify(normalized);
           await persistCollection(COLLECTION_KEY, normalized, true);
-          window.dispatchEvent(
-            new CustomEvent('alhamd:data-updated', {
-              detail: { key: COLLECTION_KEY, value: normalized },
-            })
-          );
+          lastNavigationSyncTimestamp = Date.now();
+          if (hasChanged) {
+            window.dispatchEvent(
+              new CustomEvent('alhamd:data-updated', {
+                detail: { key: COLLECTION_KEY, value: normalized },
+              })
+            );
+          }
           return normalized;
         }
       }
@@ -65,7 +74,18 @@ export async function syncNavigationFromApi(): Promise<NavigationItem[]> {
 }
 
 export function getNavigation(): NavigationItem[] {
-  const items = getStoredCollection(COLLECTION_KEY, seedNavigation);
+  let fallback = seedNavigation;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentNavigation } = require('./navigationStorage');
+      const saved = readPersistentNavigation();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
+  const items = getStoredCollection(COLLECTION_KEY, fallback);
   return normalizeNavigationList(items);
 }
 

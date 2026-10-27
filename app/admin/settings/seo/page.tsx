@@ -65,30 +65,6 @@ export default function AdminSeoSettingsPage() {
   const faviconInputRef = useRef<HTMLInputElement | null>(null);
   const ogInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load initial settings
-  useEffect(() => {
-    async function loadSettings() {
-      // 1. Instant local load
-      const initial = getStoreSettings();
-      populateForm(initial);
-      setSettings(initial);
-      setIsLoading(false);
-
-      // 2. Fresh server sync
-      try {
-        const fresh = await syncStoreSettingsFromApi();
-        if (fresh) {
-          populateForm(fresh);
-          setSettings(fresh);
-        }
-      } catch (err) {
-        console.warn('Failed to sync fresh store settings:', err);
-      }
-    }
-
-    loadSettings();
-  }, []);
-
   function populateForm(s: StoreSettings) {
     const rawSiteName = s.storeName || 'AL-HAMD SHOP';
     const rawWebsiteTitle = s.websiteTitle || s.seo?.websiteTitle || s.seo?.metaTitle || `${rawSiteName} | Mobile Accessories Pakistan`;
@@ -139,6 +115,31 @@ export default function AdminSeoSettingsPage() {
     setFaviconUrl(rawFavicon);
     setOgImageUrl(rawOg);
   }
+
+  // Load initial settings
+  useEffect(() => {
+    async function loadSettings() {
+      // 1. Instant local load
+      const initial = getStoreSettings();
+      populateForm(initial);
+      setSettings(initial);
+      setIsLoading(false);
+
+      // 2. Fresh server sync
+      try {
+        const fresh = await syncStoreSettingsFromApi();
+        if (fresh) {
+          populateForm(fresh);
+          setSettings(fresh);
+        }
+      } catch (err) {
+        console.warn('Failed to sync fresh store settings:', err);
+      }
+    }
+
+    loadSettings();
+  }, []);
+
 
   // Generic Media Upload Handler reusing existing persistent media storage
   const handleFileUpload = async (

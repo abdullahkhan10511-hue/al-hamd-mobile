@@ -46,9 +46,9 @@ export function getAdminAuthHeaders(operatorEmail?: string): HeadersInit {
 }
 
 // Initial pre-hashed fallback constants for instant synchronous boot
-const SEED_SALT = '1214d0aabfa8b4b1bab97d223ee04b6f';
+const SEED_SALT = 'f376c3cf528e527535b3d352ef6e49ce';
 // Salted SHA-256 Web Crypto hash for AlHamd@Admin2026!
-const SEED_HASH = 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e';
+const SEED_HASH = 'c420262734ea8537651c3e53b3a0708468d33b1cb4a4a6c24c3efbb6032313b1';
 
 export const INITIAL_SYSTEM_ROLES: StaffRole[] = [
   {
@@ -240,27 +240,10 @@ export function getStaffUsers(): StaffUser[] {
   const migrated = users.map((u) => {
     const userCopy = { ...u };
 
-    // Standardize primary Admin account (migrate existing admin@alhamd.com or staff-owner-1 in place without duplicating)
-    if (
-      userCopy.id === 'staff-owner-1' ||
-      userCopy.isOwner ||
-      userCopy.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      userCopy.email.toLowerCase() === 'admin@alhamd.com'
-    ) {
-      if (userCopy.email.toLowerCase() !== 'admin@alhamdmobile.com') {
-        userCopy.email = 'admin@alhamdmobile.com';
-        modified = true;
-      }
-      if (!userCopy.isOwner || (userCopy.role !== 'SUPER_ADMIN' && userCopy.role !== 'ADMIN')) {
-        userCopy.isOwner = true;
-        userCopy.role = 'ADMIN';
-        userCopy.permissions = [...ALL_PERMISSION_KEYS];
-        modified = true;
-      }
-      if (userCopy.status !== 'active') {
-        userCopy.status = 'active';
-        modified = true;
-      }
+    // Standardize default seed owner account without overwriting other admin accounts
+    if (userCopy.id === 'staff-owner-1' && userCopy.email.toLowerCase() === 'admin@alhamd.com') {
+      userCopy.email = 'admin@alhamdmobile.com';
+      modified = true;
     }
 
     // Ensure permissions array exists
@@ -420,7 +403,7 @@ export async function createStaffUser(
       data.avatar?.trim() ||
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
     status: data.status || 'active',
-    isOwner: false,
+    isOwner: Boolean((data as any).isOwner) || data.role === 'OWNER',
     salt,
     passwordHash,
     createdAt: new Date().toISOString(),
@@ -482,13 +465,42 @@ export async function updateStaffUser(
 
   const target = users[index];
 
-  // Protect Owner / Main Admin
-  if (target.isOwner || target.email.toLowerCase() === 'admin@alhamdmobile.com') {
-    if (updates.status === 'inactive') {
-      return { success: false, error: 'The primary Admin/Owner account cannot be deactivated.' };
-    }
-    if (updates.role && updates.role !== 'SUPER_ADMIN' && updates.role !== 'ADMIN') {
-      return { success: false, error: 'The primary Admin/Owner role cannot be changed.' };
+  // Protect currently logged-in account from self-deactivation
+  const normalizedOperator = (operatorEmail || '').trim().toLowerCase();
+  const isSelf =
+    normalizedOperator &&
+    (target.email.toLowerCase() === normalizedOperator || target.id === normalizedOperator);
+
+  if (updates.status === 'inactive' && isSelf) {
+    return { success: false, error: 'You cannot delete or deactivate the currently logged-in administrator.' };
+  }
+
+  // Protect last active administrator from being deactivated or downgraded
+  const isTargetAdmin =
+    target.isOwner ||
+    target.role === 'ADMIN' ||
+    target.role === 'SUPER_ADMIN' ||
+    target.role === 'OWNER';
+
+  if (isTargetAdmin) {
+    const activeAdmins = users.filter(
+      (u) =>
+        u.status === 'active' &&
+        (u.isOwner || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
+    );
+
+    if (activeAdmins.length <= 1) {
+      if (updates.status === 'inactive') {
+        return { success: false, error: 'Cannot deactivate the last remaining active administrator account.' };
+      }
+      if (
+        updates.role &&
+        updates.role !== 'SUPER_ADMIN' &&
+        updates.role !== 'ADMIN' &&
+        updates.role !== 'OWNER'
+      ) {
+        return { success: false, error: 'Cannot change the role of the last remaining active administrator.' };
+      }
     }
   }
 
@@ -681,8 +693,32 @@ export async function toggleStaffStatus(
     return { success: false, error: 'Staff account not found.' };
   }
 
-  if (target.isOwner || target.email.toLowerCase() === 'admin@alhamdmobile.com') {
-    return { success: false, error: 'The primary Admin/Owner cannot be deactivated.' };
+  // Protect currently logged-in account from self-deactivation
+  const normalizedOperator = (operatorEmail || '').trim().toLowerCase();
+  const isSelf =
+    normalizedOperator &&
+    (target.email.toLowerCase() === normalizedOperator || target.id === normalizedOperator);
+
+  if (target.status === 'active' && isSelf) {
+    return { success: false, error: 'You cannot delete or deactivate the currently logged-in administrator.' };
+  }
+
+  // Protect last active administrator from deactivation
+  const isTargetAdmin =
+    target.isOwner ||
+    target.role === 'ADMIN' ||
+    target.role === 'SUPER_ADMIN' ||
+    target.role === 'OWNER';
+
+  if (target.status === 'active' && isTargetAdmin) {
+    const activeAdmins = users.filter(
+      (u) =>
+        u.status === 'active' &&
+        (u.isOwner || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
+    );
+    if (activeAdmins.length <= 1) {
+      return { success: false, error: 'Cannot deactivate the last remaining active administrator account.' };
+    }
   }
 
   const newStatus = target.status === 'active' ? 'inactive' : 'active';
@@ -724,14 +760,62 @@ export async function deleteStaffUser(
     return { success: false, error: 'Staff account not found.' };
   }
 
-  if (target.isOwner || target.email.toLowerCase() === 'admin@alhamdmobile.com') {
-    return { success: false, error: 'The primary Admin/Owner account cannot be deleted.' };
+  // Prevent self-deletion
+  const normalizedOperator = (operatorEmail || '').trim().toLowerCase();
+  const isSelf =
+    normalizedOperator &&
+    (target.email.toLowerCase() === normalizedOperator || target.id === normalizedOperator);
+
+  if (isSelf) {
+    return { success: false, error: 'You cannot delete or deactivate the currently logged-in administrator.' };
   }
 
-  // Prevent deleting the last super admin
-  const superAdmins = users.filter((u) => (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') && u.status === 'active');
-  if ((target.role === 'SUPER_ADMIN' || target.role === 'ADMIN') && superAdmins.length <= 1) {
-    return { success: false, error: 'Cannot delete the last remaining active administrator account.' };
+  const isTargetOwner =
+    Boolean(target.isOwner) || target.role === 'OWNER' || target.id === 'staff-owner-1';
+
+  const isTargetSuperAdmin =
+    isTargetOwner || target.role === 'SUPER_ADMIN';
+
+  const operatorUser = users.find(
+    (u) => u.email.toLowerCase() === normalizedOperator || u.id === normalizedOperator
+  );
+  const isOperatorSuperAdmin = operatorUser
+    ? Boolean(operatorUser.isOwner) || operatorUser.role === 'SUPER_ADMIN' || operatorUser.role === 'OWNER'
+    : true; // If operatorUser is not in local storage collection, server API enforces check
+
+  if (isTargetSuperAdmin && !isOperatorSuperAdmin) {
+    return { success: false, error: 'Forbidden: Only a Super Admin has permission to delete the Owner account.' };
+  }
+
+  // Prevent deleting the last remaining active administrator
+  const isTargetAdmin =
+    isTargetOwner ||
+    target.role === 'ADMIN' ||
+    target.role === 'SUPER_ADMIN';
+
+  if (isTargetAdmin) {
+    const activeAdmins = users.filter(
+      (u) =>
+        u.status === 'active' &&
+        (u.isOwner || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'OWNER')
+    );
+    if (activeAdmins.length <= 1) {
+      return { success: false, error: 'Cannot delete the last remaining active administrator account.' };
+    }
+  }
+
+  // Never leave the system without a usable Super Admin account
+  if (isTargetOwner || target.role === 'SUPER_ADMIN') {
+    const remainingSuperAdmins = users.filter(
+      (u) =>
+        u.id !== target.id &&
+        u.email.toLowerCase() !== target.email.toLowerCase() &&
+        u.status === 'active' &&
+        (Boolean(u.isOwner) || u.role === 'SUPER_ADMIN')
+    );
+    if (remainingSuperAdmins.length === 0) {
+      return { success: false, error: 'Cannot delete the last remaining active Super Admin account.' };
+    }
   }
 
   const filtered = users.filter((u) => u.id !== target.id && u.email.toLowerCase() !== target.email.toLowerCase());

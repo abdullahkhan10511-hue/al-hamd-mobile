@@ -10,82 +10,28 @@ import { getServerStaffByEmailSync } from '@/lib/db/staff-server';
 import { ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
+import { getAdminSession } from '@/lib/db/adminAuth';
 
 function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string }) | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
+  const session = getAdminSession(request);
+  if (!session || !session.email) return null;
 
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email) {
-          const fresh = getServerStaffByEmailSync(parsed.email);
-          if (fresh && fresh.status !== 'inactive') {
-            return fresh;
-          } else if (fresh && fresh.status === 'inactive') {
-            return null;
-          }
-          if (parsed.status !== 'inactive') {
-            return parsed;
-          }
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
+  const fresh = getServerStaffByEmailSync(session.email);
+  if (fresh) {
+    if (fresh.status === 'inactive') return null;
+    return fresh;
   }
 
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    let emailToFind = '';
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) {
-        emailToFind = parsed.email;
-      }
-    } catch {
-      try {
-        const parsed = JSON.parse(token);
-        if (parsed && parsed.email) {
-          emailToFind = parsed.email;
-        }
-      } catch {
-        if (token.includes('@')) {
-          emailToFind = token;
-        }
-      }
-    }
-
-    if (emailToFind) {
-      const fresh = getServerStaffByEmailSync(emailToFind);
-      if (fresh) {
-        if (fresh.status === 'inactive') return null;
-        return fresh;
-      }
-      return {
-        id: 'admin-fallback',
-        name: 'Administrator',
-        email: emailToFind,
-        role: 'ADMIN',
-        status: 'active',
-        isOwner: emailToFind.toLowerCase() === 'admin@alhamdmobile.com',
-        permissions: [...ALL_PERMISSION_KEYS],
-        createdAt: new Date().toISOString(),
-      } as any;
-    }
-  }
-
-  return null;
+  return {
+    id: session.id || 'admin-root',
+    name: session.name || 'Administrator',
+    email: session.email,
+    role: session.role || 'ADMIN',
+    status: 'active',
+    isOwner: Boolean(session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'),
+    permissions: Array.isArray(session.permissions) ? session.permissions : [...ALL_PERMISSION_KEYS],
+    createdAt: new Date().toISOString(),
+  } as any;
 }
 
 function verifyWholesaleAccess(user: StaffUser | null): boolean {

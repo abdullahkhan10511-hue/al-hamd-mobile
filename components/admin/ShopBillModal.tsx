@@ -9,8 +9,6 @@ import {
   Store,
   CheckCircle2,
   Clock,
-  XCircle,
-  Package,
 } from 'lucide-react';
 import { getBillSettings } from '@/lib/db/billSettings';
 import { printBillElement } from '@/lib/utils/printBill';

@@ -40,6 +40,7 @@ import {
   Phone,
   User,
   Eye,
+  EyeOff,
   RefreshCw,
   Check,
   Layers,
@@ -48,13 +49,23 @@ import {
   MoreVertical,
   Sliders,
   Info,
+  Clock,
+  Ban,
+  Loader2,
 } from 'lucide-react';
 
 export default function StaffManagementPage() {
   const { admin: currentAdmin, isSuperAdmin, hasPermission } = useAdminAuth();
 
-  // Active Tab: 'staff' | 'roles'
-  const [activeTab, setActiveTab] = useState<'staff' | 'roles'>('staff');
+  // Active Tab: 'staff' | 'roles' | 'resets'
+  const [activeTab, setActiveTab] = useState<'staff' | 'roles' | 'resets'>('staff');
+
+  // Password Reset Requests State
+  const [resetRequests, setResetRequests] = useState<any[]>([]);
+  const [isResetRequestsLoading, setIsResetRequestsLoading] = useState(false);
+  const [resetFilter, setResetFilter] = useState<'all' | 'pending' | 'used' | 'expired'>('all');
+  const [resetSearch, setResetSearch] = useState('');
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   // Data state
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
@@ -136,6 +147,52 @@ export default function StaffManagementPage() {
     setTimeout(() => setStatusFeedback(null), 4000);
   };
 
+  const loadResetRequests = React.useCallback(async () => {
+    setIsResetRequestsLoading(true);
+    try {
+      const res = await fetch('/api/admin/password-resets', {
+        headers: getAdminAuthHeaders(currentAdmin?.email),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResetRequests(data.requests || []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch password reset requests:', err);
+    } finally {
+      setIsResetRequestsLoading(false);
+    }
+  }, [currentAdmin?.email]);
+
+  useEffect(() => {
+    if (activeTab === 'resets') {
+      loadResetRequests();
+    }
+  }, [activeTab, loadResetRequests]);
+
+  const handleRevokeToken = async (id: string) => {
+    setRevokingId(id);
+    try {
+      const res = await fetch(`/api/admin/password-resets/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST',
+        headers: getAdminAuthHeaders(currentAdmin?.email),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification('success', 'Password reset link has been revoked.');
+        loadResetRequests();
+      } else {
+        showNotification('error', data.error || 'Failed to revoke reset link.');
+      }
+    } catch {
+      showNotification('error', 'Network error revoking reset link.');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
   // Staff Counts per Role
   const staffCountsByRole = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -171,15 +228,35 @@ export default function StaffManagementPage() {
   const isCurrentLoggedInAdmin = (staff: StaffUser) => {
     if (!currentAdmin) return false;
     return (
-      staff.id === currentAdmin.id ||
-      staff.email.toLowerCase() === currentAdmin.email.toLowerCase() ||
-      Boolean(staff.isOwner)
+      (currentAdmin.id && staff.id === currentAdmin.id) ||
+      (currentAdmin.email && staff.email.toLowerCase() === currentAdmin.email.toLowerCase())
     );
+  };
+
+  const activeAdminCount = useMemo(() => {
+    return staffList.filter(
+      (s) =>
+        (s.role === 'ADMIN' || s.role === 'SUPER_ADMIN' || s.role === 'OWNER' || s.isOwner) &&
+        s.status === 'active'
+    ).length;
+  }, [staffList]);
+
+  const isLastActiveAdmin = (staff: StaffUser) => {
+    const isAdmin =
+      staff.role === 'ADMIN' ||
+      staff.role === 'SUPER_ADMIN' ||
+      staff.role === 'OWNER' ||
+      staff.isOwner;
+    return Boolean(isAdmin && staff.status === 'active' && activeAdminCount <= 1);
   };
 
   const handleDeactivate = async (staff: StaffUser) => {
     if (isCurrentLoggedInAdmin(staff)) {
       showNotification('error', 'You cannot delete or deactivate the currently logged-in administrator.');
+      return;
+    }
+    if (isLastActiveAdmin(staff)) {
+      showNotification('error', 'Cannot delete or deactivate the last remaining active administrator account.');
       return;
     }
     const res = await updateStaffUser(staff.id, { status: 'inactive' }, currentAdmin?.email);
@@ -206,6 +283,16 @@ export default function StaffManagementPage() {
       showNotification('error', 'You cannot delete or deactivate the currently logged-in administrator.');
       return;
     }
+    const isTargetOwner = Boolean(staff.isOwner || staff.role === 'OWNER');
+    const isCurrentSuperAdmin = Boolean(currentAdmin?.isOwner || currentAdmin?.role === 'SUPER_ADMIN');
+    if (isTargetOwner && !isCurrentSuperAdmin) {
+      showNotification('error', 'Only a Super Admin has permission to delete the Owner account.');
+      return;
+    }
+    if (isLastActiveAdmin(staff)) {
+      showNotification('error', 'Cannot delete or deactivate the last remaining active administrator account.');
+      return;
+    }
     setDeleteStaffTarget(staff);
     setDeleteStaffOpen(true);
   };
@@ -213,6 +300,10 @@ export default function StaffManagementPage() {
   const handleToggleStatus = async (staff: StaffUser) => {
     if (isCurrentLoggedInAdmin(staff)) {
       showNotification('error', 'You cannot delete or deactivate the currently logged-in administrator.');
+      return;
+    }
+    if (staff.status === 'active' && isLastActiveAdmin(staff)) {
+      showNotification('error', 'Cannot delete or deactivate the last remaining active administrator account.');
       return;
     }
     if (staff.status === 'active') {
@@ -226,6 +317,20 @@ export default function StaffManagementPage() {
     if (!deleteStaffTarget) return;
     if (isCurrentLoggedInAdmin(deleteStaffTarget)) {
       showNotification('error', 'You cannot delete or deactivate the currently logged-in administrator.');
+      setDeleteStaffOpen(false);
+      setDeleteStaffTarget(null);
+      return;
+    }
+    const isTargetOwner = Boolean(deleteStaffTarget.isOwner || deleteStaffTarget.role === 'OWNER');
+    const isCurrentSuperAdmin = Boolean(currentAdmin?.isOwner || currentAdmin?.role === 'SUPER_ADMIN');
+    if (isTargetOwner && !isCurrentSuperAdmin) {
+      showNotification('error', 'Only a Super Admin has permission to delete the Owner account.');
+      setDeleteStaffOpen(false);
+      setDeleteStaffTarget(null);
+      return;
+    }
+    if (isLastActiveAdmin(deleteStaffTarget)) {
+      showNotification('error', 'Cannot delete or deactivate the last remaining active administrator account.');
       setDeleteStaffOpen(false);
       setDeleteStaffTarget(null);
       return;
@@ -339,6 +444,23 @@ export default function StaffManagementPage() {
           <Shield className="w-4 h-4" />
           <span>Roles &amp; Permissions ({roleList.length})</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('resets')}
+          className={`pb-3 border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === 'resets'
+              ? 'border-neutral-900 text-neutral-950 font-bold'
+              : 'border-transparent text-neutral-400 hover:text-neutral-700'
+          }`}
+        >
+          <Key className="w-4 h-4" />
+          <span>Password Resets</span>
+          {resetRequests.filter((r) => !r.isUsed && !r.isExpired).length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-500 text-neutral-950 font-extrabold">
+              {resetRequests.filter((r) => !r.isUsed && !r.isExpired).length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ========================================================================= */}
@@ -423,8 +545,11 @@ export default function StaffManagementPage() {
                     </tr>
                   ) : (
                     filteredStaff.map((staff) => {
-                      const isOwner = staff.isOwner;
+                      const isOwner = Boolean(staff.isOwner || staff.role === 'OWNER');
                       const isSelf = isCurrentLoggedInAdmin(staff);
+                      const isLastAdmin = isLastActiveAdmin(staff);
+                      const isCurrentSuperAdmin = Boolean(currentAdmin?.isOwner || currentAdmin?.role === 'SUPER_ADMIN');
+                      const deleteBlocked = isSelf || isLastAdmin || (isOwner && !isCurrentSuperAdmin);
 
                       return (
                         <tr key={staff.id} className="hover:bg-neutral-50/60 transition-colors">
@@ -498,21 +623,21 @@ export default function StaffManagementPage() {
                           <td className="py-3.5 px-4">
                             <button
                               onClick={() => handleToggleStatus(staff)}
-                              disabled={isOwner || isSelf}
+                              disabled={isSelf || (staff.status === 'active' && isLastAdmin)}
                               className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
                                 staff.status === 'active'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                   : 'bg-rose-50 text-rose-700 border border-rose-200'
                               } ${
-                                isOwner || isSelf
+                                isSelf || (staff.status === 'active' && isLastAdmin)
                                   ? 'cursor-default opacity-80'
                                   : 'cursor-pointer hover:opacity-80'
                               }`}
                               title={
-                                isOwner
-                                  ? 'Primary Owner cannot be deactivated'
-                                  : isSelf
+                                isSelf
                                   ? 'Cannot deactivate your own logged-in account'
+                                  : staff.status === 'active' && isLastAdmin
+                                  ? 'Cannot deactivate the last remaining active administrator account'
                                   : 'Click to toggle Active / Inactive'
                               }
                             >
@@ -550,15 +675,17 @@ export default function StaffManagementPage() {
                               {staff.status === 'active' ? (
                                 <button
                                   onClick={() => handleDeactivate(staff)}
-                                  disabled={isSelf}
+                                  disabled={isSelf || isLastAdmin}
                                   className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors ${
-                                    isSelf
+                                    isSelf || isLastAdmin
                                       ? 'opacity-40 cursor-not-allowed bg-amber-50 text-amber-700 border border-amber-200'
                                       : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 cursor-pointer'
                                   }`}
                                   title={
                                     isSelf
                                       ? 'You cannot delete or deactivate the currently logged-in administrator.'
+                                      : isLastAdmin
+                                      ? 'Cannot deactivate the last remaining active administrator account.'
                                       : 'Deactivate this staff member'
                                   }
                                 >
@@ -579,15 +706,21 @@ export default function StaffManagementPage() {
                               {/* Delete Staff (Available on both active and inactive accounts) */}
                               <button
                                 onClick={() => handleDeleteClick(staff)}
-                                disabled={isSelf}
+                                disabled={deleteBlocked}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors ${
-                                  isSelf
+                                  deleteBlocked
                                     ? 'opacity-40 cursor-not-allowed bg-rose-50 text-rose-500 border border-rose-200'
                                     : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer'
                                 }`}
                                 title={
                                   isSelf
                                     ? 'You cannot delete or deactivate the currently logged-in administrator.'
+                                    : isLastAdmin
+                                    ? 'Cannot delete the last remaining active administrator account.'
+                                    : isOwner && !isCurrentSuperAdmin
+                                    ? 'Only a Super Admin has permission to delete the Owner account.'
+                                    : isOwner
+                                    ? 'Delete Owner Account permanently'
                                     : 'Delete this staff member permanently'
                                 }
                               >
@@ -755,6 +888,168 @@ export default function StaffManagementPage() {
       )}
 
       {/* ========================================================================= */}
+      {/* TAB 3: PASSWORD RESET REQUESTS & RECOVERY MONITOR                          */}
+      {/* ========================================================================= */}
+      {activeTab === 'resets' && (
+        <div className="space-y-4">
+          {/* Information & Security Banner */}
+          <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 text-white flex items-start gap-3 shadow-sm">
+            <Key className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-bold text-white">Cryptographic Password Reset Architecture</p>
+              <p className="text-neutral-400 leading-relaxed">
+                Reset links are single-use and expire within 60 minutes. Only cryptographic SHA-256 hashes of reset tokens are stored in the database. Raw tokens and user passwords are never stored in plain text or visible to administrators.
+              </p>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative flex-1 md:w-72">
+                <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={resetSearch}
+                  onChange={(e) => setResetSearch(e.target.value)}
+                  placeholder="Filter by email or IP..."
+                  className="w-full pl-9 pr-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-900 focus:outline-none focus:border-neutral-900"
+                />
+              </div>
+
+              <select
+                value={resetFilter}
+                onChange={(e) => setResetFilter(e.target.value as typeof resetFilter)}
+                className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-medium text-neutral-800 cursor-pointer focus:outline-none"
+              >
+                <option value="all">All Requests</option>
+                <option value="pending">Active / Pending Only</option>
+                <option value="used">Used Only</option>
+                <option value="expired">Expired Only</option>
+              </select>
+            </div>
+
+            <button
+              onClick={loadResetRequests}
+              disabled={isResetRequestsLoading}
+              className="px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs uppercase tracking-wider transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 self-end md:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isResetRequestsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh Log</span>
+            </button>
+          </div>
+
+          {/* Requests Table */}
+          <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-neutral-200 bg-neutral-50/80 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
+                    <th className="py-3 px-4">Account (Masked)</th>
+                    <th className="py-3 px-4">Portal / Type</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Requested At</th>
+                    <th className="py-3 px-4">Expires At</th>
+                    <th className="py-3 px-4">IP Address</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 text-xs">
+                  {resetRequests
+                    .filter((r) => {
+                      if (resetFilter === 'pending') return !r.isUsed && !r.isExpired;
+                      if (resetFilter === 'used') return r.isUsed;
+                      if (resetFilter === 'expired') return r.isExpired;
+                      return true;
+                    })
+                    .filter((r) => {
+                      if (!resetSearch.trim()) return true;
+                      const q = resetSearch.toLowerCase().trim();
+                      return r.maskedEmail?.toLowerCase().includes(q) || r.ipAddress?.includes(q);
+                    })
+                    .map((item) => {
+                      const isActive = !item.isUsed && !item.isExpired;
+                      return (
+                        <tr key={item.id} className="hover:bg-neutral-50/60 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-neutral-900 whitespace-nowrap">
+                            {item.maskedEmail}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                item.userType === 'staff'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                  : 'bg-neutral-100 text-neutral-800 border border-neutral-200'
+                              }`}
+                            >
+                              {item.userType === 'staff' ? 'Staff / Admin' : 'Customer'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {item.isUsed ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Used</span>
+                              </span>
+                            ) : item.isExpired ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-100 text-neutral-600 border border-neutral-200">
+                                <Clock className="w-3 h-3" />
+                                <span>Expired</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 animate-pulse">
+                                <Key className="w-3 h-3 text-amber-600" />
+                                <span>Active Link</span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-neutral-600 whitespace-nowrap font-mono text-[11px]">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-neutral-600 whitespace-nowrap font-mono text-[11px]">
+                            {new Date(item.expiresAt).toLocaleTimeString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-neutral-500 whitespace-nowrap font-mono text-[11px]">
+                            {item.ipAddress || 'Internal'}
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            {isActive ? (
+                              <button
+                                onClick={() => handleRevokeToken(item.id)}
+                                disabled={revokingId === item.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                title="Revoke this active reset link immediately"
+                              >
+                                {revokingId === item.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Ban className="w-3 h-3" />
+                                )}
+                                <span>Revoke Link</span>
+                              </button>
+                            ) : (
+                              <span className="text-neutral-400 text-[11px] italic">Inactivated</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                  {resetRequests.length === 0 && !isResetRequestsLoading && (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-neutral-400 text-xs">
+                        No password reset requests recorded yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* MODAL: ADD STAFF ACCOUNT                                                  */}
       {/* ========================================================================= */}
       {addStaffOpen && (
@@ -846,15 +1141,36 @@ export default function StaffManagementPage() {
       {deleteStaffOpen && deleteStaffTarget && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-neutral-200">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+              Boolean(deleteStaffTarget.isOwner || deleteStaffTarget.role === 'OWNER')
+                ? 'bg-amber-50 border border-amber-200 text-amber-600'
+                : 'bg-rose-50 border border-rose-100 text-rose-600'
+            }`}>
               <Trash2 className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-neutral-900">Delete this staff member permanently?</h3>
+              <h3 className="text-base font-bold text-neutral-900">
+                {Boolean(deleteStaffTarget.isOwner || deleteStaffTarget.role === 'OWNER')
+                  ? 'Delete Store Owner Account Permanently?'
+                  : 'Delete this staff member permanently?'}
+              </h3>
               <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
                 Are you sure you want to permanently remove this staff account for{' '}
                 <strong className="text-neutral-900">{deleteStaffTarget.name}</strong> ({deleteStaffTarget.email})?
               </p>
+
+              {Boolean(deleteStaffTarget.isOwner || deleteStaffTarget.role === 'OWNER') && (
+                <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>CRITICAL WARNING: Store Owner Account</span>
+                  </div>
+                  <p className="text-amber-800 leading-relaxed">
+                    You are deleting the store Owner account. As an authorized Super Admin, you are permitted to perform this action. Active sessions will be terminated immediately and this cannot be undone.
+                  </p>
+                </div>
+              )}
+
               <div className="mt-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 text-[11px] text-neutral-600 space-y-1">
                 <div>• Their credentials and active sessions will be invalidated immediately.</div>
                 <div>• Historical orders, POS sales, and inventory logs will be preserved.</div>
@@ -966,6 +1282,8 @@ function AddStaffModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [phone, setPhone] = useState('');
   const [avatar, setAvatar] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
@@ -1005,6 +1323,18 @@ function AddStaffModal({
     e.preventDefault();
     setErrorMessage('');
 
+    if (!name.trim() || name.trim().length < 2) {
+      setErrorMessage('Full name is required (minimum 2 characters).');
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+      setErrorMessage('A valid email address is required (e.g. user@example.com).');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
       return;
@@ -1019,11 +1349,11 @@ function AddStaffModal({
     try {
       const res = await createStaffUser(
         {
-          name,
-          email,
+          name: name.trim(),
+          email: normalizedEmail,
           password,
-          phone,
-          avatar,
+          phone: phone.trim(),
+          avatar: avatar.trim(),
           status,
           role: selectedRole,
           permissions,
@@ -1105,28 +1435,46 @@ function AddStaffModal({
                 <label className="block font-semibold text-neutral-700 mb-1">
                   Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-3 pr-9 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="block font-semibold text-neutral-700 mb-1">
                   Confirm Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-3 pr-9 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -1306,8 +1654,7 @@ function EditStaffModal({
   const isSelf = Boolean(
     currentAdmin &&
       (staff.id === currentAdmin.id ||
-        staff.email.toLowerCase() === currentAdmin.email.toLowerCase() ||
-        staff.isOwner)
+        staff.email.toLowerCase() === currentAdmin.email.toLowerCase())
   );
   const [name, setName] = useState(staff.name);
   const [email, setEmail] = useState(staff.email);
@@ -1322,6 +1669,18 @@ function EditStaffModal({
     e.preventDefault();
     setErrorMessage('');
 
+    if (!name.trim() || name.trim().length < 2) {
+      setErrorMessage('Full name is required (minimum 2 characters).');
+      return;
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      setErrorMessage('A valid email address is required.');
+      return;
+    }
+
     if (isSelf && status === 'inactive') {
       setErrorMessage('You cannot delete or deactivate the currently logged-in administrator.');
       return;
@@ -1332,10 +1691,10 @@ function EditStaffModal({
     const res = await updateStaffUser(
       staff.id,
       {
-        name,
-        email,
-        phone,
-        avatar,
+        name: name.trim(),
+        email: trimmedEmail,
+        phone: phone.trim(),
+        avatar: avatar.trim(),
         status: isSelf ? 'active' : status,
         role: isSelf ? staff.role : role,
       },
@@ -1622,6 +1981,8 @@ function ResetPasswordModal({
   const { admin: currentAdmin } = useAdminAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -1678,26 +2039,44 @@ function ResetPasswordModal({
 
           <div>
             <label className="block font-semibold text-neutral-700 mb-1">New Password</label>
-            <input
-              type="password"
-              required
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:border-neutral-900"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-3 pr-9 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:border-neutral-900"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="block font-semibold text-neutral-700 mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:border-neutral-900"
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-3 pr-9 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 focus:outline-none focus:border-neutral-900"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-3 border-t border-neutral-200 flex justify-end gap-2">

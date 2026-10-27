@@ -12,9 +12,11 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     name: 'Cash on Delivery',
     type: 'cod',
     enabled: true,
+    badgeText: 'COD',
     description: 'Pay cash when your order is delivered.',
     instructions:
       'Pay cash to our courier delivery rider upon arrival of your parcel. Please keep the exact amount ready to avoid delays.',
+    detailsHeading: 'Payment Details: Cash on Delivery',
     displayOrder: 1,
     requiresReference: false,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -25,9 +27,14 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     name: 'Credit / Debit Card',
     type: 'card',
     enabled: true,
+    badgeText: 'VISA / MC',
     description: 'Pay securely with Visa, Mastercard, or PayPak.',
     instructions:
       'Online card payments are processed via 3D Secure 2.0 banking gateways. Card processing is currently undergoing banking PCI-DSS certification — please choose Cash on Delivery, Easypaisa, or JazzCash for immediate order dispatch.',
+    detailsHeading: 'Payment Details: Credit / Debit Card',
+    warningHeading: 'Card Gateway Under Banking Certification',
+    warningMessage:
+      'Direct credit/debit card processing is currently undergoing banking PCI-DSS integration with State Bank of Pakistan compliant gateways. To place your order immediately, please select Cash on Delivery, Easypaisa, or JazzCash.',
     displayOrder: 2,
     requiresReference: false,
     isConfigured: false,
@@ -39,13 +46,28 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     name: 'Easypaisa',
     type: 'wallet',
     enabled: true,
+    badgeText: 'EP',
     description: 'Instant transfer via Easypaisa Mobile App or *786#.',
     instructions:
       '1. Open your Easypaisa app or dial *786#.\n2. Transfer the exact order amount to our official merchant account.\n3. Enter your Order ID in the transfer remarks/reference.\n4. Enter the 11-digit Transaction ID (TID) received via SMS below for verification.',
+    detailsHeading: 'Payment Details: Easypaisa',
+    accountSectionHeading: 'Official Payment Account',
+    accountNameLabel: 'Account / Business Name',
+    accountNumberLabel: 'Official Payment Number / ID',
+    accountHelpText:
+      '💡 Please include your customer contact number or upcoming Order ID in the payment message so our accounts team can verify immediately.',
     merchantName: 'AL-HAMD-MOBILE OFFICIAL',
     merchantIdentifier: '0300-1234567',
     displayOrder: 3,
     requiresReference: true,
+    referenceLabel: 'Payment Reference / Transaction ID (TID) *',
+    referencePlaceholder: 'e.g. TID: 109823019 (11 digits)',
+    referenceHelpText:
+      'After sending payment from your mobile wallet, paste the reference ID from your SMS above.',
+    minReferenceLength: 11,
+    maxReferenceLength: 11,
+    referenceValidationMessage:
+      'Please enter a valid 11-digit Easypaisa Transaction ID (TID).',
     referenceFormat: '11-digit TID (e.g. 10982736451)',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -55,13 +77,28 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     name: 'JazzCash',
     type: 'wallet',
     enabled: true,
+    badgeText: 'JC',
     description: 'Instant transfer via JazzCash Mobile App or *786#.',
     instructions:
       '1. Open your JazzCash app or dial *786#.\n2. Transfer the exact order amount to our official JazzCash account.\n3. Mention your Order ID in the reference field.\n4. Enter the Transaction ID (TID) received from 8558 below for verification.',
+    detailsHeading: 'Payment Details: JazzCash',
+    accountSectionHeading: 'Official Payment Account',
+    accountNameLabel: 'Account / Business Name',
+    accountNumberLabel: 'Official Payment Number / ID',
+    accountHelpText:
+      '💡 Please include your customer contact number or upcoming Order ID in the payment message so our accounts team can verify immediately.',
     merchantName: 'AL-HAMD-MOBILE OFFICIAL',
     merchantIdentifier: '0321-7654321',
     displayOrder: 4,
     requiresReference: true,
+    referenceLabel: 'Payment Reference / Transaction ID (TID) *',
+    referencePlaceholder: 'e.g. TID: 984512340192 (12 digits)',
+    referenceHelpText:
+      'After sending payment from your mobile wallet, paste the reference ID from your SMS above.',
+    minReferenceLength: 12,
+    maxReferenceLength: 12,
+    referenceValidationMessage:
+      'Please enter a valid 12-digit JazzCash Transaction ID (TID).',
     referenceFormat: '12-digit TID (e.g. 984512340192)',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -69,11 +106,26 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
 ];
 
 export const seedPaymentSecuritySettings: PaymentSecuritySettings = {
+  sectionHeading: '4. Choose Payment Method',
+  securitySubheading: '100% Secure Checkout',
+  generalInstructions:
+    'Select your preferred payment method below. All transactions are monitored and encrypted.',
   securityNotice:
     'Only make payments using the official payment details shown on this website. We will never ask you to send money to a personal account or share your password, OTP, PIN, CVV or full card details.',
   processingMessage:
     'Orders paid via Easypaisa or JazzCash are placed on hold ("Awaiting Verification") until our accounts department confirms receipt of the Transaction ID.',
   manualVerificationEnabled: true,
+  customInfoBlocks: [
+    {
+      id: 'block-tamper-proof',
+      title: 'Discreet & Secure Parcel Handling',
+      content:
+        'Every package is sealed with tamper-evident tape and tracked throughout courier transit across Pakistan.',
+      type: 'tip',
+      enabled: true,
+      displayOrder: 1,
+    },
+  ],
 };
 
 let inFlightPaymentPromise: Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> | null = null;
@@ -271,4 +323,24 @@ export async function resetPaymentMethodsToDefault(
   });
 
   return seedPaymentMethods;
+}
+
+export async function saveCompletePaymentConfig(
+  methods: PaymentMethodConfig[],
+  security: PaymentSecuritySettings,
+  adminEmail = 'admin@alhamd.com'
+): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
+  const sortedMethods = [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  await persistCollection(METHODS_KEY, sortedMethods);
+  setLocal(SECURITY_KEY, security);
+  await savePaymentConfigToServer({ methods: sortedMethods, security }, adminEmail);
+
+  await logActivity({
+    adminEmail,
+    action: 'Saved Complete Payment Configuration',
+    target: 'Checkout Payment CMS',
+    details: `Updated payment settings and ${sortedMethods.length} methods globally`,
+  });
+
+  return { methods: sortedMethods, security };
 }

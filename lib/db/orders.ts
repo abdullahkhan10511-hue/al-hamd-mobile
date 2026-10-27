@@ -44,7 +44,14 @@ export async function syncOrdersFromApi(adminEmail?: string): Promise<Order[]> {
 
 export function getOrders(): Order[] {
   const fallback = allowDevMockFallback() ? seedOrders : [];
-  return getStoredCollection(COLLECTION_KEY, fallback);
+  const list = getStoredCollection<Order>(COLLECTION_KEY, fallback);
+  return list.map((o) => ({
+    ...o,
+    paymentMethod:
+      o.paymentMethod && typeof o.paymentMethod === 'string' && o.paymentMethod.trim()
+        ? o.paymentMethod.trim()
+        : 'Not recorded',
+  }));
 }
 
 export function getOrderById(id: string): Order | undefined {
@@ -173,30 +180,12 @@ export async function createOrder(
       const lineTotal = dealUnitPrice * item.quantity;
       calculatedSubtotal += lineTotal;
 
-      // Validate Shop Stock for every bundled product
+      // Validate bundled products reference for fulfillment
       if (Array.isArray(item.dealProducts) && item.dealProducts.length > 0) {
         for (const dp of item.dealProducts) {
           const liveProduct = getProductById(dp.productId);
-          let currentShopStock = dp.shopStock ?? 0;
-
-          if (liveProduct) {
-            if (dp.modelId && liveProduct.models && Array.isArray(liveProduct.models)) {
-              const mObj = liveProduct.models.find(
-                (m) => m.id === dp.modelId || m.name.toLowerCase() === dp.modelName?.toLowerCase()
-              );
-              if (mObj && mObj.shopStock !== undefined) {
-                currentShopStock = mObj.shopStock;
-              }
-            } else if (liveProduct.shopStock !== undefined) {
-              currentShopStock = liveProduct.shopStock;
-            }
-          }
-
-          const requiredTotal = (dp.quantity || 1) * item.quantity;
-          if (currentShopStock < requiredTotal) {
-            throw new Error(
-              `Deal "${item.dealName || item.productName}" is currently unavailable because "${dp.productName}${dp.modelName ? ` (${dp.modelName})` : ''}" is out of stock in Shop Inventory.`
-            );
+          if (!liveProduct) {
+            console.warn(`[Order] Deal bundled product not found: ${dp.productId}`);
           }
         }
       }
@@ -713,6 +702,8 @@ export function filterAndSortOrders(
         (o.customer.email && o.customer.email.toLowerCase().includes(q)) ||
         (o.customer.phone && o.customer.phone.toLowerCase().includes(q)) ||
         (o.cashierName && o.cashierName.toLowerCase().includes(q)) ||
+        (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q)) ||
+        (o.paymentReference && o.paymentReference.toLowerCase().includes(q)) ||
         o.items.some((item) => item.sku.toLowerCase().includes(q) || item.productName.toLowerCase().includes(q))
     );
   }

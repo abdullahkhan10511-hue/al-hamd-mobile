@@ -342,17 +342,18 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
         </div>
 
         {/* Footer Bottom Bar */}
-        <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <p>© {new Date().getFullYear()} {officialStoreName}. All Rights Reserved.</p>
-          <div className="flex items-center gap-4 text-neutral-600 text-[11px]">
-            <Link href="/wholesale/login" className="hover:text-neutral-400 transition-colors">
-              Wholesale Portal
-            </Link>
-            <span>•</span>
-            <Link href="/super-wholesale/login" className="hover:text-neutral-400 transition-colors">
-              Super Wholesale
-            </Link>
-          </div>
+        <div className="pt-8 border-t border-neutral-900 flex items-center justify-center text-xs text-neutral-500 text-center">
+          <p>
+            © 2026 AL-HAMD SHOP |{' '}
+            <a
+              href="https://veltrivo.codes/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors"
+            >
+              veltrivo.codes
+            </a>
+          </p>
         </div>
       </div>
     </footer>

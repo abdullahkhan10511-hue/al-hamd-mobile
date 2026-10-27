@@ -1,127 +1,164 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
-import { getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { motion } from 'framer-motion';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getActiveBrands, getCanonicalBrands, syncBrandsFromApi } from '@/lib/db/brands';
+import { seedBrands } from '@/lib/db/seed';
 import { Brand } from '@/types/admin';
-import { Product } from '@/types';
+
+const BrandCard = React.memo(function BrandCard({
+  brand,
+  isPriority,
+  isFailed,
+  onError,
+  index,
+}: {
+  brand: Brand;
+  isPriority: boolean;
+  isFailed: boolean;
+  onError: (id: string) => void;
+  index: number;
+}) {
+  const count = brand.productCount ?? 0;
+  const hasValidLogo = Boolean(brand.logo && !isFailed);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 35 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true, amount: 0.05 }}
+      transition={{
+        duration: 0.28,
+        delay: Math.min(index * 0.025, 0.1),
+        ease: 'easeOut',
+      }}
+      className="shrink-0 w-44 sm:w-52 md:w-56"
+    >
+      <Link
+        href={`/brand/${brand.slug}`}
+        className="group relative w-full rounded-2xl overflow-hidden bg-white border border-neutral-200/90 hover:border-neutral-900 shadow-xs hover:shadow-lg transition-all duration-200 transform hover:-translate-y-1 block text-neutral-900 will-change-transform"
+      >
+        {/* Brand Showcase Area */}
+      <div className="relative aspect-[16/10] w-full p-3 sm:p-4 flex items-center justify-center bg-gradient-to-b from-neutral-50/70 to-white overflow-hidden border-b border-neutral-100">
+        {hasValidLogo ? (
+          <div className="relative w-full h-full flex items-center justify-center">
+            <Image
+              src={brand.logo!}
+              alt={brand.name}
+              loading="lazy"
+              width={140}
+              height={60}
+              className="w-auto h-auto max-h-[60px] sm:max-h-[72px] max-w-[80%] object-contain transition-transform duration-300 ease-out group-hover:scale-105 filter drop-shadow-2xs"
+              onError={() => onError(brand.id)}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-neutral-900 text-white font-extrabold text-lg sm:text-xl tracking-tight shadow-sm group-hover:scale-105 transition-transform duration-300">
+            {brand.name.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+
+        {/* Top Right Product Count Pill */}
+        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200/80 text-[10px] font-bold text-neutral-600 group-hover:bg-neutral-900 group-hover:text-white group-hover:border-neutral-900 transition-colors z-10 pointer-events-none">
+          {count} {count === 1 ? 'item' : 'items'}
+        </div>
+      </div>
+
+      {/* Text Content */}
+      <div className="p-3.5 sm:p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-neutral-900 transition-colors block">
+            Brand
+          </span>
+          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">
+            Verified
+          </span>
+        </div>
+
+        <h3 className="text-sm sm:text-base font-bold tracking-tight text-neutral-950 line-clamp-1 mt-0.5 group-hover:text-neutral-900">
+          {brand.name}
+        </h3>
+
+        <p className="text-[11px] text-neutral-500 line-clamp-1 mt-1 font-normal">
+          {brand.description || `Official ${brand.name} accessories`}
+        </p>
+
+        <div className="mt-2.5 pt-2.5 border-t border-neutral-100 flex items-center justify-between text-xs font-semibold text-neutral-700 group-hover:text-neutral-950 transition-colors">
+          <span>Explore Products</span>
+          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </div>
+    </Link>
+    </motion.div>
+  );
+});
 
 export function ShopByBrands() {
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [brands, setBrands] = useState<Brand[]>(() => getCanonicalBrands());
+  const [isLoaded, setIsLoaded] = useState(true);
+  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isTouchingRef = useRef(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(() => {
     const raw = getActiveBrands();
-    setBrands(raw);
-
-    const prods = getProducts().filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
-    setProducts(prods);
+    setBrands((prev) => {
+      if (
+        prev.length === raw.length &&
+        prev.every(
+          (b, i) =>
+            b.id === raw[i].id &&
+            b.productCount === raw[i].productCount &&
+            b.name === raw[i].name &&
+            b.logo === raw[i].logo
+        )
+      ) {
+        return prev;
+      }
+      return raw;
+    });
     setIsLoaded(true);
   }, []);
 
   useEffect(() => {
     loadData();
-    syncBrandsFromApi().then(() => loadData()).catch(() => {
-      setIsLoaded(true);
-    });
-    syncProductsFromApi().then(() => loadData()).catch(() => {
-      setIsLoaded(true);
-    });
+    syncBrandsFromApi().then(() => loadData()).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
-      if (key && key !== 'brands' && key !== 'products') return;
+      if (key && key !== 'brands') return;
       loadData();
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, [loadData]);
 
-  // Compute live product counts per brand
-  const getProductCount = useCallback((brand: Brand): number => {
-    const bName = brand.name.toLowerCase().trim();
-    const bSlug = brand.slug.toLowerCase().trim();
-    const bId = brand.id.toLowerCase().trim();
+  const handleLogoError = useCallback((brandId: string) => {
+    setFailedLogos((prev) => {
+      if (prev.has(brandId)) return prev;
+      const next = new Set(prev);
+      next.add(brandId);
+      return next;
+    });
+  }, []);
 
-    const count = products.filter((p) => {
-      const pBrand = (p.brand || '').trim().toLowerCase();
-      const pSlug = (p.brandSlug || '').trim().toLowerCase();
-      const pId = ((p as any).brandId || '').toString().trim().toLowerCase();
-      return (
-        pBrand === bName ||
-        pSlug === bSlug ||
-        pBrand === bSlug ||
-        pSlug === bName ||
-        (pId && (pId === bId || pId === bSlug || pId === bName))
-      );
-    }).length;
-
-    return count > 0 ? count : (brand.productCount || 0);
-  }, [products]);
-
-  // Smooth relaxed auto-glide animation matching ShopByCategories
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container || brands.length === 0) return;
-
-    let animationFrameId: number;
-    let lastTime = performance.now();
-    const speed = 25; // Smooth slow glide
-    let direction: 'forward' | 'backward' = 'forward';
-
-    const step = (now: number) => {
-      const delta = (now - lastTime) / 1000;
-      lastTime = now;
-
-      if (!isPaused && !isTouchingRef.current && container) {
-        const maxScroll = container.scrollWidth - container.clientWidth;
-        if (maxScroll > 15) {
-          if (direction === 'forward') {
-            container.scrollLeft += speed * delta;
-            if (container.scrollLeft >= maxScroll - 2) {
-              direction = 'backward';
-            }
-          } else {
-            container.scrollLeft -= speed * delta * 1.5;
-            if (container.scrollLeft <= 2) {
-              direction = 'forward';
-            }
-          }
-        }
-      }
-      animationFrameId = requestAnimationFrame(step);
-    };
-
-    animationFrameId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPaused, brands.length]);
-
-  const scrollLeft = () => {
+  const scrollLeft = useCallback(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -280, behavior: 'smooth' });
+      scrollRef.current.scrollBy({ left: -320, behavior: 'smooth' });
     }
-  };
+  }, []);
 
-  const scrollRight = () => {
+  const scrollRight = useCallback(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 280, behavior: 'smooth' });
+      scrollRef.current.scrollBy({ left: 320, behavior: 'smooth' });
     }
-  };
+  }, []);
 
   if (!isLoaded) {
     return (
-      <section id="brands" className="py-14 sm:py-18 bg-neutral-50/70 border-b border-neutral-100 overflow-hidden min-h-[280px]">
+      <section id="brands" className="py-12 sm:py-16 bg-neutral-50/70 border-b border-neutral-100 overflow-hidden min-h-[280px]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
             <div className="h-7 w-48 bg-neutral-200/80 rounded-lg animate-pulse" />
@@ -129,7 +166,7 @@ export function ShopByBrands() {
           </div>
           <div className="flex gap-4 overflow-hidden">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="w-[160px] sm:w-[190px] h-[180px] shrink-0 bg-neutral-200/60 rounded-2xl animate-pulse" />
+              <div key={i} className="w-[160px] sm:w-[200px] h-[220px] shrink-0 bg-neutral-200/60 rounded-2xl animate-pulse" />
             ))}
           </div>
         </div>
@@ -137,17 +174,28 @@ export function ShopByBrands() {
     );
   }
 
-  if (brands.length === 0) {
+  const displayBrands = brands.length > 0 ? brands : seedBrands.filter((b) => b.status === 'active');
+
+  if (displayBrands.length === 0) {
     return null;
   }
 
   return (
-    <section id="brands" className="py-14 sm:py-18 bg-neutral-50/70 border-b border-neutral-100 overflow-hidden">
+    <section id="brands" className="py-12 sm:py-16 bg-neutral-50/70 border-b border-neutral-100 overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header with Left / Right Navigation Controls */}
-        <div className="flex items-center justify-between mb-8">
+        <motion.div
+          initial={{ opacity: 0, x: 35 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, amount: 0.05 }}
+          transition={{ duration: 0.28, ease: 'easeOut' }}
+          className="flex items-center justify-between mb-6 sm:mb-8"
+        >
           <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950">
+            <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+              Verified Partners
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 mt-1">
               Shop by Brand
             </h2>
           </div>
@@ -162,7 +210,7 @@ export function ShopByBrands() {
             <button
               type="button"
               onClick={scrollLeft}
-              className="w-8 h-8 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
+              className="w-9 h-9 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
               aria-label="Previous brands"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -170,101 +218,37 @@ export function ShopByBrands() {
             <button
               type="button"
               onClick={scrollRight}
-              className="w-8 h-8 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
+              className="w-9 h-9 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
               aria-label="Next brands"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Horizontal Strip Container */}
       <div className="relative w-full">
         {/* Left & Right gradient edge fade masks */}
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 sm:w-20 bg-gradient-to-r from-neutral-50/90 via-neutral-50/50 to-transparent z-10" />
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:w-20 bg-gradient-to-l from-neutral-50/90 via-neutral-50/50 to-transparent z-10" />
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-r from-neutral-50/90 via-neutral-50/50 to-transparent z-10" />
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-l from-neutral-50/90 via-neutral-50/50 to-transparent z-10" />
 
-        {/* Scrollable / Touch-drag container */}
+        {/* Scrollable container with natural smooth touch & mouse scroll */}
         <div
           ref={scrollRef}
-          onMouseEnter={() => setIsPaused(true)}
-          onMouseLeave={() => {
-            isTouchingRef.current = false;
-            setIsPaused(false);
-          }}
-          onTouchStart={() => {
-            isTouchingRef.current = true;
-            setIsPaused(true);
-          }}
-          onTouchEnd={() => {
-            isTouchingRef.current = false;
-            setTimeout(() => setIsPaused(false), 600);
-          }}
-          className="flex items-center gap-4 sm:gap-6 overflow-x-auto scrollbar-none py-3 px-4 sm:px-8 cursor-grab active:cursor-grabbing select-none"
-          style={{ scrollBehavior: 'smooth' }}
+          className="flex items-center gap-4 sm:gap-5 overflow-x-auto scroll-smooth py-2 px-4 sm:px-8 select-none no-scrollbar scrollbar-none"
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
         >
-          {brands.map((brand) => {
-            const count = getProductCount(brand);
-            return (
-              <Link
-                key={brand.id}
-                href={`/brand/${brand.slug}`}
-                className="group relative shrink-0 w-44 sm:w-56 md:w-60 rounded-2xl sm:rounded-3xl overflow-hidden bg-white border border-neutral-200/90 hover:border-neutral-900 shadow-xs hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1.5 block text-neutral-900"
-              >
-                {/* Brand Showcase Area */}
-                <div className="relative aspect-[16/10] w-full p-3 sm:p-4 flex items-center justify-center bg-gradient-to-b from-neutral-50/70 to-white overflow-hidden border-b border-neutral-100">
-                  {brand.logo ? (
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      <img
-                        src={brand.logo}
-                        alt={brand.name}
-                        loading="lazy"
-                        className="w-auto h-auto max-h-[68px] sm:max-h-[84px] max-w-[82%] sm:max-w-[85%] object-contain transition-transform duration-500 ease-out group-hover:scale-105 filter drop-shadow-2xs"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-neutral-900 text-white font-extrabold text-xl sm:text-2xl tracking-tight shadow-sm group-hover:scale-105 transition-transform duration-500">
-                      {brand.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-
-                  {/* Top Right Product Count Pill */}
-                  <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200/80 text-[10px] font-bold text-neutral-600 group-hover:bg-neutral-900 group-hover:text-white group-hover:border-neutral-900 transition-colors z-10 pointer-events-none">
-                    {count} {count === 1 ? 'item' : 'items'}
-                  </div>
-                </div>
-
-                {/* Text Content */}
-                <div className="p-4 sm:p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-neutral-900 transition-colors block">
-                      Brand
-                    </span>
-                    <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">
-                      Verified
-                    </span>
-                  </div>
-
-                  <h3 className="text-sm sm:text-base font-bold tracking-tight text-neutral-950 line-clamp-1 mt-0.5 group-hover:text-neutral-900">
-                    {brand.name}
-                  </h3>
-
-                  <p className="text-[11px] text-neutral-500 line-clamp-1 mt-1 font-normal">
-                    {brand.description || `Official ${brand.name} accessories`}
-                  </p>
-
-                  <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center justify-between text-xs font-semibold text-neutral-700 group-hover:text-neutral-950 transition-colors">
-                    <span>Explore Products</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          {displayBrands.map((brand, idx) => (
+            <BrandCard
+              key={brand.id}
+              brand={brand}
+              index={idx}
+              isPriority={idx < 4}
+              isFailed={failedLogos.has(brand.id)}
+              onError={handleLogoError}
+            />
+          ))}
         </div>
       </div>
     </section>

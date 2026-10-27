@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Boxes, X, RefreshCw, Check, AlertCircle, Layers } from 'lucide-react';
+import { X, RefreshCw, Check, AlertCircle, Layers } from 'lucide-react';
 import { Product, ProductModelVariant } from '@/types';
 
 interface BulkVariantAdjustModalProps {
@@ -64,12 +64,7 @@ export function BulkVariantAdjustModal({
     }));
   };
 
-  const handleQuickAdd = (key: string, delta: number) => {
-    setErrorMessage(null);
-    const curr = parseInt(stockMap[key] || '0', 10) || 0;
-    const next = Math.min(999999, Math.max(0, curr + delta));
-    setStockMap((prev) => ({ ...prev, [key]: next.toString() }));
-  };
+
 
   const handleQuickPreset = (key: string, preset: number) => {
     setErrorMessage(null);

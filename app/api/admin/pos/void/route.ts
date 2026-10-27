@@ -2,65 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { voidPosSale } from '@/lib/db/pos';
 import { voidOrderInDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured } from '@/lib/db/mysql';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { id?: string; name?: string; email: string; role: string; permissions?: string[] } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email && parsed.status !== 'inactive') {
-          return parsed;
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) return parsed;
-    } catch {
-      if (token.includes('@')) {
-        return { email: token, role: 'ADMIN' };
-      }
-    }
-  }
-
-  return null;
-}
+import {
+  getAdminSession,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(request);
+    const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Staff session required.' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Staff session required.');
     }
 
     const roleStr = (session.role || '').toLowerCase();
-    const isPrivileged = roleStr.includes('admin') || roleStr.includes('owner') || roleStr === 'manager';
+    const isPrivileged =
+      session.isOwner ||
+      roleStr === 'super_admin' ||
+      roleStr === 'admin' ||
+      roleStr === 'owner' ||
+      roleStr === 'manager';
     const hasVoidPerm = session.permissions?.includes('pos.void_sale');
 
     if (!isPrivileged && !hasVoidPerm) {
-      return NextResponse.json({
-        success: false,
-        error: 'Permission Denied: Your staff role is not authorized to void completed sales.',
-      }, { status: 403 });
+      return forbiddenResponse('Permission Denied: Your staff role is not authorized to void completed sales.');
     }
 
     const body = await request.json();

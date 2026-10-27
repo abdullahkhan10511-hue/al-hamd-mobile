@@ -4,20 +4,17 @@ import { readPersistentAnnouncements } from '@/lib/db/announcementsStorage';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const isFresh = searchParams.has('fresh') || searchParams.has('t');
-
     const items = readPersistentAnnouncements();
-
-    const headers: Record<string, string> = isFresh
-      ? { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-      : { 'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=120' };
 
     return NextResponse.json(
       { success: true, items, count: items.length },
-      { headers }
+      {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        },
+      }
     );
   } catch (err: any) {
     return NextResponse.json(

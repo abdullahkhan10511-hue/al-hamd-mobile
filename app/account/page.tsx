@@ -215,6 +215,16 @@ function AccountDashboardContent() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewModalError, setReviewModalError] = useState('');
 
+  const openReviewModal = (item: EligibleReviewProduct) => {
+    setEditingReview(null);
+    setReviewProduct(item);
+    setReviewRating(5);
+    setReviewTitle('');
+    setReviewComment('');
+    setReviewModalError('');
+    setReviewModalOpen(true);
+  };
+
   // Auto-open review modal if reviewProductId param provided
   useEffect(() => {
     if (reviewProductParam && eligibleProducts.length > 0) {
@@ -225,15 +235,6 @@ function AccountDashboardContent() {
     }
   }, [reviewProductParam, eligibleProducts]);
 
-  const openReviewModal = (item: EligibleReviewProduct) => {
-    setEditingReview(null);
-    setReviewProduct(item);
-    setReviewRating(5);
-    setReviewTitle('');
-    setReviewComment('');
-    setReviewModalError('');
-    setReviewModalOpen(true);
-  };
 
   const openEditReviewModal = (rev: ProductReview) => {
     setEditingReview(rev);

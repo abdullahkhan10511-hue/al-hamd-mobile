@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   SanitizedCustomer,
-  authenticateCustomer,
   updateCustomerProfile,
   changeCustomerPassword,
   getCustomerById,
@@ -161,13 +160,17 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: emailOrShopName, password }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await res.json().catch(() => null)
+        : null;
+
+      if (!res.ok || !data?.success) {
         const isEmail = emailOrShopName.includes('@');
         const defaultMsg = isEmail
           ? 'Invalid email address or password.'
           : 'Invalid shop name or password.';
-        throw new Error(data.error || defaultMsg);
+        throw new Error(data?.error || defaultMsg);
       }
       const sanitized: SanitizedCustomer = data.customer;
       setCustomer(sanitized);

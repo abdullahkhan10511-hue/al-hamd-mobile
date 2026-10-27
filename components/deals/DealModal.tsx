@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Package, CheckCircle2, ShoppingBag, Zap } from 'lucide-react';
@@ -24,21 +23,11 @@ export function DealModal({ deal, onClose }: DealModalProps) {
 
   const upcoming = isDealUpcoming(deal);
   const expired = isDealExpired(deal);
-  const isOutOfStock =
-    !Array.isArray(deal.products) ||
-    deal.products.length === 0 ||
-    deal.products.some((p) => (p.shopStock ?? 0) <= 0);
 
-  const canPurchase = !upcoming && !expired && !isOutOfStock;
+  const canPurchase = !upcoming && !expired;
 
   const handleAddToCart = () => {
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorMsg('Deal is currently unavailable because one or more included products are out of stock.');
-        setTimeout(() => setErrorMsg(null), 3500);
-      }
-      return;
-    }
+    if (!canPurchase) return;
     const res = addDealToCart(deal, 1);
     if (res.success) {
       setJustAdded(true);
@@ -50,14 +39,8 @@ export function DealModal({ deal, onClose }: DealModalProps) {
   };
 
   const handleBuyNow = () => {
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorMsg('Deal is currently unavailable because one or more included products are out of stock.');
-        setTimeout(() => setErrorMsg(null), 3500);
-      }
-      return;
-    }
-    const res = addDealToCart(deal, 1);
+    if (!canPurchase) return;
+    const res = addDealToCart(deal, 1, { openDrawer: false, showToast: false });
     if (res.success) {
       onClose();
       router.push('/checkout');
@@ -138,10 +121,6 @@ export function DealModal({ deal, onClose }: DealModalProps) {
                 <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
                   Included Items ({deal.products.length})
                 </h4>
-                <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>In Stock</span>
-                </span>
               </div>
 
               <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
@@ -171,18 +150,11 @@ export function DealModal({ deal, onClose }: DealModalProps) {
                             Model: {item.modelName}
                           </span>
                         )}
-                        <div className="flex items-center gap-3 text-[10px] text-neutral-400 font-mono mt-0.5">
-                          {item.sku && <span>SKU: {item.sku}</span>}
-                          {item.shopStock !== undefined && item.shopStock > 0 ? (
-                            <span className="text-emerald-400">
-                              • In Stock
-                            </span>
-                          ) : item.shopStock !== undefined ? (
-                            <span className="text-rose-400">
-                              • Out of Stock
-                            </span>
-                          ) : null}
-                        </div>
+                        {item.sku && (
+                          <div className="flex items-center gap-3 text-[10px] text-neutral-400 font-mono mt-0.5">
+                            <span>SKU: {item.sku}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 

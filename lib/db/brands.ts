@@ -7,39 +7,79 @@ import { allowDevMockFallback } from '../env';
 const COLLECTION_KEY = 'brands';
 
 let hasSyncedBrandsFromApi = false;
-let isSyncingBrands = false;
+let inFlightBrandsPromise: Promise<Brand[]> | null = null;
+let lastSyncedBrandsTimestamp = 0;
 
-export async function syncBrandsFromApi(): Promise<Brand[]> {
+export async function syncBrandsFromApi(force = false): Promise<Brand[]> {
   const fallback = allowDevMockFallback() ? seedBrands : [];
   if (typeof window === 'undefined') return fallback;
-  if (isSyncingBrands) return getBrands();
-  isSyncingBrands = true;
-  try {
-    const res = await fetch('/api/brands');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.brands)) {
-        await persistCollection(COLLECTION_KEY, data.brands);
-        hasSyncedBrandsFromApi = true;
-        return data.brands;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not sync brands from API:', err);
-  } finally {
-    isSyncingBrands = false;
+  const now = Date.now();
+  if (!force && lastSyncedBrandsTimestamp > 0 && now - lastSyncedBrandsTimestamp < 30000) {
+    return getBrands();
   }
-  return getStoredCollection(COLLECTION_KEY, fallback);
+  if (inFlightBrandsPromise) {
+    return inFlightBrandsPromise;
+  }
+
+  inFlightBrandsPromise = (async () => {
+    try {
+      const res = await fetch('/api/brands');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.brands)) {
+          await persistCollection(COLLECTION_KEY, data.brands);
+          hasSyncedBrandsFromApi = true;
+          lastSyncedBrandsTimestamp = Date.now();
+          return data.brands;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not sync brands from API:', err);
+    } finally {
+      inFlightBrandsPromise = null;
+    }
+    return getStoredCollection(COLLECTION_KEY, fallback);
+  })();
+
+  return inFlightBrandsPromise;
 }
 
 export function getBrands(): Brand[] {
-  const fallback = allowDevMockFallback() ? seedBrands : [];
+  let fallback = allowDevMockFallback() ? seedBrands : [];
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const devFile = path.join(process.cwd(), 'data', 'dev-brands.json');
+      if (fs.existsSync(devFile)) {
+        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          fallback = parsed.map((b: any) => {
+            if (b.productCount !== undefined && b.productCount !== null) return b;
+            const seed = seedBrands.find((s) => s.id === b.id || s.slug === b.slug);
+            return { ...b, productCount: seed?.productCount ?? 0 };
+          });
+        }
+      }
+    } catch {}
+  }
   if (typeof window !== 'undefined' && !hasSyncedBrandsFromApi) {
     hasSyncedBrandsFromApi = true;
     syncBrandsFromApi().catch(() => {});
   }
-  const list = getStoredCollection(COLLECTION_KEY, fallback);
+  const list = getStoredCollection(COLLECTION_KEY, fallback).map((b) => {
+    if (b.productCount !== undefined && b.productCount !== null) return b;
+    const seed = seedBrands.find((s) => s.id === b.id || s.slug === b.slug);
+    return { ...b, productCount: seed?.productCount ?? 0 };
+  });
   return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+// Pure canonical brands snapshot for SSR and initial client hydration
+export function getCanonicalBrands(): Brand[] {
+  return seedBrands.filter((b) => b.status === 'active');
 }
 
 export function getActiveBrands(): Brand[] {

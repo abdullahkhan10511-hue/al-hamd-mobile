@@ -3,7 +3,7 @@ import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
 import { getAdminAuthHeaders } from './staff';
 import { db } from '../firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc } from 'firebase/firestore';
 
 const COLLECTION_KEY = 'shopLocations';
 
@@ -54,23 +54,34 @@ export function isValidGoogleMapsUrl(rawUrl: string): boolean {
 }
 
 let inFlightLocationsPromise: Promise<ShopLocation[]> | null = null;
+let lastLocationsSyncTimestamp = 0;
+const LOCATIONS_SYNC_DEBOUNCE_MS = 60000; // 60s client-side sync debounce
 
-export async function syncShopLocationsFromApi(): Promise<ShopLocation[]> {
+export async function syncShopLocationsFromApi(forceFresh = false): Promise<ShopLocation[]> {
   if (typeof window === 'undefined') return getShopLocations();
-  if (inFlightLocationsPromise) return inFlightLocationsPromise;
+  if (inFlightLocationsPromise && !forceFresh) return inFlightLocationsPromise;
+  if (!forceFresh && Date.now() - lastLocationsSyncTimestamp < LOCATIONS_SYNC_DEBOUNCE_MS) {
+    return getShopLocations();
+  }
 
   inFlightLocationsPromise = (async () => {
     try {
-      const res = await fetch(`/api/locations?t=${Date.now()}`, { cache: 'no-store' });
+      const url = forceFresh ? `/api/locations?t=${Date.now()}` : '/api/locations';
+      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.locations)) {
+          const current = getShopLocations();
+          const hasChanged = JSON.stringify(current) !== JSON.stringify(data.locations);
           await persistCollection(COLLECTION_KEY, data.locations, true);
-          window.dispatchEvent(
-            new CustomEvent('alhamd:data-updated', {
-              detail: { key: COLLECTION_KEY, value: data.locations },
-            })
-          );
+          lastLocationsSyncTimestamp = Date.now();
+          if (hasChanged) {
+            window.dispatchEvent(
+              new CustomEvent('alhamd:data-updated', {
+                detail: { key: COLLECTION_KEY, value: data.locations },
+              })
+            );
+          }
           return data.locations;
         }
       }
@@ -89,7 +100,18 @@ export async function syncShopLocationsFromApi(): Promise<ShopLocation[]> {
  * Retrieve all shop locations from local storage / cache.
  */
 export function getShopLocations(): ShopLocation[] {
-  const list = getStoredCollection<ShopLocation>(COLLECTION_KEY, []);
+  let fallback: ShopLocation[] = [];
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentLocations } = require('./locationStorage');
+      const saved = readPersistentLocations();
+      if (Array.isArray(saved) && saved.length > 0) {
+        fallback = saved;
+      }
+    } catch {}
+  }
+  const list = getStoredCollection<ShopLocation>(COLLECTION_KEY, fallback);
   return list.sort((a, b) => (a.displayOrder || 1) - (b.displayOrder || 1));
 }
 

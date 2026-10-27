@@ -221,9 +221,25 @@ export const DEFAULT_LOGIN_PAGE_MEDIA: LoginPageMediaItem[] = [
 // ============================================================================
 
 export function getLoginPageSettings(): LoginPageSettings {
-  const settings = getLocal<LoginPageSettings>(SETTINGS_STORAGE_KEY, DEFAULT_LOGIN_PAGE_SETTINGS);
+  let fallback = DEFAULT_LOGIN_PAGE_SETTINGS;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const file = path.join(process.cwd(), 'data', 'login-page-settings.json');
+      if (fs.existsSync(file)) {
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (parsed && typeof parsed === 'object') {
+          fallback = { ...DEFAULT_LOGIN_PAGE_SETTINGS, ...parsed };
+        }
+      }
+    } catch {}
+  }
+  const settings = getLocal<LoginPageSettings>(SETTINGS_STORAGE_KEY, fallback);
   return {
-    ...DEFAULT_LOGIN_PAGE_SETTINGS,
+    ...fallback,
     ...(settings || {}),
   };
 }
@@ -298,6 +314,24 @@ export async function updateLoginPageSettings(
 // ============================================================================
 
 export function getLoginPageMedia(): LoginPageMediaItem[] {
+  let defaultMedia = DEFAULT_LOGIN_PAGE_MEDIA;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const file = path.join(process.cwd(), 'data', 'login-page-media.json');
+      if (fs.existsSync(file)) {
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          defaultMedia = parsed;
+        }
+      }
+    } catch {}
+    return [...defaultMedia].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  }
+
   const isInitialized = getLocal<boolean>(MEDIA_INITIALIZED_KEY, false);
 
   if (!isInitialized) {

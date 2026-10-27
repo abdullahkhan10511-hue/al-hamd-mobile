@@ -1,36 +1,42 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getProducts, getCanonicalProducts, syncProductsFromApi } from '@/lib/db/products';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product } from '@/types';
 
-export function NewArrivals() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+type ProductItem = Product & { status?: string; isActive?: boolean; isNewArrival?: boolean };
 
-  const loadData = () => {
+export function NewArrivals() {
+  const [products, setProducts] = useState<Product[]>(() =>
+    getCanonicalProducts()
+      .filter((p) => p.isNew || (p as ProductItem).isNewArrival)
+      .slice(0, 6)
+  );
+  const [isLoaded, setIsLoaded] = useState(true);
+
+  const loadData = useCallback(() => {
     const list = getProducts()
-      .filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false &&
-          (p.isNew || (p as any).isNewArrival)
-      )
+      .filter((p) => {
+        const item = p as ProductItem;
+        return (
+          item.status !== 'archived' &&
+          item.status !== 'inactive' &&
+          item.isActive !== false &&
+          (item.isNew || item.isNewArrival)
+        );
+      })
       .slice(0, 6);
     setProducts(list);
     setIsLoaded(true);
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-    syncProductsFromApi().then(() => loadData()).catch(() => {
-      setIsLoaded(true);
-    });
+    syncProductsFromApi().then(() => loadData()).catch(() => {});
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -39,11 +45,11 @@ export function NewArrivals() {
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [loadData]);
 
   if (!isLoaded) {
     return (
-      <section className="py-16 sm:py-20 bg-neutral-50/50 border-b border-neutral-100 min-h-[420px]">
+      <section className="py-12 sm:py-16 bg-neutral-50/50 border-b border-neutral-100 min-h-[420px]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-end justify-between mb-8 sm:mb-10">
             <div>
@@ -65,7 +71,7 @@ export function NewArrivals() {
   if (products.length === 0) return null;
 
   return (
-    <section className="py-16 sm:py-20 bg-neutral-50/50 border-b border-neutral-100">
+    <section className="py-12 sm:py-16 bg-neutral-50/50 border-b border-neutral-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 sm:mb-10">
@@ -92,10 +98,13 @@ export function NewArrivals() {
           {products.map((product, index) => (
             <motion.div
               key={product.id}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: index * 0.08 }}
+              viewport={{ once: true, margin: '60px' }}
+              transition={{
+                duration: 0.25,
+                delay: Math.min(index * 0.03, 0.12),
+              }}
             >
               <ProductCard product={product} />
             </motion.div>

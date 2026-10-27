@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { getAllOrdersFromDb, createOrderInDb, getOrderByIdFromDb } from '@/lib/db/repositories/orders';
+import { getAllOrdersFromDb, createOrderInDb } from '@/lib/db/repositories/orders';
 import { getAdminSession } from '@/lib/db/adminAuth';
 
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
@@ -80,6 +80,13 @@ export async function POST(request: NextRequest) {
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Cannot place order: Cart is empty.' },
+        { status: 400 }
+      );
+    }
+
+    if (body.items.length > 200) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot place order: Cart contains too many items (maximum 200 items per order).' },
         { status: 400 }
       );
     }

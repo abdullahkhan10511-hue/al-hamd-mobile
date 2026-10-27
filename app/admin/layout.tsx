@@ -63,7 +63,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Orders', href: '/admin/orders', icon: ShoppingBag, permission: 'orders.view' },
   { label: 'Invoices & Bills', href: '/admin/invoices', icon: Printer, permissions: ['orders.print_bills', 'orders.view'] },
   { label: 'Store & Bill Settings', href: '/admin/bill-settings', icon: ReceiptText, permissions: ['settings.view', 'orders.print_bills'] },
-  { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard, permissions: ['settings.view', 'settings.edit'] },
+  { label: 'Payment Methods & CMS', href: '/admin/payment-methods', icon: CreditCard, permissions: ['settings.view', 'settings.edit'] },
   { label: 'Payment Verification', href: '/admin/payments', icon: ShieldCheck, permissions: ['orders.process', 'orders.view'] },
   { label: 'Products', href: '/admin/products', icon: Package, permission: 'products.view' },
   { label: 'New Arrivals', href: '/admin/new-arrivals', icon: Sparkles, permission: 'content.new_arrivals' },

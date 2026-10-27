@@ -18,10 +18,13 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const STAFF_FILE = path.join(DATA_DIR, 'staff-users.json');
 
 let memoryStaffUsers: StaffUser[] | null = null;
+let lastStaffFileMtime: number = 0;
 
 function loadLocalFileStaff(): StaffUser[] {
   try {
     if (fs.existsSync(STAFF_FILE)) {
+      const stat = fs.statSync(STAFF_FILE);
+      lastStaffFileMtime = stat.mtimeMs;
       const content = fs.readFileSync(STAFF_FILE, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -40,9 +43,25 @@ function saveLocalFileStaff(users: StaffUser[]): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     fs.writeFileSync(STAFF_FILE, JSON.stringify(users, null, 2), 'utf8');
+    if (fs.existsSync(STAFF_FILE)) {
+      lastStaffFileMtime = fs.statSync(STAFF_FILE).mtimeMs;
+    }
   } catch (err) {
     console.error('Error writing staff-users.json fallback:', err);
   }
+}
+
+function shouldReloadFromFile(): boolean {
+  if (!memoryStaffUsers || memoryStaffUsers.length === 0) return true;
+  try {
+    if (fs.existsSync(STAFF_FILE)) {
+      const stat = fs.statSync(STAFF_FILE);
+      if (stat.mtimeMs > lastStaffFileMtime) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
 }
 
 /**
@@ -60,7 +79,7 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
     }
   }
 
-  if (memoryStaffUsers && memoryStaffUsers.length > 0) {
+  if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
     return memoryStaffUsers;
   }
 
@@ -70,7 +89,7 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
 }
 
 export function getServerStaffUsersSync(): StaffUser[] {
-  if (memoryStaffUsers && memoryStaffUsers.length > 0) {
+  if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
     return memoryStaffUsers;
   }
   const loaded = loadLocalFileStaff();

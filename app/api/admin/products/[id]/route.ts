@@ -47,6 +47,21 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
+
+    if (Array.isArray(body.images) && body.images.length > 50) {
+      return NextResponse.json(
+        { success: false, error: 'Maximum 50 images allowed per product.' },
+        { status: 400 }
+      );
+    }
+
+    if (Array.isArray(body.models) && body.models.length > 200) {
+      return NextResponse.json(
+        { success: false, error: 'Maximum 200 models/variants allowed per product.' },
+        { status: 400 }
+      );
+    }
+
     let product: any = null;
 
     if (isDbConfigured()) {

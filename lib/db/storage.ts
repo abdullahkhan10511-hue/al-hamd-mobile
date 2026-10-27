@@ -34,9 +34,8 @@ function isStaleMockData(key: string, data: any): boolean {
           c.slug === 'beauty' ||
           c.slug === 'fitness' ||
           c.slug === 'home-decor' ||
-          c.id === 'cat-phone-cases' ||
-          c.id === 'cat-screen-protectors' ||
-          c.id === 'cat-chargers')
+          c.slug === 'accessories' ||
+          c.slug === 'clothing')
     );
   }
   if (key === 'customers') {

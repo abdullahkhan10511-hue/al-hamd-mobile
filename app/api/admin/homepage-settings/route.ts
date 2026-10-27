@@ -5,7 +5,6 @@ import {
   readPersistentHomepageSettings,
   writePersistentHomepageSettings,
   getMergedHomepageSettings,
-  PersistentHomepageSettings,
 } from '@/lib/db/homepageSettingsStorage';
 
 export const dynamic = 'force-dynamic';

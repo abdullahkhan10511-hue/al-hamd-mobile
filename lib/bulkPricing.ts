@@ -146,10 +146,3 @@ export function calculateBulkPrice(
     matchedRule: null,
   };
 }
-
-/**
- * @deprecated Legacy helper - returns 0 as bulk discounts are disabled.
- */
-export function getMaxBulkDiscount(_bulkPricing: BulkPricingRule[] | undefined): number {
-  return 0;
-}

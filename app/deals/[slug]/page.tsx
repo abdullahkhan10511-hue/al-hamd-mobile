@@ -2,15 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { useParams, useRouter, notFound } from 'next/navigation';
 import {
   ChevronRight,
   Sparkles,
   ShoppingBag,
   Zap,
   CheckCircle2,
-  AlertTriangle,
   Package,
   ShieldCheck,
   Truck,
@@ -20,7 +18,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { Deal } from '@/types/admin';
-import { getDealBySlug, syncDealsFromApi, isDealCurrentlyActive, isDealUpcoming, isDealExpired } from '@/lib/db/deals';
+import { getDealBySlug, syncDealsFromApi, isDealUpcoming, isDealExpired } from '@/lib/db/deals';
 import { useCart } from '@/context/CartContext';
 import { DealTimingBadge } from '@/components/deals/DealCard';
 
@@ -86,49 +84,20 @@ export default function DealDetailPage() {
   }
 
   if (!deal) {
-    return (
-      <div className="min-h-[70vh] bg-neutral-950 flex items-center justify-center text-white p-4">
-        <div className="max-w-md text-center p-8 rounded-3xl bg-neutral-900 border border-neutral-800">
-          <div className="w-14 h-14 rounded-2xl bg-neutral-800 flex items-center justify-center mx-auto mb-4 text-neutral-500">
-            <Package className="w-7 h-7" />
-          </div>
-          <h1 className="text-xl font-bold text-white mb-2">Deal Not Found</h1>
-          <p className="text-xs text-neutral-400 mb-6">
-            The promotional bundle deal you are looking for may have expired or been removed.
-          </p>
-          <Link
-            href="/deals"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-white text-neutral-950 font-bold text-xs hover:bg-neutral-200 transition-colors"
-          >
-            <span>View All Deals</span>
-          </Link>
-        </div>
-      </div>
-    );
+    notFound();
   }
 
   const upcoming = isDealUpcoming(deal);
   const expired = isDealExpired(deal);
 
-  // Validate shop stock across all included items
-  const minShopStock = Array.isArray(deal.products) && deal.products.length > 0
-    ? Math.min(...deal.products.map((p) => p.shopStock ?? 0))
-    : 0;
-
-  const isOutOfStock = minShopStock <= 0;
-  const canPurchase = !upcoming && !expired && !isOutOfStock;
+  const canPurchase = !upcoming && !expired;
 
   const savings =
     deal.discountAmount ||
     (deal.originalPrice && deal.dealPrice ? deal.originalPrice - deal.dealPrice : 0);
 
   const handleAddToCart = () => {
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorMsg('Deal is currently unavailable because one or more included products are out of stock in Shop Inventory.');
-      }
-      return;
-    }
+    if (!canPurchase) return;
 
     if (isAdding || justAdded) return;
 
@@ -146,14 +115,9 @@ export default function DealDetailPage() {
   };
 
   const handleBuyNow = () => {
-    if (!canPurchase) {
-      if (isOutOfStock) {
-        setErrorMsg('Deal is currently unavailable because one or more included products are out of stock in Shop Inventory.');
-      }
-      return;
-    }
+    if (!canPurchase) return;
 
-    const res = addDealToCart(deal, quantity);
+    const res = addDealToCart(deal, quantity, { openDrawer: false, showToast: false });
     if (res.success) {
       router.push('/checkout');
     } else if (res.error) {
@@ -276,25 +240,6 @@ export default function DealDetailPage() {
               </div>
             </div>
 
-            {/* Availability Banner */}
-            <div>
-              {isOutOfStock ? (
-                <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                  <span>
-                    <strong>Out of Stock:</strong> One or more included products are currently unavailable in Shop Inventory.
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 text-xs">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  <span>
-                    <strong>In Stock:</strong> Ready for immediate dispatch.
-                  </span>
-                </div>
-              )}
-            </div>
-
             {/* Included Products List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -333,16 +278,11 @@ export default function DealDetailPage() {
                             Model: {item.modelName}
                           </p>
                         )}
-                        <div className="flex items-center gap-2.5 text-[10px] text-neutral-500 font-mono mt-0.5">
-                          {item.sku && <span>SKU: {item.sku}</span>}
-                          {item.shopStock !== undefined && item.shopStock > 0 ? (
-                            <span className="text-emerald-400">
-                              • In Stock
-                            </span>
-                          ) : (
-                            <span className="text-rose-400">• Out of stock</span>
-                          )}
-                        </div>
+                        {item.sku && (
+                          <div className="flex items-center gap-2.5 text-[10px] text-neutral-500 font-mono mt-0.5">
+                            <span>SKU: {item.sku}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 

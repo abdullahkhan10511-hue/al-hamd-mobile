@@ -2,14 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { StaffUser, AdminUser, AdminRole } from '@/types/admin';
+import { StaffUser, AdminRole } from '@/types/admin';
 import { getStaffByEmail, getStaffUsers, hasStaffPermission, hasAnyStaffPermission, changeAdminSelfPassword } from '@/lib/db/staff';
 import { persistCollection } from '@/lib/db/storage';
 import { logActivity } from '@/lib/db/activity';
 import { verifyPassword } from '@/lib/crypto';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface AdminAuthContextType {
   admin: StaffUser | null;
@@ -225,8 +224,13 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: normalizedEmail, password }),
         });
-        const data = await apiRes.json();
-        if (apiRes.ok && data.success && data.user) {
+
+        const contentType = apiRes.headers.get('content-type') || '';
+        const data = contentType.includes('application/json')
+          ? await apiRes.json().catch(() => null)
+          : null;
+
+        if (apiRes.ok && data?.success && data?.user) {
           const sessionUser: StaffUser = data.user;
           try {
             localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
@@ -240,7 +244,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           return { success: true, role: sessionUser.role };
         } else if (apiRes.status === 401 || apiRes.status === 403) {
           setAuthLoading(false);
-          return { success: false, error: data.error || 'Invalid email or password.' };
+          return { success: false, error: data?.error || 'Invalid email or password.' };
+        } else if (!apiRes.ok && data?.error) {
+          setAuthLoading(false);
+          return { success: false, error: data.error };
         }
       } catch (err) {
         // Fallback to local cryptographic verification if server is unreachable

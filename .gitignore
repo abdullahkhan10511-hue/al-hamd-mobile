@@ -58,9 +58,11 @@ data/staff-users.json
 # test & scratch scripts
 scripts/test-*.js
 scripts/test-*.ts
+scripts/test-*.mjs
+scratch/
+_security_backups/
+data/password-reset-tokens.json
 
 # persistent uploaded media (keep directories, ignore user uploaded files)
 /public/uploads/*/*
 !/public/uploads/**/.gitkeep
-
-

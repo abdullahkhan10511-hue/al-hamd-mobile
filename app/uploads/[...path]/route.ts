@@ -64,7 +64,13 @@ export async function GET(
     if (rangeHeader && rangeHeader.startsWith('bytes=')) {
       const parts = rangeHeader.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
+      // For open-ended range requests (e.g. bytes=0-), cap initial chunk to 1MB (1,048,576 bytes)
+      // This allows the browser to receive the first chunk and start playback immediately!
+      const DEFAULT_CHUNK_SIZE = 1024 * 1024; // 1MB
+      const requestedEnd = parts[1] ? parseInt(parts[1], 10) : undefined;
+      const end = requestedEnd !== undefined
+        ? requestedEnd
+        : Math.min(start + DEFAULT_CHUNK_SIZE - 1, size - 1);
 
       if (isNaN(start) || isNaN(end) || start >= size || end >= size || start > end) {
         return new NextResponse('Requested range not satisfiable', {

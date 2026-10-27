@@ -58,6 +58,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.items.length > 500) {
+      return NextResponse.json(
+        { success: false, error: 'Shop Bill cannot contain more than 500 items.' },
+        { status: 400 }
+      );
+    }
+
     // Validate each item
     for (const item of body.items) {
       if (!item.productId || !item.productName) {

@@ -11,13 +11,17 @@ export async function GET(request: NextRequest) {
 
     const items = readPersistentNavigation();
 
-    const headers: Record<string, string> = isFresh
-      ? { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-      : { 'Cache-Control': 'public, max-age=15, s-maxage=60, stale-while-revalidate=120' };
+    const cacheControl = isFresh
+      ? 'no-cache, no-store, must-revalidate, max-age=0'
+      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
 
     return NextResponse.json(
       { success: true, items, count: items.length },
-      { headers }
+      {
+        headers: {
+          'Cache-Control': cacheControl,
+        },
+      }
     );
   } catch (err: any) {
     return NextResponse.json(

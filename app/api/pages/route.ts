@@ -1,8 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllPagesFromDb } from '@/lib/db/repositories/pages';
 import { readPersistentPages } from '@/lib/db/pagesStorage';
-import { seedPages } from '@/lib/db/pages';
 
 export async function GET() {
   try {
@@ -23,7 +22,7 @@ export async function GET() {
       { success: true, count: pages.length, pages },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         },
       }
     );

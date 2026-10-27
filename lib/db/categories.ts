@@ -41,9 +41,36 @@ const LEGACY_UNRELATED_SLUGS = new Set([
   'smart-home',
 ]);
 
+// Pure canonical categories snapshot for SSR and initial client hydration
+export function getCanonicalCategories(): Category[] {
+  return deduplicateCategoriesById(
+    initialCategories.filter(
+      (c) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && c.status === 'active'
+    )
+  );
+}
+
 export function getCategories(): Category[] {
-  const fallback = allowDevMockFallback() ? initialCategories : [];
+  let fallback = allowDevMockFallback() ? initialCategories : [];
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const devFile = path.join(process.cwd(), 'data', 'dev-categories.json');
+      if (fs.existsSync(devFile)) {
+        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          fallback = parsed;
+        }
+      }
+    } catch {}
+  }
   let list = getStoredCollection(COLLECTION_KEY, fallback);
+  if (!list || list.length === 0) {
+    list = initialCategories;
+  }
   let modified = false;
   const deletedSlugs = getDeletedCategorySlugs();
 
@@ -76,33 +103,45 @@ export function getCategories(): Category[] {
 }
 
 let hasSyncedCategoriesFromApi = false;
-let isSyncingCategories = false;
+let inFlightCategoriesPromise: Promise<Category[]> | null = null;
+let lastSyncedCategoriesTimestamp = 0;
 
-export async function syncCategoriesFromApi(): Promise<Category[]> {
+export async function syncCategoriesFromApi(force = false): Promise<Category[]> {
   if (typeof window === 'undefined') return [];
-  if (isSyncingCategories) return getCategories();
-  isSyncingCategories = true;
-  try {
-    const res = await fetch('/api/categories');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.categories)) {
-        const deletedSlugs = getDeletedCategorySlugs();
-        const filtered = data.categories.filter(
-          (c: any) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
-        );
-        const uniqueCategories = deduplicateCategoriesById<Category>(filtered);
-        await persistCollection(COLLECTION_KEY, uniqueCategories);
-        hasSyncedCategoriesFromApi = true;
-        return uniqueCategories;
-      }
-    }
-  } catch (err) {
-    console.warn('API error syncing categories:', err);
-  } finally {
-    isSyncingCategories = false;
+  const now = Date.now();
+  if (!force && lastSyncedCategoriesTimestamp > 0 && now - lastSyncedCategoriesTimestamp < 30000) {
+    return getCategories();
   }
-  return getCategories();
+  if (inFlightCategoriesPromise) {
+    return inFlightCategoriesPromise;
+  }
+
+  inFlightCategoriesPromise = (async () => {
+    try {
+      const res = await fetch('/api/categories');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.categories)) {
+          const deletedSlugs = getDeletedCategorySlugs();
+          const filtered = data.categories.filter(
+            (c: any) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
+          );
+          const uniqueCategories = deduplicateCategoriesById<Category>(filtered);
+          await persistCollection(COLLECTION_KEY, uniqueCategories);
+          hasSyncedCategoriesFromApi = true;
+          lastSyncedCategoriesTimestamp = Date.now();
+          return uniqueCategories;
+        }
+      }
+    } catch (err) {
+      console.warn('API error syncing categories:', err);
+    } finally {
+      inFlightCategoriesPromise = null;
+    }
+    return getCategories();
+  })();
+
+  return inFlightCategoriesPromise;
 }
 
 export function isCategoryActive(c: Category): boolean {

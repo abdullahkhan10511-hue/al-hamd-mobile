@@ -30,12 +30,25 @@ import {
   updateFlashSaleConfig,
   getAllProductsConfig,
   updateAllProductsConfig,
+  getTrustBenefits,
+  updateTrustBenefits,
+  updateAllHomepageSettings,
 } from '@/lib/db/homepage';
 import { getDeals, toggleDealStatus, syncDealsFromApi } from '@/lib/db/deals';
 import { getProducts } from '@/lib/db/products';
 import { getCategories } from '@/lib/db/categories';
 import { uploadMediaFile } from '@/lib/db/media';
-import { HomepageSection, HeroConfig, FloatingProductConfig, FlashSaleConfig, Deal, AllProductsConfig } from '@/types/admin';
+import {
+  HomepageSection,
+  HeroConfig,
+  FloatingProductConfig,
+  FlashSaleConfig,
+  Deal,
+  AllProductsConfig,
+  TrustBenefitItem,
+} from '@/types/admin';
+import { Product } from '@/types';
+import { TrustBenefitsEditor } from '@/components/admin/TrustBenefitsEditor';
 
 export default function HomepageControlPage() {
   const [sections, setSections] = useState<HomepageSection[]>(getHomepageSections());
@@ -43,9 +56,12 @@ export default function HomepageControlPage() {
   const [floatingProducts, setFloatingProducts] = useState<FloatingProductConfig[]>(getFloatingProducts());
   const [flashSale, setFlashSale] = useState<FlashSaleConfig>(getFlashSaleConfig());
   const [allProductsConfig, setAllProductsConfig] = useState<AllProductsConfig>(getAllProductsConfig());
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const [deals, setDeals] = useState<Deal[]>(() => getDeals());
   const [categories, setCategories] = useState(getCategories());
-  const [activeTab, setActiveTab] = useState<'sections' | 'all-products' | 'flash' | 'preview'>('sections');
+  const [trustBenefits, setTrustBenefits] = useState<TrustBenefitItem[]>(getTrustBenefits());
+  const [initialBenefits, setInitialBenefits] = useState<TrustBenefitItem[]>(getTrustBenefits());
+  const [isBenefitsSaved, setIsBenefitsSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState<'sections' | 'benefits' | 'all-products' | 'flash' | 'preview'>('sections');
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -54,13 +70,15 @@ export default function HomepageControlPage() {
   };
 
   useEffect(() => {
-    loadDeals();
     syncHomepageSettingsFromApi().then(() => {
       setSections(getHomepageSections());
       setHeroConfig(getHeroConfig());
       setFloatingProducts(getFloatingProducts());
       setFlashSale(getFlashSaleConfig());
       setAllProductsConfig(getAllProductsConfig());
+      const tb = getTrustBenefits();
+      setTrustBenefits(tb);
+      setInitialBenefits(JSON.parse(JSON.stringify(tb)));
     }).catch(() => {});
     syncDealsFromApi().then((fresh) => {
       if (fresh) setDeals(fresh);
@@ -73,6 +91,9 @@ export default function HomepageControlPage() {
       setFloatingProducts(getFloatingProducts());
       setFlashSale(getFlashSaleConfig());
       setAllProductsConfig(getAllProductsConfig());
+      const tb = getTrustBenefits();
+      setTrustBenefits(tb);
+      setInitialBenefits(JSON.parse(JSON.stringify(tb)));
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
@@ -152,13 +173,37 @@ export default function HomepageControlPage() {
     setFloatingProducts((prev) => prev.filter((c) => c.id !== cardId));
   };
 
+  // Benefit Cards handlers
+  const hasUnsavedBenefitChanges = React.useMemo(() => {
+    return JSON.stringify(trustBenefits) !== JSON.stringify(initialBenefits);
+  }, [trustBenefits, initialBenefits]);
+
+  const handleSaveBenefits = async () => {
+    await updateTrustBenefits(trustBenefits);
+    setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
+    setIsBenefitsSaved(true);
+    setTimeout(() => setIsBenefitsSaved(false), 2500);
+  };
+
+  const handleCancelBenefits = () => {
+    setTrustBenefits(JSON.parse(JSON.stringify(initialBenefits)));
+  };
+
   // Save all changes
   const handleSaveAll = async () => {
-    await updateHomepageSections(sections);
-    await updateHeroConfig(heroConfig);
-    await updateFloatingProducts(floatingProducts);
-    await updateFlashSaleConfig(flashSale);
-    await updateAllProductsConfig(allProductsConfig);
+    const heroWithFloating: HeroConfig = {
+      ...heroConfig,
+      floatingProducts: floatingProducts.slice(0, 4),
+    };
+
+    await updateAllHomepageSettings({
+      sections,
+      hero: heroWithFloating,
+      flashSale,
+      allProducts: allProductsConfig,
+      trustBenefits,
+    });
+    setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
 
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
@@ -201,14 +246,15 @@ export default function HomepageControlPage() {
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap pb-px">
         {[
-          { id: 'sections', label: 'Section Reordering & Visibility' },
-          { id: 'all-products', label: 'All Products Showcase Settings' },
-          { id: 'flash', label: 'Deals & Promotional Campaigns' },
-          { id: 'preview', label: 'Live Storefront Preview' },
+          { id: 'sections' as const, label: 'Section Reordering & Visibility' },
+          { id: 'benefits' as const, label: 'Benefit Cards & Trust Pillars' },
+          { id: 'all-products' as const, label: 'All Products Showcase Settings' },
+          { id: 'flash' as const, label: 'Deals & Promotional Campaigns' },
+          { id: 'preview' as const, label: 'Live Storefront Preview' },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`pb-3 px-3 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === tab.id
                 ? 'border-neutral-950 text-neutral-950'
@@ -309,7 +355,19 @@ export default function HomepageControlPage() {
         </div>
       )}
 
-      {/* 2. All Products Showcase Settings */}
+      {/* 2. Benefit Cards & Trust Pillars */}
+      {activeTab === 'benefits' && (
+        <TrustBenefitsEditor
+          benefits={trustBenefits}
+          onChange={setTrustBenefits}
+          onSave={handleSaveBenefits}
+          onCancel={handleCancelBenefits}
+          hasUnsavedChanges={hasUnsavedBenefitChanges}
+          isSaved={isBenefitsSaved}
+        />
+      )}
+
+      {/* 3. All Products Showcase Settings */}
       {activeTab === 'all-products' && (
         <div className="bg-white rounded-3xl border border-neutral-200/80 p-6 sm:p-8 shadow-xs space-y-6">
           <div className="border-b border-neutral-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -422,7 +480,7 @@ export default function HomepageControlPage() {
                 onChange={(e) =>
                   setAllProductsConfig((prev) => ({
                     ...prev,
-                    sortBy: e.target.value as any,
+                    sortBy: e.target.value as AllProductsConfig['sortBy'],
                   }))
                 }
                 className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-hidden focus:border-neutral-900 transition-colors bg-white cursor-pointer"
@@ -519,7 +577,10 @@ export default function HomepageControlPage() {
             <div className="flex items-center gap-2 text-xs text-neutral-600">
               <Check className="w-4 h-4 text-emerald-600" />
               <span>
-                <strong>{allProducts.filter((p) => (p as any).status !== 'archived' && (p as any).status !== 'inactive' && (p as any).isActive !== false).length}</strong> active products available in database. Showing up to <strong>{allProductsConfig.limit}</strong> items.
+                <strong>{allProducts.filter((p) => {
+                  const item = p as Product & { status?: string; isActive?: boolean };
+                  return item.status !== 'archived' && item.status !== 'inactive' && item.isActive !== false;
+                }).length}</strong> active products available in database. Showing up to <strong>{allProductsConfig.limit}</strong> items.
               </span>
             </div>
 

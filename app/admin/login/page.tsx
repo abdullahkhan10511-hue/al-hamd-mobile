@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import {
@@ -24,17 +25,36 @@ import {
   DEFAULT_ADMIN_LOGIN_SETTINGS,
 } from '@/lib/db/adminLoginAppearance';
 
+function getSafeAdminRedirect(target: string | null | undefined): string {
+  if (!target) return '/admin/dashboard';
+  const clean = target.trim();
+  // Prevent protocol-relative URLs (//evil.com), absolute URLs (https://), javascript:, data:, or backslashes
+  if (clean.startsWith('//') || clean.includes('://') || clean.includes('\\')) {
+    return '/admin/dashboard';
+  }
+  // Enforce that redirects only navigate to internal /admin routes
+  if (!clean.startsWith('/admin')) {
+    return '/admin/dashboard';
+  }
+  // Prevent redirecting back to login itself
+  if (clean === '/admin/login' || clean.startsWith('/admin/login?')) {
+    return '/admin/dashboard';
+  }
+  return clean;
+}
+
 function AdminLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams?.get('redirect');
+  const safeDestination = getSafeAdminRedirect(redirectParam);
   const errorParam = searchParams?.get('error');
 
   const { login, admin, isAuthenticated, isLoading } = useAdminAuth();
 
   // Appearance and images loaded from storage
-  const [settings, setSettings] = useState<AdminLoginSettings>(DEFAULT_ADMIN_LOGIN_SETTINGS);
-  const [images, setImages] = useState<AdminLoginImage[]>([]);
+  const [settings, setSettings] = useState<AdminLoginSettings>(() => getAdminLoginSettings());
+  const [images, setImages] = useState<AdminLoginImage[]>(() => getAdminLoginImages());
   const [currentSlide, setCurrentSlide] = useState(0);
 
   // Form fields - empty by default (no hardcoded credentials)
@@ -49,6 +69,43 @@ function AdminLoginContent() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Forgot Password Modal State
+  const [forgotModalOpen, setForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotError, setForgotError] = useState('');
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotMessage('');
+
+    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
+      setForgotError('Please enter a valid staff email address.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim(), portal: 'staff' }),
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await res.json().catch(() => null) : null;
+      setForgotMessage(
+        data?.message ||
+          'If an account associated with this email exists, password reset instructions have been dispatched.'
+      );
+    } catch {
+      setForgotError('Could not process request. Please try again.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   // Load appearance settings and active images
   const loadAppearance = useCallback(() => {
     setSettings(getAdminLoginSettings());
@@ -56,7 +113,6 @@ function AdminLoginContent() {
   }, []);
 
   useEffect(() => {
-    loadAppearance();
     const handleUpdate = () => loadAppearance();
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
@@ -65,10 +121,9 @@ function AdminLoginContent() {
   // If already authenticated, redirect to destination
   useEffect(() => {
     if (!isLoading && isAuthenticated && admin) {
-      const destination = redirectParam || '/admin/dashboard';
-      router.replace(destination);
+      router.replace(safeDestination);
     }
-  }, [isLoading, isAuthenticated, admin, router, redirectParam]);
+  }, [isLoading, isAuthenticated, admin, router, safeDestination]);
 
   // Filter only active images for the slider
   const activeImages = useMemo(() => {
@@ -98,13 +153,12 @@ function AdminLoginContent() {
       const result = await login(email, password);
 
       if (result.success) {
-        const destination = redirectParam || '/admin/dashboard';
-        window.location.href = destination;
+        window.location.href = safeDestination;
       } else {
         setIsSubmitting(false);
         setError(result.error || 'Invalid email or password. Please verify your credentials and try again.');
       }
-    } catch (err: any) {
+    } catch {
       setIsSubmitting(false);
       setError('Invalid email or password. Please verify your credentials and try again.');
     }
@@ -283,14 +337,19 @@ function AdminLoginContent() {
                   >
                     {settings.passwordLabel || 'Security Password'}
                   </label>
-                  {settings.forgotPasswordText && (
-                    <span
-                      className="text-[11px] font-medium"
-                      style={{ color: settings.secondaryTextColor || '#a3a3a3' }}
-                    >
-                      {settings.forgotPasswordText}
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setForgotMessage('');
+                      setForgotError('');
+                      setForgotModalOpen(true);
+                    }}
+                    className="text-[11px] font-semibold hover:underline transition-colors cursor-pointer"
+                    style={{ color: settings.secondaryTextColor || '#a3a3a3' }}
+                  >
+                    {settings.forgotPasswordText || 'Forgot Password?'}
+                  </button>
                 </div>
                 <div className="relative">
                   <Lock
@@ -369,6 +428,96 @@ function AdminLoginContent() {
           </div>
         </div>
       </div>
+
+      {/* Staff Forgot Password Modal */}
+      {forgotModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative text-white animate-in fade-in duration-200">
+            <button
+              onClick={() => setForgotModalOpen(false)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white p-1 cursor-pointer transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-mono font-bold text-amber-400 uppercase tracking-widest mb-2">
+                  <Shield className="w-3 h-3" />
+                  <span>Staff Recovery</span>
+                </div>
+                <h3 className="text-lg font-black tracking-tight text-white">Reset Staff Password</h3>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  Enter your registered staff email address to receive a secure, single-use password reset link.
+                </p>
+              </div>
+
+              {forgotMessage && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                  <span className="leading-relaxed">{forgotMessage}</span>
+                </div>
+              )}
+
+              {forgotError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-medium flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                  <span>{forgotError}</span>
+                </div>
+              )}
+
+              {!forgotMessage && (
+                <form onSubmit={handleForgotPassword} className="space-y-3.5 text-xs">
+                  <div>
+                    <label className="font-bold text-neutral-300 block mb-1.5">
+                      Staff Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        required
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="admin@alhamd-mobile.com"
+                        className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-neutral-700 bg-neutral-950 text-white placeholder:text-neutral-500 focus:outline-none focus:border-amber-500 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs tracking-wider uppercase transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {forgotLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending Request...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Send Recovery Instructions</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {forgotMessage && (
+                <button
+                  type="button"
+                  onClick={() => setForgotModalOpen(false)}
+                  className="w-full py-3 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

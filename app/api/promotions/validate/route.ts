@@ -15,6 +15,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (Array.isArray(items) && items.length > 200) {
+      return NextResponse.json(
+        { valid: false, error: 'Too many items in cart for promo validation (maximum 200).' },
+        { status: 400 }
+      );
+    }
+
     let promoOverride;
     if (isDbConfigured()) {
       promoOverride = await getPromoCodeByCodeFromDb(code);

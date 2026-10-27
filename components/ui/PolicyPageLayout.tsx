@@ -10,11 +10,12 @@ import PageRenderer from '@/components/ui/PageRenderer';
 interface PolicyPageLayoutProps {
   pageId: string;
   fallbackTitle: string;
+  initialPage?: CustomPage | null;
 }
 
-export default function PolicyPageLayout({ pageId, fallbackTitle }: PolicyPageLayoutProps) {
-  const [page, setPage] = useState<CustomPage | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function PolicyPageLayout({ pageId, fallbackTitle, initialPage = null }: PolicyPageLayoutProps) {
+  const [page, setPage] = useState<CustomPage | null>(initialPage);
+  const [loading, setLoading] = useState(!initialPage);
 
   const loadData = async () => {
     try {

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
-import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   SlidersHorizontal,
@@ -11,16 +10,13 @@ import {
   Star,
   Check,
   RotateCcw,
-  ArrowRight,
   PackageX,
 } from 'lucide-react';
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
-import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
-import { Brand } from '@/types/admin';
 
 export default function NewArrivalsPage() {
   return (
@@ -33,7 +29,6 @@ export default function NewArrivalsPage() {
 function NewArrivalsContent() {
   const [productsList, setProductsList] = useState<Product[]>([]);
   const [categoriesList, setCategoriesList] = useState<Category[]>([]);
-  const [brandsList, setBrandsList] = useState<Brand[]>([]);
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -81,14 +76,11 @@ function NewArrivalsContent() {
       }
     }).catch(() => {});
 
-    let cats = deduplicateCategoriesById(getActiveCategories());
+    const cats = deduplicateCategoriesById(getActiveCategories());
     setCategoriesList(cats);
     syncCategoriesFromApi().then(() => {
       setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
     }).catch(() => {});
-
-    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
-    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
   };
 
   const refreshFromCache = () => {
@@ -102,7 +94,6 @@ function NewArrivalsContent() {
     );
     setProductsList(newItems);
     setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
   };
 
   useEffect(() => {

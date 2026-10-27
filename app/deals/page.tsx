@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Tag, Sparkles, ChevronRight, PackageX } from 'lucide-react';
+import { Tag, ChevronRight, PackageX } from 'lucide-react';
 import { getDeals, syncDealsFromApi, isDealCurrentlyActive } from '@/lib/db/deals';
 import { Deal } from '@/types/admin';
 import { DealCard } from '@/components/deals/DealCard';

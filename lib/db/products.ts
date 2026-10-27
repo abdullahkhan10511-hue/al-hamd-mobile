@@ -81,8 +81,31 @@ export function sanitizeProducts(
   return list as (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[];
 }
 
+// Pure canonical products snapshot for SSR and initial client hydration
+export function getCanonicalProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
+  return sanitizeProducts(seedProducts).filter((p) => {
+    const item = p as Product & { status?: string; isActive?: boolean };
+    return item.status !== 'archived' && item.status !== 'inactive' && item.isActive !== false;
+  });
+}
+
 export function getProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
-  const fallback = allowDevMockFallback() ? seedProducts : [];
+  let fallback = allowDevMockFallback() ? seedProducts : [];
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const devFile = path.join(process.cwd(), 'data', 'dev-products.json');
+      if (fs.existsSync(devFile)) {
+        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          fallback = parsed;
+        }
+      }
+    } catch {}
+  }
   const list = getStoredCollection(COLLECTION_KEY, fallback);
   const sanitized = sanitizeProducts(list);
 

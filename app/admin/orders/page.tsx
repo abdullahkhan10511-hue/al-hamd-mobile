@@ -460,15 +460,34 @@ export default function AdminOrdersPage() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
-                          order.paymentStatus === 'Paid'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {order.paymentStatus}
-                      </span>
+                      <div className="font-bold text-neutral-900 text-xs">
+                        {order.paymentMethod && order.paymentMethod.trim()
+                          ? order.paymentMethod
+                          : 'Not recorded'}
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                            order.paymentStatus === 'Paid'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : order.paymentStatus === 'Awaiting Verification'
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : order.paymentStatus === 'Failed'
+                              ? 'bg-red-50 text-red-700 border border-red-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {order.paymentStatus || 'Pending'}
+                        </span>
+                        {order.paymentReference && (
+                          <span
+                            title={`TID / Ref: ${order.paymentReference}`}
+                            className="text-[9px] font-mono text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200 truncate max-w-[120px]"
+                          >
+                            Ref: {order.paymentReference}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-3.5 px-4">

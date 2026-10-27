@@ -56,7 +56,7 @@
     }
   ],
   "hero": {
-    "eyebrowText": "PREMIUM MOBILE ACCESSORIES",
+    "eyebrowText": "VERIFIED CROSS ADMIN 2026",
     "mainHeading": "Elevate Your",
     "headingHighlight": "Mobile Experience",
     "description": "Shop high-speed GaN fast chargers, military-grade MagSafe phone cases, 20,000mAh power banks, crystal-clear TWS earbuds, and precision smartphone protection across Pakistan.",
@@ -121,5 +121,39 @@
     "showViewAllButton": true,
     "viewAllLink": "/shop",
     "viewAllText": "Explore Entire Catalog"
-  }
+  },
+  "trustBenefits": [
+    {
+      "id": "tb-1",
+      "icon": "Award",
+      "title": "Quality You Can Trust",
+      "description": "Shop carefully selected mobile accessories for everyday use.",
+      "displayOrder": 1,
+      "visible": true
+    },
+    {
+      "id": "tb-2",
+      "icon": "Truck",
+      "title": "Delivery Across Pakistan",
+      "description": "Convenient delivery options for customers across Pakistan.",
+      "displayOrder": 2,
+      "visible": true
+    },
+    {
+      "id": "tb-3",
+      "icon": "Lock",
+      "title": "Secure Shopping Experience",
+      "description": "A straightforward checkout experience with the payment options currently supported by the store.",
+      "displayOrder": 3,
+      "visible": true
+    },
+    {
+      "id": "tb-4",
+      "icon": "Headphones",
+      "title": "Customer Support",
+      "description": "Get help with your questions, orders and product information.",
+      "displayOrder": 4,
+      "visible": true
+    }
+  ]
 }

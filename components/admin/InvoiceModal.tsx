@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Order, BillSettings } from '@/types/admin';
-import { Printer, FileText, X, CheckCircle2 } from 'lucide-react';
+import { Printer, FileText, X } from 'lucide-react';
 import { getBillSettings } from '@/lib/db/billSettings';
 import { subscribeToKey } from '@/lib/db/storage';
 import { printBillElement } from '@/lib/utils/printBill';

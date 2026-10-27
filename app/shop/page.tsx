@@ -45,7 +45,6 @@ function ShopContent() {
   const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrand ? [initialBrand] : []);
   const [maxPrice, setMaxPrice] = useState<number>(1000000);
   const [minRating, setMinRating] = useState<number | null>(null);
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>(
     initialFilter === 'new'
       ? 'newest'
@@ -432,11 +431,6 @@ function ShopContent() {
         return false;
       }
 
-      // In stock only filter (Customer availability uses Shop Stock + Shop Active)
-      if (inStockOnly && ((product.shopStock ?? 0) <= 0 || product.isShopActive === false)) {
-        return false;
-      }
-
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -451,7 +445,7 @@ function ShopContent() {
 
       return true;
     });
-  }, [productsList, selectedCategory, selectedBrands, brandsList, maxPrice, minRating, inStockOnly, searchQuery]);
+  }, [productsList, selectedCategory, selectedBrands, brandsList, maxPrice, minRating, searchQuery]);
 
   // Sort logic
   const sortedProducts = useMemo(() => {
@@ -491,7 +485,6 @@ function ShopContent() {
     setSelectedBrands([]);
     setMaxPrice(1000000);
     setMinRating(null);
-    setInStockOnly(false);
     setSearchQuery('');
     setSortBy('featured');
     updateUrlFilters('all', []);
@@ -502,7 +495,6 @@ function ShopContent() {
     selectedBrands.length +
     (maxPrice < 1000000 ? 1 : 0) +
     (minRating !== null ? 1 : 0) +
-    (inStockOnly ? 1 : 0) +
     (searchQuery ? 1 : 0);
 
   return (
@@ -654,15 +646,6 @@ function ShopContent() {
                   />
                 </span>
               )}
-              {inStockOnly && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-xs font-medium">
-                  In Stock Only
-                  <X
-                    className="w-3 h-3 cursor-pointer hover:text-neutral-950"
-                    onClick={() => setInStockOnly(false)}
-                  />
-                </span>
-              )}
               <button
                 onClick={resetFilters}
                 className="text-xs text-rose-600 hover:text-rose-700 font-semibold ml-2 underline cursor-pointer"
@@ -692,21 +675,6 @@ function ShopContent() {
                 />
                 <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
               </div>
-            </div>
-
-            {/* In-Stock Filter */}
-            <div className="pt-4 border-t border-neutral-100">
-              <label className="flex items-center justify-between cursor-pointer group">
-                <span className="text-xs font-semibold text-neutral-800 group-hover:text-neutral-950">
-                  In-Stock Only
-                </span>
-                <input
-                  type="checkbox"
-                  checked={inStockOnly}
-                  onChange={(e) => setInStockOnly(e.target.checked)}
-                  className="w-4 h-4 rounded text-neutral-950 focus:ring-neutral-950"
-                />
-              </label>
             </div>
 
             {/* Price Range Filter */}
@@ -918,17 +886,6 @@ function ShopContent() {
                     ))}
                   </div>
                 </div>
-
-                {/* In stock */}
-                <label className="flex items-center justify-between cursor-pointer py-1">
-                  <span className="text-xs font-semibold text-neutral-800">In-Stock Only</span>
-                  <input
-                    type="checkbox"
-                    checked={inStockOnly}
-                    onChange={(e) => setInStockOnly(e.target.checked)}
-                    className="w-4 h-4 rounded text-neutral-950"
-                  />
-                </label>
 
                 {/* Price Ceiling */}
                 <div className="pt-4 border-t border-neutral-100">

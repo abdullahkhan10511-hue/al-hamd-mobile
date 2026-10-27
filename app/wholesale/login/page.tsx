@@ -3,7 +3,19 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, Lock, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
+import {
+  Building2,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  AlertCircle,
+  ShieldCheck,
+  Mail,
+  CheckCircle2,
+  X,
+  Loader2,
+} from 'lucide-react';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 
 function WholesaleLoginContent() {
@@ -18,6 +30,42 @@ function WholesaleLoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Forgot Password Modal State
+  const [forgotModalOpen, setForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotError, setForgotError] = useState('');
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotMessage('');
+
+    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
+      setForgotError('Please enter a valid email address.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim(), portal: 'wholesale' }),
+      });
+      const data = await res.json();
+      setForgotMessage(
+        data.message ||
+          'If an account associated with this email exists, password reset instructions have been dispatched.'
+      );
+    } catch {
+      setForgotError('Could not process request. Please try again.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   // If already authenticated as wholesale or super wholesale, redirect
   useEffect(() => {
@@ -52,8 +100,12 @@ function WholesaleLoginContent() {
         return;
       }
       router.push(redirectUrl);
-    } catch (err: any) {
-      setError(err?.message || 'Invalid shop name or password. Please verify your credentials.');
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Invalid shop name or password. Please verify your credentials.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -109,9 +161,22 @@ function WholesaleLoginContent() {
           </div>
 
           <div>
-            <label className="font-bold text-neutral-800 block mb-1.5">
-              Password <span className="text-rose-500 font-bold">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="font-bold text-neutral-800">
+                Password <span className="text-rose-500 font-bold">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotMessage('');
+                  setForgotError('');
+                  setForgotModalOpen(true);
+                }}
+                className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-950 underline transition-colors cursor-pointer"
+              >
+                Forgot Password?
+              </button>
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -154,6 +219,98 @@ function WholesaleLoginContent() {
           </Link>
         </div>
       </div>
+
+      {/* Wholesale Forgot Password Modal */}
+      {forgotModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-neutral-200 animate-in fade-in duration-200">
+            <button
+              onClick={() => setForgotModalOpen(false)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-700 p-1 cursor-pointer transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-100 border border-neutral-200 text-[10px] font-mono font-bold text-neutral-800 uppercase tracking-widest mb-2">
+                  <ShieldCheck className="w-3 h-3 text-neutral-950" />
+                  <span>Wholesale Recovery</span>
+                </div>
+                <h3 className="text-lg font-black tracking-tight text-neutral-950">
+                  Reset Wholesale Password
+                </h3>
+                <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                  Enter the email address registered with your wholesale shop account to receive password reset instructions.
+                </p>
+              </div>
+
+              {forgotMessage && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                  <span className="leading-relaxed">{forgotMessage}</span>
+                </div>
+              )}
+
+              {forgotError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{forgotError}</span>
+                </div>
+              )}
+
+              {!forgotMessage && (
+                <form onSubmit={handleForgotPassword} className="space-y-3.5 text-xs">
+                  <div>
+                    <label className="font-bold text-neutral-800 block mb-1.5">
+                      Registered Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        required
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="shopowner@example.com"
+                        className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-950 text-xs font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="w-full py-3.5 px-4 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {forgotLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending Request...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Send Recovery Link</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {forgotMessage && (
+                <button
+                  type="button"
+                  onClick={() => setForgotModalOpen(false)}
+                  className="w-full py-3 px-4 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

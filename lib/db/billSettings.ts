@@ -59,34 +59,58 @@ export const defaultBillSettings: BillSettings = {
   showThankYou: true,
 };
 
-let hasSyncedBillSettingsFromApi = false;
-export async function syncBillSettingsFromApi(): Promise<void> {
-  if (typeof window === 'undefined') return;
-  try {
-    const res = await fetch('/api/admin/bill-settings', {
-      cache: 'no-store',
-      headers: getAdminAuthHeaders(),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.settings) {
-        setLocal(BILL_SETTINGS_KEY, data.settings);
-        window.dispatchEvent(
-          new CustomEvent('alhamd:data-updated', {
-            detail: { key: BILL_SETTINGS_KEY, value: data.settings },
-          })
-        );
+let inFlightBillSettingsPromise: Promise<boolean> | null = null;
+export async function syncBillSettingsFromApi(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (inFlightBillSettingsPromise) return inFlightBillSettingsPromise;
+
+  inFlightBillSettingsPromise = (async () => {
+    try {
+      const res = await fetch(`/api/admin/bill-settings?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: getAdminAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setLocal(BILL_SETTINGS_KEY, data.settings, true);
+          window.dispatchEvent(
+            new CustomEvent('alhamd:data-updated', {
+              detail: { key: BILL_SETTINGS_KEY, value: data.settings },
+            })
+          );
+          return true;
+        }
       }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      inFlightBillSettingsPromise = null;
     }
-  } catch {}
+  })();
+
+  return inFlightBillSettingsPromise;
 }
 
 export function getBillSettings(): BillSettings {
-  if (typeof window !== 'undefined' && !hasSyncedBillSettingsFromApi) {
-    hasSyncedBillSettingsFromApi = true;
-    syncBillSettingsFromApi().catch(() => {});
+  let fallback = defaultBillSettings;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path');
+      const devFile = path.join(process.cwd(), 'data', 'dev-bill-settings.json');
+      if (fs.existsSync(devFile)) {
+        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
+        if (parsed && typeof parsed === 'object') {
+          fallback = { ...defaultBillSettings, ...parsed };
+        }
+      }
+    } catch {}
   }
-  const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, defaultBillSettings);
+  const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, fallback);
 
   // Preserve existing saved thermal width, fallback to default '80mm' only if unset
   const savedWidth = current?.thermalPaperWidth || current?.thermalConfig?.thermalPaperWidth || DEFAULT_THERMAL_WIDTH;

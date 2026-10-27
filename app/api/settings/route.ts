@@ -43,14 +43,19 @@ async function readServerSettings(): Promise<StoreSettings> {
   return readLocalFileSettings();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const isFresh = searchParams.has('fresh') || searchParams.has('t');
     const settings = await readServerSettings();
+    const cacheControl = isFresh
+      ? 'no-cache, no-store, must-revalidate, max-age=0'
+      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
     return NextResponse.json(
       { success: true, settings },
       {
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': cacheControl,
         },
       }
     );

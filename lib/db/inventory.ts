@@ -7,6 +7,7 @@ const COLLECTION_KEY = 'inventory_logs';
 let hasSyncedInventoryLogsFromApi = false;
 export async function syncInventoryLogsFromApi(force = false): Promise<InventoryLog[]> {
   if (typeof window === 'undefined') return [];
+  if (!force && hasSyncedInventoryLogsFromApi) return getStoredCollection(COLLECTION_KEY, []);
   try {
     const authHeaders = getAdminAuthHeaders();
     const res = await fetch('/api/admin/inventory/logs', {

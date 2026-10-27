@@ -86,10 +86,6 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleBrandUpdate = () => {
-    setBrandsList(getActiveBrands());
-  };
-
   const selectableBrands = useMemo(() => {
     const active = brandsList.filter((b) => b.status === 'active');
     // If the product being edited already has a brand that is inactive or not in active list, preserve it!

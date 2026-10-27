@@ -10,7 +10,6 @@ import {
   Warehouse,
   Store,
   Search,
-  Plus,
   Trash2,
   AlertTriangle,
   CheckCircle2,

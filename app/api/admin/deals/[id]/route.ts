@@ -4,68 +4,26 @@ import { getDealById, saveDeal, deleteDeal } from '@/lib/db/deals';
 import { getDealByIdFromDb, updateDealInDb, deleteDealFromDb } from '@/lib/db/repositories/deals';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
+import {
+  getAdminSession,
+  hasAdminPermission,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function getSessionUser(request: NextRequest): { email: string; role: string; permissions?: string[] } | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
-
-  if (cookieVal) {
-    let raw = cookieVal;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email && parsed.status !== 'inactive') {
-          return parsed;
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    try {
-      const parsed = JSON.parse(decodeURIComponent(token));
-      if (parsed && parsed.email) return parsed;
-    } catch {
-      if (token.includes('@')) {
-        return { email: token, role: 'ADMIN' };
-      }
-    }
-  }
-
-  return null;
-}
-
-function hasPermission(session: { role: string; permissions?: string[] } | null, requiredPerm: string): boolean {
-  if (!session) return false;
-  const role = (session.role || '').toUpperCase();
-  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'OWNER' || role === 'MANAGER') {
-    return true;
-  }
-  return Boolean(session.permissions?.includes(requiredPerm) || session.permissions?.includes('promotions.view'));
-}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getSessionUser(request);
-    if (!session || !hasPermission(session, 'promotions.view')) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const session = getAdminSession(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'promotions.view')) {
+      return forbiddenResponse('Forbidden: Staff permissions required to view deals.');
     }
 
     const { id } = await params;
@@ -106,13 +64,31 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getSessionUser(request);
-    if (!session || !hasPermission(session, 'promotions.edit')) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const session = getAdminSession(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'promotions.edit')) {
+      return forbiddenResponse('Forbidden: Admin or Promotion Manager credentials required.');
     }
 
     const { id } = await params;
     const body = await request.json();
+
+    if (body.products !== undefined) {
+      if (!Array.isArray(body.products) || body.products.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Please select at least one product for this deal.' },
+          { status: 400 }
+        );
+      }
+      if (body.products.length > 100) {
+        return NextResponse.json(
+          { success: false, error: 'A deal cannot contain more than 100 products.' },
+          { status: 400 }
+        );
+      }
+    }
 
     let updatedDeal;
     if (isDbConfigured()) {
@@ -162,9 +138,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getSessionUser(request);
-    if (!session || !hasPermission(session, 'promotions.delete')) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const session = getAdminSession(request);
+    if (!session) {
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, 'promotions.delete')) {
+      return forbiddenResponse('Forbidden: Admin or Promotion Manager credentials required.');
     }
 
     const { id } = await params;

@@ -14,21 +14,32 @@ import {
 } from '@/types/admin';
 import { products as initialProducts } from '@/data/products';
 
+const computeSeedBrandCount = (name: string, slug: string): number => {
+  const n = name.toLowerCase().trim();
+  const s = slug.toLowerCase().trim();
+  return initialProducts.filter((p: any) => {
+    if (p.status === 'inactive' || p.status === 'archived' || p.isActive === false) return false;
+    const b = (p.brand || '').toLowerCase().trim();
+    const bs = (p.brandSlug || '').toLowerCase().trim();
+    return b === n || b === s || bs === s || bs === n;
+  }).length;
+};
+
 export const seedBrands: Brand[] = [
-  { id: 'brand-1', name: 'Apple', slug: 'apple', status: 'active', description: 'Genuine MagSafe accessories, AirPods audio, and premium cases' },
-  { id: 'brand-2', name: 'Samsung', slug: 'samsung', status: 'active', description: 'Original 45W super fast chargers, Galaxy accessories, and covers' },
-  { id: 'brand-3', name: 'Anker', slug: 'anker', status: 'active', description: 'World-renowned high-speed GaN fast charging and portable power banks' },
-  { id: 'brand-4', name: 'Baseus', slug: 'baseus', status: 'active', description: 'Innovative multi-port chargers, car mounts, and magnetic wireless docks' },
-  { id: 'brand-5', name: 'UGREEN', slug: 'ugreen', status: 'active', description: 'Certified 100W braided cables, ergonomic desktop stands, and hubs' },
-  { id: 'brand-6', name: 'Audionic', slug: 'audionic', status: 'active', description: 'Signature high-bass TWS earbuds and Bluetooth mobile audio' },
-  { id: 'brand-7', name: 'Sony', slug: 'sony', status: 'active', description: 'Industry-leading noise cancellation mobile acoustics and headphones' },
-  { id: 'brand-8', name: 'JBL', slug: 'jbl', status: 'active', description: 'Ultra-portable waterproof Bluetooth mobile speakers' },
-  { id: 'brand-9', name: 'Spigen', slug: 'spigen', status: 'active', description: 'Military-grade shockproof smartphone cases and armor covers' },
-  { id: 'brand-10', name: 'ESR', slug: 'esr', status: 'active', description: '9H diamond tempered glass protectors, screen cleaning, and cases' },
-  { id: 'brand-11', name: 'Xiaomi', slug: 'xiaomi', status: 'active', description: 'High-speed fast chargers, smart bands, and mobile essentials' },
-  { id: 'brand-12', name: 'Realme', slug: 'realme', status: 'active', description: 'SuperDart fast charging cables and mobile earbuds' },
-  { id: 'brand-13', name: 'Joyroom', slug: 'joyroom', status: 'active', description: 'Fast wireless chargers, car mounts, and mobile accessories' },
-  { id: 'brand-14', name: 'Ronin', slug: 'ronin', status: 'active', description: 'Reliable fast charging adapters, power banks, and cables' },
+  { id: 'brand-1', name: 'Apple', slug: 'apple', status: 'active', productCount: 2, description: 'Genuine MagSafe accessories, AirPods audio, and premium cases' },
+  { id: 'brand-2', name: 'Samsung', slug: 'samsung', status: 'active', productCount: 1, description: 'Original 45W super fast chargers, Galaxy accessories, and covers' },
+  { id: 'brand-3', name: 'Anker', slug: 'anker', status: 'active', productCount: 2, description: 'World-renowned high-speed GaN fast charging and portable power banks' },
+  { id: 'brand-4', name: 'Baseus', slug: 'baseus', status: 'active', productCount: 4, description: 'Innovative multi-port chargers, car mounts, and magnetic wireless docks' },
+  { id: 'brand-5', name: 'UGREEN', slug: 'ugreen', status: 'active', productCount: 2, description: 'Certified 100W braided cables, ergonomic desktop stands, and hubs' },
+  { id: 'brand-6', name: 'Audionic', slug: 'audionic', status: 'active', productCount: 1, description: 'Signature high-bass TWS earbuds and Bluetooth mobile audio' },
+  { id: 'brand-7', name: 'Sony', slug: 'sony', status: 'active', productCount: 1, description: 'Industry-leading noise cancellation mobile acoustics and headphones' },
+  { id: 'brand-8', name: 'JBL', slug: 'jbl', status: 'active', productCount: 1, description: 'Ultra-portable waterproof Bluetooth mobile speakers' },
+  { id: 'brand-9', name: 'Spigen', slug: 'spigen', status: 'active', productCount: 1, description: 'Military-grade shockproof smartphone cases and armor covers' },
+  { id: 'brand-10', name: 'ESR', slug: 'esr', status: 'active', productCount: 2, description: '9H diamond tempered glass protectors, screen cleaning, and cases' },
+  { id: 'brand-11', name: 'Xiaomi', slug: 'xiaomi', status: 'active', productCount: 0, description: 'High-speed fast chargers, smart bands, and mobile essentials' },
+  { id: 'brand-12', name: 'Realme', slug: 'realme', status: 'active', productCount: 0, description: 'SuperDart fast charging cables and mobile earbuds' },
+  { id: 'brand-13', name: 'Joyroom', slug: 'joyroom', status: 'active', productCount: 0, description: 'Fast wireless chargers, car mounts, and mobile accessories' },
+  { id: 'brand-14', name: 'Ronin', slug: 'ronin', status: 'active', productCount: 0, description: 'Reliable fast charging adapters, power banks, and cables' },
 ];
 
 export const seedProducts: (Product & { sku: string; lowStockThreshold: number; trending?: boolean })[] =
@@ -50,13 +61,13 @@ export const seedProducts: (Product & { sku: string; lowStockThreshold: number; 
 
 export const seedHomepageSections: HomepageSection[] = [
   { id: 'hero', name: 'Full-Screen Video Hero', enabled: true, order: 1 },
-  { id: 'trust', name: 'Trust & Benefits Bar', enabled: true, order: 2 },
+  { id: 'trust', name: 'Trust & Benefits Bar', enabled: false, order: 2 },
   { id: 'categories', name: 'Shop by Categories', enabled: true, order: 3 },
   { id: 'brands', name: 'Shop by Brands', enabled: true, order: 4 },
-  { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 5 },
-  { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 6 },
-  { id: 'deals', name: 'Special Deals & Bundles', enabled: true, order: 7 },
-  { id: 'all-products', name: 'All Products Showcase', enabled: true, order: 8 },
+  { id: 'all-products', name: 'All Products Showcase', enabled: true, order: 5 },
+  { id: 'new-arrivals', name: 'New Arrivals', enabled: true, order: 6 },
+  { id: 'best-sellers', name: 'Best Sellers', enabled: true, order: 7 },
+  { id: 'deals', name: 'Special Deals & Bundles', enabled: false, order: 8 },
   { id: 'final-trust', name: 'Final Assurance Bar', enabled: true, order: 9 },
 ];
 
@@ -170,10 +181,38 @@ export const seedFlashSaleConfig: FlashSaleConfig = {
 };
 
 export const seedTrustBenefits: TrustBenefitItem[] = [
-  { id: 'tb-1', icon: 'Truck', title: 'Nationwide Delivery', description: 'Free delivery on mobile accessories over Rs. 5,000 across Pakistan', displayOrder: 1, visible: true },
-  { id: 'tb-2', icon: 'ShieldCheck', title: 'Cash on Delivery', description: 'Pay upon receiving your order safely at your doorstep', displayOrder: 2, visible: true },
-  { id: 'tb-3', icon: 'RotateCcw', title: 'Easy 7-Day Returns', description: 'Hassle-free 7-day replacement and customer returns', displayOrder: 3, visible: true },
-  { id: 'tb-4', icon: 'Headphones', title: '24/7 Dedicated Support', description: 'Expert technical assistance available via WhatsApp and Phone', displayOrder: 4, visible: true },
+  {
+    id: 'tb-1',
+    icon: 'Award',
+    title: 'Quality You Can Trust',
+    description: 'Shop carefully selected mobile accessories for everyday use.',
+    displayOrder: 1,
+    visible: true,
+  },
+  {
+    id: 'tb-2',
+    icon: 'Truck',
+    title: 'Delivery Across Pakistan',
+    description: 'Convenient delivery options for customers across Pakistan.',
+    displayOrder: 2,
+    visible: true,
+  },
+  {
+    id: 'tb-3',
+    icon: 'Lock',
+    title: 'Secure Shopping Experience',
+    description: 'A straightforward checkout experience with the payment options currently supported by the store.',
+    displayOrder: 3,
+    visible: true,
+  },
+  {
+    id: 'tb-4',
+    icon: 'Headphones',
+    title: 'Customer Support',
+    description: 'Get help with your questions, orders and product information.',
+    displayOrder: 4,
+    visible: true,
+  },
 ];
 
 export const seedStoreSettings: StoreSettings = {
@@ -248,8 +287,8 @@ export const seedAdmins: AdminUser[] = [
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
     status: 'active',
     isOwner: true,
-    salt: '1214d0aabfa8b4b1bab97d223ee04b6f',
-    passwordHash: 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e',
+    salt: 'f376c3cf528e527535b3d352ef6e49ce',
+    passwordHash: 'c420262734ea8537651c3e53b3a0708468d33b1cb4a4a6c24c3efbb6032313b1',
     createdAt: '2026-01-01T00:00:00.000Z',
     lastLogin: new Date().toISOString(),
   },

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -27,9 +27,20 @@ export function isValidAdminSessionObject(session: any): session is AdminSession
   // Deactivated accounts are barred
   if (session.status && session.status === 'inactive') return false;
 
-  // Expired sessions are rejected
-  if (session.expiresAt && typeof session.expiresAt === 'number' && session.expiresAt < Date.now()) {
+  // Expired sessions or sessions missing valid future expiration timestamps are rejected
+  if (!session.expiresAt || typeof session.expiresAt !== 'number' || session.expiresAt <= Date.now()) {
     return false;
+  }
+
+  // Cross-verify that the email belongs to an active, registered staff account
+  try {
+    const { getServerStaffByEmailSync } = require('./staff-server');
+    const registered = getServerStaffByEmailSync(email);
+    if (!registered || registered.status === 'inactive') {
+      return false;
+    }
+  } catch {
+    // If getServerStaffByEmailSync is unavailable in non-node/mock environments, allow valid session payload
   }
 
   // Customer sessions are strictly barred from admin privileges
@@ -141,4 +152,59 @@ export function isAuthorizedForVoidBill(session: AdminSession | null): boolean {
 
   const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
   return perms.includes('inventory.void_shop_bill') || perms.includes('inventory.shop_bill');
+}
+
+/**
+ * Checks whether an authenticated AdminSession has permission for a specific action or module.
+ * Super Admins, Owners, and primary store admins automatically pass all permission checks.
+ */
+export function hasAdminPermission(
+  session: AdminSession | null,
+  requiredPermission?: string | string[]
+): boolean {
+  if (!session || !session.email) return false;
+  if (session.status === 'inactive') return false;
+
+  const role = (session.role || '').toUpperCase();
+  if (
+    session.isOwner ||
+    role === 'SUPER_ADMIN' ||
+    role === 'ADMIN' ||
+    role === 'OWNER'
+  ) {
+    return true;
+  }
+
+  if (!requiredPermission) {
+    return true;
+  }
+
+  const userPerms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
+  if (userPerms.includes('*') || userPerms.includes('all')) {
+    return true;
+  }
+
+  if (Array.isArray(requiredPermission)) {
+    return requiredPermission.some((perm) => userPerms.includes(perm));
+  }
+
+  return userPerms.includes(requiredPermission);
+}
+
+/**
+ * Returns a standardized 401 Unauthorized JSON response.
+ */
+export function unauthorizedResponse(
+  message = 'Unauthorized: Active administrator session required'
+): NextResponse {
+  return NextResponse.json({ success: false, error: message }, { status: 401 });
+}
+
+/**
+ * Returns a standardized 403 Forbidden JSON response.
+ */
+export function forbiddenResponse(
+  message = 'Forbidden: Insufficient staff permissions'
+): NextResponse {
+  return NextResponse.json({ success: false, error: message }, { status: 403 });
 }

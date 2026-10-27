@@ -26,9 +26,24 @@ interface CartContextType {
     selectedColor?: string,
     selectedModel?: string,
     selectedPrice?: number,
+    selectedImage?: string,
+    options?: { openDrawer?: boolean; showToast?: boolean }
+  ) => void;
+  buyNow: (
+    product: Product,
+    quantity?: number,
+    selectedSize?: string,
+    selectedColor?: string,
+    selectedModel?: string,
+    selectedPrice?: number,
     selectedImage?: string
   ) => void;
-  addDealToCart: (deal: Deal, quantity?: number) => { success: boolean; error?: string };
+  addDealToCart: (
+    deal: Deal,
+    quantity?: number,
+    options?: { openDrawer?: boolean; showToast?: boolean }
+  ) => { success: boolean; error?: string };
+  hasHydrated: boolean;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, newQuantity: number) => void;
   clearCart: () => void;
@@ -91,14 +106,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const key = (e as CustomEvent)?.detail?.key;
       if (key && key !== 'store_settings' && key !== 'products') return;
       loadSettings();
-      // Validate existing cart items against live catalog
+      // Validate existing cart items against live catalog only if cart has items
       try {
         const liveProds = getProducts();
-        setCart((prev) => prev.filter((item) => {
-          if (item.itemType === 'DEAL') return true;
-          const live = liveProds.find((p) => p.id === item.product?.id);
-          return live && live.status !== 'inactive' && live.status !== 'archived';
-        }));
+        setCart((prev) => {
+          if (!prev || prev.length === 0) return prev;
+          let changed = false;
+          const filtered = prev.filter((item) => {
+            if (item.itemType === 'DEAL') return true;
+            const live = liveProds.find((p) => p.id === item.product?.id);
+            const isValid = Boolean(live && live.status !== 'inactive' && live.status !== 'archived');
+            if (!isValid) changed = true;
+            return isValid;
+          });
+          return changed ? filtered : prev;
+        });
       } catch {}
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
@@ -164,14 +186,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [appliedPromo, hasHydrated]);
 
-  const addToCart = (
+  const addToCart = useCallback((
     product: Product,
     quantity = 1,
     selectedSize?: string,
     selectedColor?: string,
     selectedModel?: string,
     selectedPrice?: number,
-    selectedImage?: string
+    selectedImage?: string,
+    options?: { openDrawer?: boolean; showToast?: boolean }
   ) => {
     // Prevent adding out-of-stock items to cart
     if (!product) return;
@@ -188,21 +211,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const itemKey = `${product.id}-${size || 'default'}-${color || 'default'}-${model || 'default'}`;
 
+    let updatedCart: CartItem[] = [];
     setCart((prev) => {
       const existingIndex = prev.findIndex((item) => item.id === itemKey);
       if (existingIndex > -1) {
-        const updated = [...prev];
-        const currentQty = updated[existingIndex].quantity;
+        const next = [...prev];
+        const currentQty = next[existingIndex].quantity;
         const newQty = currentQty + quantity;
-        updated[existingIndex] = {
-          ...updated[existingIndex],
+        next[existingIndex] = {
+          ...next[existingIndex],
           quantity: newQty,
-          selectedPrice: selectedPrice !== undefined ? selectedPrice : updated[existingIndex].selectedPrice,
-          selectedImage: selectedImage || updated[existingIndex].selectedImage,
+          selectedPrice: selectedPrice !== undefined ? selectedPrice : next[existingIndex].selectedPrice,
+          selectedImage: selectedImage || next[existingIndex].selectedImage,
         };
-        return updated;
+        updatedCart = next;
+        return next;
       } else {
-        return [
+        const next = [
           ...prev,
           {
             id: itemKey,
@@ -216,15 +241,60 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             selectedImage,
           },
         ];
+        updatedCart = next;
+        return next;
       }
     });
 
-    setLastAddedProduct(product);
-    setShowAddedToast(true);
-    setIsCartOpen(true);
-  };
+    // Synchronously write to localStorage to guarantee instant persistence before immediate router transitions
+    try {
+      if (typeof window !== 'undefined' && updatedCart.length > 0) {
+        localStorage.setItem('al_hamd_cart', JSON.stringify(updatedCart));
+      }
+    } catch (e) {
+      console.warn('Failed synchronous cart save to localStorage', e);
+    }
 
-  const addDealToCart = (deal: Deal, quantity = 1): { success: boolean; error?: string } => {
+    const shouldOpenDrawer = options?.openDrawer ?? true;
+    const shouldShowToast = options?.showToast ?? true;
+
+    setLastAddedProduct(product);
+    if (shouldShowToast) {
+      setShowAddedToast(true);
+    }
+    if (shouldOpenDrawer) {
+      setIsCartOpen(true);
+    } else {
+      setIsCartOpen(false);
+    }
+  }, []);
+
+  const buyNow = useCallback((
+    product: Product,
+    quantity = 1,
+    selectedSize?: string,
+    selectedColor?: string,
+    selectedModel?: string,
+    selectedPrice?: number,
+    selectedImage?: string
+  ) => {
+    addToCart(
+      product,
+      quantity,
+      selectedSize,
+      selectedColor,
+      selectedModel,
+      selectedPrice,
+      selectedImage,
+      { openDrawer: false, showToast: false }
+    );
+  }, [addToCart]);
+
+  const addDealToCart = useCallback((
+    deal: Deal,
+    quantity = 1,
+    options?: { openDrawer?: boolean; showToast?: boolean }
+  ): { success: boolean; error?: string } => {
     if (!deal) return { success: false, error: 'Deal not found.' };
 
     if (!isDealCurrentlyActive(deal)) {
@@ -235,7 +305,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: 'This deal contains no products.' };
     }
 
-    // Validate shop stock for ALL included products
+    // Read live shop stock for bundle reference
     const liveProds = getProducts();
     let minShopStock = 9999;
 
@@ -256,21 +326,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      if (availableShop < 1) {
-        return {
-          success: false,
-          error: `Deal is currently unavailable because "${item.productName}${item.modelName ? ` (${item.modelName})` : ''}" is out of stock in Shop Inventory.`,
-        };
-      }
-
       minShopStock = Math.min(minShopStock, availableShop);
-    }
-
-    if (minShopStock < 1) {
-      return {
-        success: false,
-        error: 'Deal is currently unavailable because one or more included products are out of stock.',
-      };
     }
 
     const itemKey = `deal-${deal.id}`;
@@ -283,8 +339,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       brand: 'Al-Hamd',
       price: Number(deal.dealPrice || 0),
       compareAtPrice: deal.originalPrice ? Number(deal.originalPrice) : undefined,
-      stock: minShopStock,
-      shopStock: minShopStock,
+      stock: Math.max(0, minShopStock),
+      shopStock: Math.max(0, minShopStock),
       images: deal.image ? [deal.image] : [],
       category: 'Deals',
       categorySlug: 'deals',
@@ -293,7 +349,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       reviewCount: 1,
     };
 
-    const requestedQty = Math.min(minShopStock, Math.max(1, quantity));
+    const requestedQty = Math.max(1, quantity);
 
     setCart((prev) => {
       const existingIndex = prev.findIndex((item) => item.id === itemKey);
@@ -336,12 +392,68 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    try {
+      if (typeof window !== 'undefined') {
+        const existingRaw = localStorage.getItem('al_hamd_cart');
+        const prevItems: CartItem[] = existingRaw ? JSON.parse(existingRaw) : [];
+        const existingIdx = prevItems.findIndex((item) => item.id === itemKey);
+        let syncCart: CartItem[];
+        if (existingIdx > -1) {
+          syncCart = [...prevItems];
+          syncCart[existingIdx] = {
+            ...syncCart[existingIdx],
+            quantity: syncCart[existingIdx].quantity + requestedQty,
+            selectedPrice: Number(deal.dealPrice || 0),
+            dealPrice: Number(deal.dealPrice || 0),
+          };
+        } else {
+          syncCart = [
+            ...prevItems,
+            {
+              id: itemKey,
+              productId: `deal-${deal.id}`,
+              product: syntheticProduct,
+              quantity: requestedQty,
+              selectedPrice: Number(deal.dealPrice || 0),
+              selectedImage: deal.image,
+              itemType: 'DEAL',
+              dealId: deal.id,
+              dealName: deal.name,
+              dealPrice: Number(deal.dealPrice || 0),
+              dealOriginalPrice: deal.originalPrice ? Number(deal.originalPrice) : undefined,
+              dealProducts: deal.products.map((p) => ({
+                productId: p.productId,
+                modelId: p.modelId,
+                productName: p.productName,
+                modelName: p.modelName,
+                quantity: 1,
+                shopStock: p.shopStock || 0,
+                price: p.price || 0,
+                image: p.image,
+                sku: p.sku,
+              })),
+            },
+          ];
+        }
+        localStorage.setItem('al_hamd_cart', JSON.stringify(syncCart));
+      }
+    } catch {}
+
+    const shouldOpenDrawer = options?.openDrawer ?? true;
+    const shouldShowToast = options?.showToast ?? true;
+
     setLastAddedProduct(syntheticProduct);
-    setShowAddedToast(true);
-    setIsCartOpen(true);
+    if (shouldShowToast) {
+      setShowAddedToast(true);
+    }
+    if (shouldOpenDrawer) {
+      setIsCartOpen(true);
+    } else {
+      setIsCartOpen(false);
+    }
 
     return { success: true };
-  };
+  }, []);
 
   const removeFromCart = (itemId: string) => {
     setCart((prev) => prev.filter((item) => item.id !== itemId));
@@ -501,7 +613,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     () => ({
       cart,
       addToCart,
+      buyNow,
       addDealToCart,
+      hasHydrated,
       removeFromCart,
       updateQuantity,
       clearCart,
@@ -526,7 +640,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [
       cart,
       addToCart,
+      buyNow,
       addDealToCart,
+      hasHydrated,
       removeFromCart,
       updateQuantity,
       clearCart,
