@@ -17,29 +17,25 @@ export function getAdminAuthHeaders(operatorEmail?: string): HeadersInit {
   };
 
   if (typeof window !== 'undefined') {
+    // 1. Check for stored cryptographic session token
     try {
-      const stored =
-        localStorage.getItem('alhamd_current_admin') ||
-        localStorage.getItem('alhamd_active_admin');
-      if (stored) {
-        headers['Authorization'] = `Bearer ${encodeURIComponent(stored)}`;
+      const storedToken =
+        sessionStorage.getItem('alhamd_admin_token') ||
+        localStorage.getItem('alhamd_admin_token');
+      if (storedToken && storedToken.startsWith('v1.')) {
+        headers['Authorization'] = `Bearer ${storedToken.trim()}`;
         return headers;
       }
     } catch {}
 
+    // 2. Check for signed session cookie if readable by document.cookie
     try {
       const match = document.cookie.match(/(?:^|;\s*)(?:alhamd_admin_session|admin_session)=([^;]*)/);
-      if (match && match[1]) {
-        headers['Authorization'] = `Bearer ${match[1]}`;
+      if (match && match[1] && match[1].startsWith('v1.')) {
+        headers['Authorization'] = `Bearer ${match[1].trim()}`;
         return headers;
       }
     } catch {}
-  }
-
-  if (operatorEmail) {
-    headers['Authorization'] = `Bearer ${operatorEmail}`;
-  } else {
-    headers['Authorization'] = 'Bearer admin@alhamdmobile.com';
   }
 
   return headers;

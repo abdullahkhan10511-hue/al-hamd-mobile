@@ -89,6 +89,9 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
 }
 
 export function getServerStaffUsersSync(): StaffUser[] {
+  if (isDbConfigured()) {
+    return memoryStaffUsers || [];
+  }
   if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
     return memoryStaffUsers;
   }
@@ -111,10 +114,16 @@ export async function getServerStaffByEmail(email: string): Promise<StaffUser | 
   if (isDbConfigured()) {
     try {
       const found = await getStaffByEmailFromDb(normalized);
+      if (found) {
+        if (!memoryStaffUsers) memoryStaffUsers = [];
+        const idx = memoryStaffUsers.findIndex((u) => u.email.toLowerCase() === normalized);
+        if (idx >= 0) memoryStaffUsers[idx] = found;
+        else memoryStaffUsers.push(found);
+      }
       return found || undefined;
     } catch (err) {
       console.warn('MySQL error in getServerStaffByEmail:', err);
-      return undefined;
+      throw err;
     }
   }
 
@@ -139,10 +148,12 @@ export function getServerStaffByEmailSync(email: string): StaffUser | undefined 
   const directMatch = allUsers.find((u) => u.email.toLowerCase() === normalized);
   if (directMatch) return directMatch;
 
-  if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
-    return allUsers.find(
-      (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
-    );
+  if (!isDbConfigured()) {
+    if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
+      return allUsers.find(
+        (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
+      );
+    }
   }
 
   return undefined;

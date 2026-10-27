@@ -33,6 +33,10 @@ const FALLBACK_COOKIE_NAME = 'admin_session';
 
 function setSessionCookies(user: StaffUser) {
   if (typeof document === 'undefined') return;
+  const expiresAt = (user as any).expiresAt && typeof (user as any).expiresAt === 'number' && (user as any).expiresAt > Date.now()
+    ? (user as any).expiresAt
+    : Date.now() + 7 * 24 * 60 * 60 * 1000;
+
   const sessionPayload = {
     id: user.id,
     name: user.name,
@@ -43,18 +47,22 @@ function setSessionCookies(user: StaffUser) {
     status: user.status || 'active',
     avatar: user.avatar || '',
     lastLogin: user.lastLogin || new Date().toISOString(),
-    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    expiresAt,
   };
   const val = encodeURIComponent(JSON.stringify(sessionPayload));
   const maxAge = 60 * 60 * 24 * 7;
-  document.cookie = `${COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax`;
-  document.cookie = `${FALLBACK_COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const secureSuffix = isHttps ? '; Secure' : '';
+  document.cookie = `${COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
+  document.cookie = `${FALLBACK_COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
 }
 
 function clearSessionCookies() {
   if (typeof document === 'undefined') return;
-  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  document.cookie = `${FALLBACK_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const secureSuffix = isHttps ? '; Secure' : '';
+  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
+  document.cookie = `${FALLBACK_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
 }
 
 function getSessionFromCookie(): StaffUser | null {
@@ -96,6 +104,8 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = getStaffByEmail(parsed.email);
 
         if (fresh && fresh.status !== 'inactive') {
+          const expiresAt = (parsed as any).expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000);
+          const fullFresh = { ...fresh, expiresAt };
           setAdmin((prev) => {
             if (
               prev &&
@@ -106,16 +116,18 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             ) {
               return prev;
             }
-            return fresh;
+            return fullFresh;
           });
-          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fresh));
-          setSessionCookies(fresh);
+          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fullFresh));
+          setSessionCookies(fullFresh);
         } else if (fresh && fresh.status === 'inactive') {
           // Account was deactivated in real-time
           localStorage.removeItem(ADMIN_STORAGE_KEY);
           clearSessionCookies();
           setAdmin(null);
         } else if (fresh) {
+          const expiresAt = (parsed as any).expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000);
+          const fullFresh = { ...fresh, expiresAt };
           setAdmin((prev) => {
             if (
               prev &&
@@ -126,9 +138,9 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             ) {
               return prev;
             }
-            return fresh;
+            return fullFresh;
           });
-          setSessionCookies(fresh);
+          setSessionCookies(fullFresh);
         }
       }
     } catch (e) {
@@ -136,41 +148,62 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Restore authenticated session from storage & cookies on mount
+  // Restore authenticated session from server & cookies on mount
   useEffect(() => {
-    try {
-      let activeUser: StaffUser | null = null;
-      const saved = localStorage.getItem(ADMIN_STORAGE_KEY);
-      if (saved) {
-        const parsed: StaffUser = JSON.parse(saved);
-        const fresh = getStaffByEmail(parsed.email);
-        activeUser = fresh && fresh.status !== 'inactive' ? fresh : parsed;
-      }
+    let isMounted = true;
 
-      // If no localStorage session found, check cookie
-      if (!activeUser) {
-        const cookieUser = getSessionFromCookie();
-        if (cookieUser) {
-          const fresh = getStaffByEmail(cookieUser.email);
-          activeUser = fresh && fresh.status !== 'inactive' ? fresh : cookieUser;
+    async function checkServerSession() {
+      try {
+        const res = await fetch('/api/admin/login', {
+          credentials: 'include',
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.authenticated && data?.user && isMounted) {
+            setAdmin(data.user);
+            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+            setIsLoading(false);
+            return;
+          }
         }
+      } catch (err) {
+        // Fallback to local cache if network/offline
       }
 
-      if (activeUser && activeUser.status !== 'inactive') {
-        setAdmin(activeUser);
-        localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(activeUser));
-        setSessionCookies(activeUser);
-      } else {
-        localStorage.removeItem(ADMIN_STORAGE_KEY);
-        clearSessionCookies();
+      if (!isMounted) return;
+
+      try {
+        const saved = localStorage.getItem(ADMIN_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.email && parsed.status !== 'inactive') {
+            setAdmin(parsed);
+          } else {
+            localStorage.removeItem(ADMIN_STORAGE_KEY);
+            localStorage.removeItem('alhamd_admin_token');
+            sessionStorage.removeItem('alhamd_admin_token');
+            setAdmin(null);
+          }
+        } else {
+          setAdmin(null);
+        }
+      } catch {
         setAdmin(null);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Could not restore staff session', e);
-    } finally {
-      setIsLoading(false);
     }
 
+    checkServerSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
       const key = customEvent?.detail?.key;
@@ -234,6 +267,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           const sessionUser: StaffUser = data.user;
           try {
             localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
+            if (data.token) {
+              sessionStorage.setItem('alhamd_admin_token', data.token);
+              localStorage.setItem('alhamd_admin_token', data.token);
+            }
             setSessionCookies(sessionUser);
           } catch (e) {}
 
@@ -347,6 +384,8 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     setAdmin(null);
     try {
       localStorage.removeItem(ADMIN_STORAGE_KEY);
+      localStorage.removeItem('alhamd_admin_token');
+      sessionStorage.removeItem('alhamd_admin_token');
       clearSessionCookies();
       fetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
     } catch (e) {}

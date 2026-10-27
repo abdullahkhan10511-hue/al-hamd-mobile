@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+import { verifySignedSessionToken } from '@/lib/db/sessionToken';
+
 const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
 const ADMIN_FALLBACK_COOKIE = 'admin_session';
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
@@ -12,51 +14,13 @@ function parseValidAdminSession(raw: string | undefined): boolean {
     curr = curr.slice(1, -1);
   }
 
-  for (let i = 0; i < 4; i++) {
-    try {
-      const session = JSON.parse(curr);
-      if (typeof session === 'string') {
-        curr = session;
-        continue;
-      }
-      if (
-        session &&
-        typeof session === 'object' &&
-        typeof session.email === 'string' &&
-        session.email.includes('@') &&
-        session.status !== 'inactive'
-      ) {
-        const notExpired = Boolean(
-          session.expiresAt &&
-            typeof session.expiresAt === 'number' &&
-            session.expiresAt > Date.now()
-        );
-        const roleNormalized = (session.role || '').toUpperCase();
-        if (
-          notExpired &&
-          roleNormalized !== 'CUSTOMER' &&
-          (session.isOwner ||
-            roleNormalized === 'ADMIN' ||
-            roleNormalized === 'SUPER_ADMIN' ||
-            roleNormalized === 'OWNER' ||
-            roleNormalized === 'STAFF' ||
-            roleNormalized === 'MANAGER')
-        ) {
-          return true;
-        }
-      }
-      return false;
-    } catch {
-      try {
-        const decoded = decodeURIComponent(curr);
-        if (decoded === curr) break;
-        curr = decoded;
-      } catch {
-        break;
-      }
-    }
-  }
-  return false;
+  const payload = verifySignedSessionToken(curr);
+  if (!payload) return false;
+
+  const role = (payload.role || '').toUpperCase();
+  if (role === 'CUSTOMER') return false;
+
+  return Boolean(payload.email && payload.exp > Date.now());
 }
 
 function parseValidCustomerSession(raw: string | undefined): boolean {

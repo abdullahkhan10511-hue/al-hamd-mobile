@@ -14,32 +14,17 @@ import { allowDevMockFallback } from '@/lib/env';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 import {
-  getAdminSession,
+  getAdminSessionAsync,
   hasAdminPermission,
   unauthorizedResponse,
   forbiddenResponse,
+  verifyCsrfOrigin,
 } from '@/lib/db/adminAuth';
 
 async function getAuthenticatedStaff(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
-  const session = getAdminSession(request);
-  if (!session || !session.email) return null;
-
-  const fresh = await getServerStaffByEmail(session.email);
-  if (fresh) {
-    if (fresh.status === 'inactive') return null;
-    return fresh;
-  }
-
-  return {
-    id: session.id || 'admin-root',
-    name: session.name || 'Administrator',
-    email: session.email,
-    role: session.role || 'ADMIN',
-    status: 'active',
-    isOwner: Boolean(session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'),
-    permissions: Array.isArray(session.permissions) ? session.permissions : [...ALL_PERMISSION_KEYS],
-    createdAt: new Date().toISOString(),
-  } as any;
+  const session = await getAdminSessionAsync(request);
+  if (!session || !session.email || session.status === 'inactive') return null;
+  return session as any;
 }
 
 /**
@@ -78,6 +63,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!verifyCsrfOrigin(request)) {
+      return NextResponse.json({ success: false, error: 'Forbidden: Invalid request origin.' }, { status: 403 });
+    }
+
     const session = await getAuthenticatedStaff(request);
     if (!session) {
       return unauthorizedResponse();
@@ -241,6 +230,10 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
+    if (!verifyCsrfOrigin(request)) {
+      return NextResponse.json({ success: false, error: 'Forbidden: Invalid request origin.' }, { status: 403 });
+    }
+
     const session = await getAuthenticatedStaff(request);
     if (!session) {
       return unauthorizedResponse();
@@ -536,6 +529,10 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    if (!verifyCsrfOrigin(request)) {
+      return NextResponse.json({ success: false, error: 'Forbidden: Invalid request origin.' }, { status: 403 });
+    }
+
     const session = await getAuthenticatedStaff(request);
     if (!session) {
       return unauthorizedResponse();

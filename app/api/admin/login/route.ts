@@ -8,6 +8,7 @@ const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { createSignedSessionToken, getAdminSessionAsync } from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Construct secure session payload
+    // 4. Construct secure signed session token
     const role = staffUser.role || 'SUPER_ADMIN';
     const isOwner = Boolean(
       staffUser.isOwner ||
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
       (envAdminEmail && normalizedEmail === envAdminEmail)
     );
 
-    const sessionPayload = {
+    const safeUser = {
       id: staffUser.id,
       name: staffUser.name,
       email: staffUser.email,
@@ -136,28 +137,38 @@ export async function POST(request: NextRequest) {
       status: staffUser.status || 'active',
       avatar: staffUser.avatar || '',
       lastLogin: new Date().toISOString(),
-      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
     };
 
-    const cookieValue = encodeURIComponent(JSON.stringify(sessionPayload));
+    const sessionToken = createSignedSessionToken({
+      id: staffUser.id,
+      email: staffUser.email,
+      role: role,
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
     const response = NextResponse.json({
       success: true,
-      user: sessionPayload,
-      role: sessionPayload.role,
+      token: sessionToken,
+      user: safeUser,
+      role: safeUser.role,
       message: 'Admin authentication successful.',
     });
 
-    // Set secure authentication cookies
+    // Set secure HttpOnly authentication cookies
+    const isHttps =
+      request.nextUrl.protocol === 'https:' ||
+      request.headers.get('x-forwarded-proto') === 'https';
+
     const cookieOptions = {
       path: '/',
       maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
       sameSite: 'lax' as const,
-      httpOnly: false,
+      httpOnly: true,
+      secure: isHttps || process.env.NODE_ENV === 'production',
     };
 
-    response.cookies.set(COOKIE_NAME, cookieValue, cookieOptions);
-    response.cookies.set(FALLBACK_COOKIE_NAME, cookieValue, cookieOptions);
+    response.cookies.set(COOKIE_NAME, sessionToken, cookieOptions);
+    response.cookies.set(FALLBACK_COOKIE_NAME, sessionToken, cookieOptions);
 
     return response;
   } catch (err: any) {
@@ -169,43 +180,24 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const cookie =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
+  try {
+    const session = await getAdminSessionAsync(request);
+    if (!session) {
+      return NextResponse.json({ authenticated: false }, { status: 401 });
+    }
 
-  if (!cookie) {
+    return NextResponse.json({
+      authenticated: true,
+      user: {
+        id: session.id,
+        name: session.name,
+        email: session.email,
+        role: session.role,
+        isOwner: session.isOwner,
+        permissions: session.permissions,
+      },
+    });
+  } catch {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
-
-  let curr = cookie.trim();
-  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
-    curr = curr.slice(1, -1);
-  }
-
-  for (let i = 0; i < 3; i++) {
-    try {
-      const session = JSON.parse(curr);
-      if (typeof session === 'string') {
-        curr = session;
-        continue;
-      }
-      if (session && session.email && session.status !== 'inactive') {
-        const notExpired = !session.expiresAt || session.expiresAt > Date.now();
-        if (notExpired) {
-          return NextResponse.json({ authenticated: true, user: session });
-        }
-      }
-      break;
-    } catch {
-      try {
-        const decoded = decodeURIComponent(curr);
-        if (decoded === curr) break;
-        curr = decoded;
-      } catch {
-        break;
-      }
-    }
-  }
-
-  return NextResponse.json({ authenticated: false }, { status: 401 });
 }

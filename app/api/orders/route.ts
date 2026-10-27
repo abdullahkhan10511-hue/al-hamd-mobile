@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllOrdersFromDb, createOrderInDb } from '@/lib/db/repositories/orders';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 
@@ -22,10 +22,14 @@ function getCustomerSession(request: NextRequest): { id?: string; email?: string
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = getAdminSession(request);
+    const admin = await getAdminSessionAsync(request);
     const customer = getCustomerSession(request);
 
-    if (!admin && !customer) {
+    if (admin) {
+      if (!hasAdminPermission(admin, ['orders.view', 'orders.manage'])) {
+        return NextResponse.json({ success: false, error: 'Forbidden: Insufficient permissions to view orders.' }, { status: 403 });
+      }
+    } else if (!customer) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -134,9 +138,9 @@ export async function POST(request: NextRequest) {
     const order = await createOrderInDb(body);
     return NextResponse.json({ success: true, order }, { status: 201 });
   } catch (err: any) {
-    console.error('Error creating order in MySQL:', err);
+    console.error('Error creating order in MySQL:', err?.message || err);
     return NextResponse.json(
-      { success: false, error: err?.message || 'Failed to place order.' },
+      { success: false, error: 'Failed to place order. Please try again later.' },
       { status: 500 }
     );
   }
