@@ -15,7 +15,7 @@ interface CustomerAuthContextType {
   isWholesale: boolean;
   isSuperWholesale: boolean;
   isLoading: boolean;
-  login: (emailOrShopName: string, password: string) => Promise<SanitizedCustomer>;
+  login: (emailOrShopName: string, password: string) => Promise<any>;
   register: (data: {
     fullName: string;
     email: string;
@@ -73,9 +73,35 @@ function getCustomerFromCookie(): SanitizedCustomer | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(new RegExp('(^|;\\s*)' + CUSTOMER_COOKIE_NAME + '=([^;]*)'));
   if (match && match[2]) {
-    try {
-      return JSON.parse(decodeURIComponent(match[2]));
-    } catch {}
+    let curr = match[2].trim();
+    if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
+      curr = curr.slice(1, -1);
+    }
+    for (let i = 0; i < 4; i++) {
+      try {
+        const parsed = JSON.parse(curr);
+        if (typeof parsed === 'string') {
+          curr = parsed;
+          continue;
+        }
+        if (parsed && typeof parsed === 'object' && (parsed.id || parsed.email || parsed.shopName)) {
+          return parsed as SanitizedCustomer;
+        }
+        return null;
+      } catch {
+        if (curr.includes('\\"')) {
+          curr = curr.replace(/\\"/g, '"');
+          continue;
+        }
+        try {
+          const decoded = decodeURIComponent(curr);
+          if (decoded === curr) break;
+          curr = decoded;
+        } catch {
+          break;
+        }
+      }
+    }
   }
   return null;
 }
@@ -152,7 +178,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     restoreSession();
   }, [restoreSession]);
 
-  const login = async (emailOrShopName: string, password: string): Promise<SanitizedCustomer> => {
+  const login = async (emailOrShopName: string, password: string): Promise<any> => {
     setIsLoading(true);
     try {
       const res = await fetch('/api/auth/customer/login', {
@@ -172,6 +198,38 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
           : 'Invalid shop name or password.';
         throw new Error(data?.error || defaultMsg);
       }
+
+      // Check if server recognized active administrator credentials
+      if (data.isAdmin || data.accountType === 'ADMIN') {
+        // Clear any customer session to keep roles completely separate
+        setCustomer(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(CUSTOMER_SESSION_KEY);
+          clearCustomerCookie();
+          if (data.user) {
+            localStorage.setItem('alhamd_current_admin', JSON.stringify(data.user));
+          }
+          if (data.token) {
+            localStorage.setItem('alhamd_admin_token', data.token);
+            sessionStorage.setItem('alhamd_admin_token', data.token);
+            const isHttps = window.location.protocol === 'https:';
+            const secureSuffix = isHttps ? '; Secure' : '';
+            document.cookie = `admin_session=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${secureSuffix}`;
+          }
+        }
+        return {
+          id: data.user?.id || 'admin',
+          email: data.user?.email || emailOrShopName,
+          fullName: data.user?.name || 'Administrator',
+          customerType: 'RETAIL',
+          status: 'active',
+          isAdmin: true,
+          accountType: 'ADMIN',
+          token: data.token,
+          redirect: data.redirect || '/admin/dashboard',
+        };
+      }
+
       const sanitized: SanitizedCustomer = data.customer;
       setCustomer(sanitized);
       if (typeof window !== 'undefined') {
@@ -186,7 +244,12 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
           }
         } catch {}
       }
-      return sanitized;
+      return {
+        ...sanitized,
+        isAdmin: false,
+        accountType: 'CUSTOMER',
+        redirect: data.redirect || '/account',
+      };
     } finally {
       setIsLoading(false);
     }

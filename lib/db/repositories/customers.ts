@@ -121,7 +121,7 @@ export async function getCustomerByEmailFromDb(email: string): Promise<Customer 
 
   const normalized = email.trim().toLowerCase();
   const rows = await query<CustomerRow[]>(
-    'SELECT * FROM customers WHERE LOWER(email) = ? AND customer_type NOT IN ("WHOLESALE", "SUPER_WHOLESALE") LIMIT 1',
+    'SELECT * FROM customers WHERE LOWER(TRIM(email)) = ? AND customer_type NOT IN ("WHOLESALE", "SUPER_WHOLESALE") ORDER BY (password_hash IS NOT NULL AND password_salt IS NOT NULL) DESC, created_at DESC LIMIT 1',
     [normalized]
   );
 
@@ -345,7 +345,7 @@ export async function registerCustomerInDb(params: {
     await withTransaction(async (connection) => {
       // Row lock on email check to guarantee concurrent safety
       const [rows] = await connection.query<CustomerRow[]>(
-        'SELECT * FROM customers WHERE LOWER(email) = ? FOR UPDATE',
+        'SELECT * FROM customers WHERE LOWER(TRIM(email)) = ? ORDER BY (password_hash IS NOT NULL) DESC, created_at DESC FOR UPDATE',
         [email]
       );
 
@@ -454,11 +454,17 @@ export async function authenticateCustomerInDb(
       );
     }
 
-    const isValid = verifyCustomerPassword(
-      rawPassword,
-      retailMatch.passwordSalt,
-      retailMatch.passwordHash
-    );
+    const isValid =
+      verifyCustomerPassword(
+        rawPassword,
+        retailMatch.passwordSalt,
+        retailMatch.passwordHash
+      ) ||
+      verifyCustomerPassword(
+        password,
+        retailMatch.passwordSalt,
+        retailMatch.passwordHash
+      );
 
     if (!isValid) {
       throw new Error('Invalid email address or password.');

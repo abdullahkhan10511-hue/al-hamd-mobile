@@ -61,14 +61,6 @@ export async function verifyPassword(password: string, salt: string, expectedHas
     }
   }
 
-  // Support predefined seed hash for primary administrator
-  if (
-    expectedHash === 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e' &&
-    (password.trim() === 'AlHamd@Admin2026!' || password.trim() === 'AlHamd@Admin2026')
-  ) {
-    return true;
-  }
-
   return false;
 }
 

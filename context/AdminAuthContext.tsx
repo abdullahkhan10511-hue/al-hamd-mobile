@@ -31,30 +31,12 @@ const ADMIN_STORAGE_KEY = 'alhamd_current_admin';
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
-function setSessionCookies(user: StaffUser) {
-  if (typeof document === 'undefined') return;
-  const expiresAt = (user as any).expiresAt && typeof (user as any).expiresAt === 'number' && (user as any).expiresAt > Date.now()
-    ? (user as any).expiresAt
-    : Date.now() + 7 * 24 * 60 * 60 * 1000;
-
-  const sessionPayload = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    isOwner: Boolean(user.isOwner),
-    permissions: user.permissions || [],
-    status: user.status || 'active',
-    avatar: user.avatar || '',
-    lastLogin: user.lastLogin || new Date().toISOString(),
-    expiresAt,
-  };
-  const val = encodeURIComponent(JSON.stringify(sessionPayload));
+function setSessionCookies(token?: string) {
+  if (typeof document === 'undefined' || !token || !token.startsWith('v1.')) return;
   const maxAge = 60 * 60 * 24 * 7;
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const secureSuffix = isHttps ? '; Secure' : '';
-  document.cookie = `${COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
-  document.cookie = `${FALLBACK_COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
+  document.cookie = `${FALLBACK_COOKIE_NAME}=${token}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
 }
 
 function clearSessionCookies() {
@@ -63,29 +45,6 @@ function clearSessionCookies() {
   const secureSuffix = isHttps ? '; Secure' : '';
   document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
   document.cookie = `${FALLBACK_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
-}
-
-function getSessionFromCookie(): StaffUser | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(new RegExp('(^|;\\s*)(' + COOKIE_NAME + '|' + FALLBACK_COOKIE_NAME + ')=([^;]*)'));
-  if (match && match[3]) {
-    let raw = match[3];
-    for (let i = 0; i < 3; i++) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.email && parsed.status !== 'inactive') {
-          return parsed;
-        }
-      } catch {
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-  return null;
 }
 
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
@@ -119,7 +78,6 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             return fullFresh;
           });
           localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fullFresh));
-          setSessionCookies(fullFresh);
         } else if (fresh && fresh.status === 'inactive') {
           // Account was deactivated in real-time
           localStorage.removeItem(ADMIN_STORAGE_KEY);
@@ -140,7 +98,6 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             }
             return fullFresh;
           });
-          setSessionCookies(fullFresh);
         }
       }
     } catch (e) {
@@ -270,8 +227,8 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             if (data.token) {
               sessionStorage.setItem('alhamd_admin_token', data.token);
               localStorage.setItem('alhamd_admin_token', data.token);
+              setSessionCookies(data.token);
             }
-            setSessionCookies(sessionUser);
           } catch (e) {}
 
           setAdmin(sessionUser);
@@ -342,7 +299,6 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
-        setSessionCookies(sessionUser);
       } catch (e) {
         console.warn('Could not persist staff session to storage', e);
       }

@@ -71,8 +71,22 @@ export const INITIAL_CUSTOMERS: Customer[] = [
 ];
 
 let memoryCustomers: Customer[] | null = null;
+let lastCustomersFileMtime = 0;
 
 import { allowDevMockFallback } from '../env';
+
+function shouldReloadFromFile(): boolean {
+  if (!memoryCustomers || memoryCustomers.length === 0) return true;
+  try {
+    if (fs.existsSync(CUSTOMERS_FILE)) {
+      const stat = fs.statSync(CUSTOMERS_FILE);
+      if (stat.mtimeMs > lastCustomersFileMtime) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
 
 function loadLocalFileCustomers(): Customer[] {
   if (!allowDevMockFallback()) {
@@ -80,6 +94,8 @@ function loadLocalFileCustomers(): Customer[] {
   }
   try {
     if (fs.existsSync(CUSTOMERS_FILE)) {
+      const stat = fs.statSync(CUSTOMERS_FILE);
+      lastCustomersFileMtime = stat.mtimeMs;
       const content = fs.readFileSync(CUSTOMERS_FILE, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -98,6 +114,7 @@ function saveLocalFileCustomers(customers: Customer[]): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(customers, null, 2), 'utf8');
+    lastCustomersFileMtime = Date.now();
   } catch (err) {
     console.error('Error writing customers.json fallback:', err);
   }
@@ -117,7 +134,7 @@ export async function getServerCustomers(): Promise<Customer[]> {
     return [];
   }
 
-  if (memoryCustomers && memoryCustomers.length > 0) {
+  if (!shouldReloadFromFile() && memoryCustomers && memoryCustomers.length > 0) {
     return memoryCustomers;
   }
 
@@ -127,7 +144,7 @@ export async function getServerCustomers(): Promise<Customer[]> {
 }
 
 export function getServerCustomersSync(): Customer[] {
-  if (memoryCustomers && memoryCustomers.length > 0) {
+  if (!shouldReloadFromFile() && memoryCustomers && memoryCustomers.length > 0) {
     return memoryCustomers;
   }
   const loaded = loadLocalFileCustomers();
@@ -594,13 +611,17 @@ export async function authenticateCustomerServer(
     return wholesaleMatch;
   }
 
-  const retailMatch = customers.find(
+  const retailMatches = customers.filter(
     (c) =>
       c.customerType !== 'WHOLESALE' &&
       c.customerType !== 'SUPER_WHOLESALE' &&
       Boolean(c.email) &&
       c.email!.trim().toLowerCase() === normalized
   );
+
+  const retailMatch =
+    retailMatches.find((c) => Boolean(c.passwordHash && c.passwordSalt)) ||
+    retailMatches[0];
 
   if (retailMatch) {
     if (retailMatch.status && retailMatch.status !== 'active') {
@@ -609,7 +630,9 @@ export async function authenticateCustomerServer(
     if (!retailMatch.passwordHash || !retailMatch.passwordSalt) {
       throw new Error('This account was created via guest checkout and has no password set. Please use "Create Account" or reset your password.');
     }
-    const isValid = verifyCustomerPassword(rawPassword, retailMatch.passwordSalt, retailMatch.passwordHash);
+    const isValid =
+      verifyCustomerPassword(rawPassword, retailMatch.passwordSalt, retailMatch.passwordHash) ||
+      verifyCustomerPassword(password, retailMatch.passwordSalt, retailMatch.passwordHash);
     if (!isValid) throw new Error('Invalid email address or password.');
     return retailMatch;
   }

@@ -14,7 +14,12 @@ function parseValidAdminSession(raw: string | undefined): boolean {
     curr = curr.slice(1, -1);
   }
 
-  const payload = verifySignedSessionToken(curr);
+  let payload = verifySignedSessionToken(curr);
+  if (!payload && curr.includes('%')) {
+    try {
+      payload = verifySignedSessionToken(decodeURIComponent(curr));
+    } catch {}
+  }
   if (!payload) return false;
 
   const role = (payload.role || '').toUpperCase();
@@ -26,9 +31,16 @@ function parseValidAdminSession(raw: string | undefined): boolean {
 function parseValidCustomerSession(raw: string | undefined): boolean {
   if (!raw) return false;
   let curr = raw.trim();
-  for (let i = 0; i < 3; i++) {
+  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
+    curr = curr.slice(1, -1);
+  }
+  for (let i = 0; i < 4; i++) {
     try {
       const customerSession = JSON.parse(curr);
+      if (typeof customerSession === 'string') {
+        curr = customerSession;
+        continue;
+      }
       if (
         customerSession &&
         typeof customerSession === 'object' &&
@@ -45,6 +57,10 @@ function parseValidCustomerSession(raw: string | undefined): boolean {
       }
       return false;
     } catch {
+      if (curr.includes('\\"')) {
+        curr = curr.replace(/\\"/g, '"');
+        continue;
+      }
       try {
         const decoded = decodeURIComponent(curr);
         if (decoded === curr) break;

@@ -114,31 +114,13 @@ function LoginContent() {
 
     setIsLoggingIn(true);
     try {
-      await login(identifier, loginPassword);
+      const authResult = await login(identifier, loginPassword);
+      if (authResult?.isAdmin || authResult?.accountType === 'ADMIN') {
+        window.location.href = authResult.redirect || '/admin/dashboard';
+        return;
+      }
       router.push(redirectUrl);
     } catch (err: any) {
-      // Seamlessly recognize and authenticate Administrator / Staff credentials if format matches email
-      if (identifier.includes('@')) {
-        try {
-          const adminRes = await fetch('/api/admin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: identifier, password: loginPassword }),
-          });
-          const adminContentType = adminRes.headers.get('content-type') || '';
-          const adminData = adminContentType.includes('application/json')
-            ? await adminRes.json().catch(() => null)
-            : null;
-          if (adminRes.ok && adminData?.success) {
-            try {
-              localStorage.setItem('alhamd_current_admin', JSON.stringify(adminData.user));
-            } catch {}
-            window.location.href = '/admin/dashboard';
-            return;
-          }
-        } catch {}
-      }
-
       setLoginError(err?.message || 'Failed to sign in. Please verify your credentials.');
     } finally {
       setIsLoggingIn(false);

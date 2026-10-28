@@ -4,9 +4,10 @@ const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
 export async function POST(request: NextRequest) {
-  const isHttps = request.headers.get('x-forwarded-proto') === 'https' ||
-    request.url.startsWith('https:') ||
-    process.env.NODE_ENV === 'production';
+  const isHttps =
+    request.nextUrl.protocol === 'https:' ||
+    request.headers.get('x-forwarded-proto') === 'https' ||
+    request.headers.get('x-forwarded-ssl') === 'on';
 
   const response = NextResponse.json({ success: true, message: 'Logged out successfully' });
 
