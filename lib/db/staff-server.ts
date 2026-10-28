@@ -90,7 +90,14 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
 
 export function getServerStaffUsersSync(): StaffUser[] {
   if (isDbConfigured()) {
-    return memoryStaffUsers || [];
+    if (memoryStaffUsers && memoryStaffUsers.length > 0) {
+      return memoryStaffUsers;
+    }
+    const fallback = loadLocalFileStaff();
+    if (fallback.length > 0) {
+      memoryStaffUsers = fallback;
+    }
+    return fallback;
   }
   if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
     return memoryStaffUsers;
@@ -148,12 +155,10 @@ export function getServerStaffByEmailSync(email: string): StaffUser | undefined 
   const directMatch = allUsers.find((u) => u.email.toLowerCase() === normalized);
   if (directMatch) return directMatch;
 
-  if (!isDbConfigured()) {
-    if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
-      return allUsers.find(
-        (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
-      );
-    }
+  if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
+    return allUsers.find(
+      (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
+    );
   }
 
   return undefined;

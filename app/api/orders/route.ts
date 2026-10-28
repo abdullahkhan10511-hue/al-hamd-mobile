@@ -8,14 +8,34 @@ const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 function getCustomerSession(request: NextRequest): { id?: string; email?: string; shopName?: string } | null {
   const cookieVal = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
   if (!cookieVal) return null;
-  try {
-    const parsed = JSON.parse(decodeURIComponent(cookieVal));
-    if (parsed && (parsed.id || parsed.email || parsed.shopName)) return parsed;
-  } catch {
+  let curr = cookieVal.trim();
+  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
+    curr = curr.slice(1, -1);
+  }
+  for (let i = 0; i < 4; i++) {
     try {
-      const parsed = JSON.parse(cookieVal);
-      if (parsed && (parsed.id || parsed.email || parsed.shopName)) return parsed;
-    } catch {}
+      const parsed = JSON.parse(curr);
+      if (typeof parsed === 'string') {
+        curr = parsed;
+        continue;
+      }
+      if (parsed && typeof parsed === 'object' && (parsed.id || parsed.email || parsed.shopName)) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      if (curr.includes('\\"')) {
+        curr = curr.replace(/\\"/g, '"');
+        continue;
+      }
+      try {
+        const decoded = decodeURIComponent(curr);
+        if (decoded === curr) break;
+        curr = decoded;
+      } catch {
+        break;
+      }
+    }
   }
   return null;
 }
@@ -110,11 +130,11 @@ export async function POST(request: NextRequest) {
         );
       }
       const qty = Number(item.quantity);
-      if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0 || qty > 1000) {
+      if (isNaN(qty) || !Number.isInteger(qty) || qty <= 0 || qty > 100000) {
         return NextResponse.json(
           {
             success: false,
-            error: `Invalid quantity for "${item.productName || 'Product'}". Must be a positive integer (1-1000).`,
+            error: `Invalid quantity for "${item.productName || 'Product'}". Must be a positive integer (1-100,000).`,
           },
           { status: 400 }
         );

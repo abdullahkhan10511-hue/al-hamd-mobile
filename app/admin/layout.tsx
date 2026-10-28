@@ -69,7 +69,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'New Arrivals', href: '/admin/new-arrivals', icon: Sparkles, permission: 'content.new_arrivals' },
   { label: 'Best Sellers', href: '/admin/best-sellers', icon: Flame, permission: 'content.best_sellers' },
   { label: 'Categories', href: '/admin/categories', icon: Layers, permission: 'categories.view' },
-  { label: 'Brands', href: '/admin/brands', icon: Tag, permissions: ['categories.view', 'products.view'] },
+  { label: 'Brands', href: '/admin/brands', icon: Tag, permissions: ['brands.view', 'brands.manage', 'brands.add', 'brands.create', 'brands.edit', 'brands.delete', 'categories.view', 'products.view'] },
   { label: 'Inventory (Warehouse)', href: '/admin/inventory', icon: Warehouse, permission: 'inventory.view' },
   { label: 'Shop Inventory', href: '/admin/shop-inventory', icon: Store, permission: 'inventory.view_shop' },
   { label: 'Customers', href: '/admin/customers', icon: Users, permission: 'customers.view' },
@@ -89,7 +89,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Store Settings', href: '/admin/settings', icon: Settings, permissions: ['settings.view', 'settings.edit'] },
   { label: 'SEO & Website Settings', href: '/admin/settings/seo', icon: Globe, permissions: ['settings.view', 'settings.edit'] },
   { label: 'Login Appearance', href: '/admin/settings/login-appearance', icon: Palette, permissions: ['settings.view', 'settings.edit'] },
-  { label: 'Staff Management', href: '/admin/staff', icon: Users, permission: 'staff.view' },
+  { label: 'Staff Management', href: '/admin/staff', icon: Users, permissions: ['staff.view', 'staff.manage', 'staff.add', 'staff.create', 'staff.edit', 'staff.change_roles'] },
   { label: 'Activity Logs', href: '/admin/activity', icon: History, permissions: ['staff.view', 'settings.view'] },
 ];
 
@@ -220,7 +220,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   // Dynamically filter navigation items based on current staff member's exact permissions
   const navItems = allAdminNavItems.filter((item) => {
-    if (isSuperAdmin) return true;
+    if (admin?.isOwner) return true;
     if (item.superOnly && !isSuperAdmin) return false;
     if (!item.permission && (!item.permissions || item.permissions.length === 0)) return true;
     if (item.permission && hasPermission(item.permission)) return true;

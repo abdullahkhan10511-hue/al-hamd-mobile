@@ -54,9 +54,40 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Sync state with freshest record in database
-  const refreshAdmin = useCallback(() => {
+  // Sync state with freshest record in database and server API
+  const refreshAdmin = useCallback(async () => {
     try {
+      // 1. Fetch live authoritative session from server API
+      try {
+        const res = await fetch('/api/admin/login', {
+          credentials: 'include',
+          headers: { 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.authenticated && data?.user) {
+            if (data.user.status === 'inactive') {
+              localStorage.removeItem(ADMIN_STORAGE_KEY);
+              clearSessionCookies();
+              setAdmin(null);
+              return;
+            }
+            setAdmin(data.user);
+            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+            return;
+          }
+        } else if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem(ADMIN_STORAGE_KEY);
+          clearSessionCookies();
+          setAdmin(null);
+          return;
+        }
+      } catch (networkErr) {
+        // Fallback to local storage on network disconnect
+      }
+
+      // 2. Synchronize with freshest local storage records
       const saved = localStorage.getItem(ADMIN_STORAGE_KEY);
       if (saved) {
         const parsed: StaffUser = JSON.parse(saved);
@@ -66,12 +97,15 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           const expiresAt = (parsed as any).expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000);
           const fullFresh = { ...fresh, expiresAt };
           setAdmin((prev) => {
+            const prevPerms = (prev?.permissions || []).slice().sort().join(',');
+            const freshPerms = (fullFresh.permissions || []).slice().sort().join(',');
             if (
               prev &&
               prev.id === fresh.id &&
               prev.role === fresh.role &&
               prev.status === fresh.status &&
-              prev.email === fresh.email
+              prev.email === fresh.email &&
+              prevPerms === freshPerms
             ) {
               return prev;
             }
@@ -79,25 +113,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           });
           localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fullFresh));
         } else if (fresh && fresh.status === 'inactive') {
-          // Account was deactivated in real-time
+          // Account was deactivated
           localStorage.removeItem(ADMIN_STORAGE_KEY);
           clearSessionCookies();
           setAdmin(null);
-        } else if (fresh) {
-          const expiresAt = (parsed as any).expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000);
-          const fullFresh = { ...fresh, expiresAt };
-          setAdmin((prev) => {
-            if (
-              prev &&
-              prev.id === fresh.id &&
-              prev.role === fresh.role &&
-              prev.status === fresh.status &&
-              prev.email === fresh.email
-            ) {
-              return prev;
-            }
-            return fullFresh;
-          });
         }
       }
     } catch (e) {

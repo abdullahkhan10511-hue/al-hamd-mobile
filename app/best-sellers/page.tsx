@@ -17,6 +17,12 @@ import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById }
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
+import {
+  getSavedListingState,
+  saveListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 export default function BestSellersPage() {
   return (
@@ -27,19 +33,40 @@ export default function BestSellersPage() {
 }
 
 function BestSellersContent() {
-  const [productsList, setProductsList] = useState<Product[]>([]);
-  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState('/best-sellers');
+  }, []);
+
+  const [productsList, setProductsList] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getProducts().filter(
+        (p) =>
+          (p as any).status !== 'archived' &&
+          (p as any).status !== 'inactive' &&
+          (p as any).isActive !== false &&
+          (p.isBestSeller || (p.reviewCount && p.reviewCount >= 200))
+      );
+    }
+    return [];
+  });
+  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      return deduplicateCategoriesById(getActiveCategories());
+    }
+    return [];
+  });
 
   // Filter States
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [maxPrice, setMaxPrice] = useState<number>(1000000);
-  const [minRating, setMinRating] = useState<number | null>(null);
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<string>('best-selling');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(() => savedState?.selectedBrands || []);
+  const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
+  const [minRating, setMinRating] = useState<number | null>(() => savedState?.minRating ?? null);
+  const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
+  const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'best-selling');
+  const [searchQuery, setSearchQuery] = useState<string>(() => savedState?.searchQuery || '');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState<number>(12);
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 12);
 
   // Category Horizontal Scrolling & Drag State
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -47,6 +74,31 @@ function BestSellersContent() {
   const [startX, setStartX] = useState(0);
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
+
+  // Save listing state when filters or visibleCount change
+  useEffect(() => {
+    saveListingState('/best-sellers', {
+      visibleCount,
+      selectedCategory,
+      selectedBrands,
+      maxPrice,
+      minRating,
+      inStockOnly,
+      sortBy,
+      searchQuery,
+    });
+  }, [visibleCount, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, sortBy, searchQuery]);
+
+  // Restore scroll position when returning from a product detail page
+  const hasRestoredScroll = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   const loadData = async () => {
     // Only fetch non-archived products that are marked as bestSeller
@@ -203,9 +255,9 @@ function BestSellersContent() {
       result = result.filter((p) => p.rating >= minRating);
     }
 
-    // In-Stock only filter (Customer availability uses Shop Stock + Shop Active)
+    // In-Stock only filter (All catalogue products are available for customer purchasing)
     if (inStockOnly) {
-      result = result.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
+      result = result.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
     }
 
     // Search filter

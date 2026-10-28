@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search,
@@ -18,6 +18,12 @@ import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice, getProductImage, DEFAULT_PRODUCT_IMAGE, normalizeSearchText } from '@/lib/utils';
 import { Product, Category } from '@/types';
+import {
+  getSavedListingState,
+  saveListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 const POPULAR_SEARCH_CHIPS = [
   'Samsung',
@@ -48,25 +54,85 @@ export default function SearchPage() {
 function SearchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname() || '/search';
   const rawQuery = searchParams.get('q') || '';
 
+  const currentUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return `${pathname}${qs ? `?${qs}` : ''}`;
+  }, [pathname, searchParams]);
+
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState(currentUrl);
+  }, [currentUrl]);
+
   const [inputQuery, setInputQuery] = useState(rawQuery);
-  const [productsList, setProductsList] = useState<Product[]>([]);
-  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
-  const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>([]);
+  const [productsList, setProductsList] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getProducts().filter(
+        (p) =>
+          (p as any).status !== 'archived' &&
+          (p as any).status !== 'inactive' &&
+          (p as any).isActive !== false
+      );
+    }
+    return [];
+  });
+  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      return deduplicateCategoriesById(getActiveCategories());
+    }
+    return [];
+  });
+  const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getBrands().filter((b) => b.status === 'active');
+    }
+    return [];
+  });
 
   // Filter & Sort States
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const [maxPrice, setMaxPrice] = useState<number>(1000000);
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<string>('featured');
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
+  const [selectedBrand, setSelectedBrand] = useState<string>(() => savedState?.selectedBrands?.[0] || 'all');
+  const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
+  const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
+  const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'featured');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
-  const [visibleCount, setVisibleCount] = useState<number>(16);
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 16);
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     setVisibleCount(16);
   }, [rawQuery, selectedCategory, selectedBrand, maxPrice, inStockOnly, sortBy]);
+
+  // Save listing state when filters or visibleCount change
+  useEffect(() => {
+    saveListingState(currentUrl, {
+      visibleCount,
+      selectedCategory,
+      selectedBrands: selectedBrand !== 'all' ? [selectedBrand] : [],
+      maxPrice,
+      inStockOnly,
+      sortBy,
+      searchQuery: rawQuery,
+    });
+  }, [currentUrl, visibleCount, selectedCategory, selectedBrand, maxPrice, inStockOnly, sortBy, rawQuery]);
+
+  // Restore scroll position when returning from a product detail page
+  const hasRestoredScroll = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   const loadData = async () => {
     let prods = getProducts();
@@ -190,9 +256,9 @@ function SearchContent() {
     // Price filter
     result = result.filter((p) => p.price <= maxPrice);
 
-    // In Stock filter (Customer availability uses Shop Stock + Shop Active)
+    // In Stock filter (All catalogue products are available for customer purchasing)
     if (inStockOnly) {
-      result = result.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
+      result = result.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
     }
 
     // Sorting

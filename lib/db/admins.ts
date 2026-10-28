@@ -1,4 +1,5 @@
 import { StaffUser, AdminRole } from '@/types/admin';
+import { AdminSession } from './sessionToken';
 import {
   createStaffUser,
   updateStaffUser,
@@ -28,7 +29,7 @@ export function isManager(user?: StaffUser | null): boolean {
  * Evaluates fine-grained permissions against path requirements.
  */
 export function canAccessAdminRoute(
-  userOrRole: StaffUser | AdminRole | undefined | null,
+  userOrRole: StaffUser | AdminSession | AdminRole | string | undefined | null,
   pathname: string
 ): boolean {
   if (!userOrRole) return false;
@@ -41,47 +42,67 @@ export function canAccessAdminRoute(
 
   // Resolve staff user and effective permissions
   let permissions: string[] = [];
-  let isSuper = false;
 
   if (typeof userOrRole === 'object') {
     if (userOrRole.status === 'inactive') return false;
-    const roleNormalized = (userOrRole.role || '').toLowerCase().replace(/[\s_-]/g, '');
-    const isMainAdmin =
-      Boolean(userOrRole.isOwner) ||
-      roleNormalized === 'superadmin' ||
-      roleNormalized === 'admin' ||
-      roleNormalized === 'owner' ||
-      roleNormalized === 'administrator';
-
-    if (isMainAdmin) {
+    const isRootOwner = Boolean(
+      userOrRole.isOwner ||
+      userOrRole.id === 'staff-owner-1' ||
+      (userOrRole.email && userOrRole.email.toLowerCase() === 'admin@alhamdmobile.com')
+    );
+    if (isRootOwner) {
       return true;
     }
-    permissions = userOrRole.permissions || [];
-    isSuper = Boolean(userOrRole.isOwner || roleNormalized === 'superadmin');
+    permissions = Array.isArray(userOrRole.permissions)
+      ? userOrRole.permissions
+      : (ROLE_DEFAULT_PERMISSIONS[userOrRole.role || ''] || []);
   } else {
     const roleStr = String(userOrRole).toLowerCase().replace(/[\s_-]/g, '');
-    if (
-      roleStr === 'superadmin' ||
-      roleStr === 'admin' ||
-      roleStr === 'owner' ||
-      roleStr === 'administrator'
-    ) {
+    if (roleStr === 'owner') {
       return true;
     }
     permissions = ROLE_DEFAULT_PERMISSIONS[String(userOrRole)] || [];
-    isSuper = roleStr === 'superadmin';
   }
 
-  if (isSuper) return true;
+  if (permissions.includes('*')) return true;
 
-  const has = (key: string) => permissions.includes(key);
+  const has = (key: string) => {
+    if (permissions.includes(key)) return true;
+    if (
+      (key === 'staff.add' || key === 'staff.create') &&
+      (permissions.includes('staff.add') || permissions.includes('staff.create') || permissions.includes('staff.manage'))
+    ) {
+      return true;
+    }
+    if (key === 'staff.view' && permissions.includes('staff.manage')) return true;
+    if (
+      (key === 'brands.add' || key === 'brands.create') &&
+      (permissions.includes('brands.add') || permissions.includes('brands.create') || permissions.includes('brands.manage'))
+    ) {
+      return true;
+    }
+    if (
+      key === 'brands.view' &&
+      (permissions.includes('brands.manage') || permissions.includes('brands.add') || permissions.includes('brands.edit'))
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   // Dashboard (/admin and /admin/dashboard) is accessible to any active staff member
   if (cleanPath === '/admin' || cleanPath === '/admin/dashboard') return true;
 
   // Staff Management (/admin/staff)
   if (pathname.startsWith('/admin/staff')) {
-    return has('staff.view');
+    return (
+      has('staff.view') ||
+      has('staff.manage') ||
+      has('staff.add') ||
+      has('staff.create') ||
+      has('staff.edit') ||
+      has('staff.change_roles')
+    );
   }
 
   // Products
@@ -90,11 +111,27 @@ export function canAccessAdminRoute(
   }
 
   // Categories & Brands
-  if (pathname.startsWith('/admin/categories') || pathname.startsWith('/admin/brands')) {
+  if (pathname.startsWith('/admin/categories')) {
     return has('categories.view');
+  }
+  // Brands — accessible with brand permissions or inherited category/product catalog permissions
+  if (pathname.startsWith('/admin/brands')) {
+    return (
+      has('brands.view') ||
+      has('brands.manage') ||
+      has('brands.add') ||
+      has('brands.create') ||
+      has('brands.edit') ||
+      has('brands.delete') ||
+      has('categories.view') ||
+      has('products.view')
+    );
   }
 
   // Inventory
+  if (pathname.startsWith('/admin/shop-inventory')) {
+    return has('inventory.view_shop') || has('inventory.view');
+  }
   if (pathname.startsWith('/admin/inventory')) {
     return has('inventory.view');
   }
@@ -135,7 +172,11 @@ export function canAccessAdminRoute(
 
   // Deals & Promotions
   if (pathname.startsWith('/admin/deals')) {
-    return has('promotions.view') || has('promotions.add') || has('content.deals');
+    return has('promotions.view') || has('promotions.add') || has('content.deals') || has('deals.view') || has('deals.manage');
+  }
+  // Promo Codes — mirrors sidebar config
+  if (pathname.startsWith('/admin/promo-codes')) {
+    return has('promotions.view') || has('promotions.add') || has('promotions.edit');
   }
 
   // Website Content

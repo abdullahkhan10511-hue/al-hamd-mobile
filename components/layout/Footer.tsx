@@ -93,10 +93,10 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
     loadData();
     syncStoreSettingsFromApi().then((fresh) => {
       if (fresh) setSettings(fresh);
-    }).catch(() => {});
+    }).catch(() => { });
     syncShopLocationsFromApi().then((fresh) => {
       if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
-    }).catch(() => {});
+    }).catch(() => { });
 
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
@@ -342,9 +342,9 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
         </div>
 
         {/* Footer Bottom Bar */}
-        <div className="pt-8 border-t border-neutral-900 flex items-center justify-center text-xs text-neutral-500 text-center">
-          <p>
-            © 2026 AL-HAMD SHOP |{' '}
+        <div className="pt-8 border-t border-neutral-900 flex items-center justify-start text-xs text-neutral-500 text-left">
+          <p className="leading-relaxed">
+            © 2026 AL-HAMD SHOP | Made By{' '}
             <a
               href="https://veltrivo.codes/"
               target="_blank"

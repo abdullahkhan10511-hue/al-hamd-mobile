@@ -2,6 +2,7 @@ import { Brand } from '@/types/admin';
 import { seedBrands } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'brands';
@@ -124,7 +125,8 @@ export async function createBrand(
     try {
       const res = await fetch('/api/brands', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminAuthHeaders(adminEmail),
+        credentials: 'include',
         body: JSON.stringify(newBrand),
       });
       const json = await res.json();
@@ -180,7 +182,8 @@ export async function updateBrand(
     try {
       const res = await fetch(`/api/brands/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminAuthHeaders(adminEmail),
+        credentials: 'include',
         body: JSON.stringify(updates),
       });
       const json = await res.json();
@@ -225,6 +228,8 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
     try {
       const res = await fetch(`/api/brands/${encodeURIComponent(id)}`, {
         method: 'DELETE',
+        headers: getAdminAuthHeaders(adminEmail),
+        credentials: 'include',
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
@@ -282,7 +287,8 @@ export async function reorderBrands(
     try {
       await fetch('/api/brands', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminAuthHeaders(adminEmail),
+        credentials: 'include',
         body: JSON.stringify({ action: 'reorder', orderedIds }),
       });
     } catch (err: any) {

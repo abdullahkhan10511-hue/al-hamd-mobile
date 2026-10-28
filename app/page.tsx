@@ -12,13 +12,33 @@ import { AllProductsSection } from '@/components/home/AllProductsSection';
 import { FinalTrustBar } from '@/components/home/FinalTrustBar';
 import { getHomepageSections, getCanonicalHomepageSections, syncHomepageSettingsFromApi } from '@/lib/db/homepage';
 import { HomepageSection } from '@/types/admin';
+import {
+  getSavedListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 export default function HomePage() {
+  const savedState = React.useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState('/');
+  }, []);
+
   const [sections, setSections] = useState<HomepageSection[]>(() => {
     return getCanonicalHomepageSections()
       .filter((s) => s.enabled)
       .sort((a, b) => a.order - b.order);
   });
+
+  const hasRestoredScroll = React.useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   const loadData = () => {
     const list = getHomepageSections()

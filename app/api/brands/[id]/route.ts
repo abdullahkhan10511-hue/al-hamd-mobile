@@ -5,7 +5,12 @@ import {
   updateBrandInDb,
   deleteBrandInDb,
 } from '@/lib/db/repositories/brands';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import {
+  getAdminSession,
+  hasAdminPermission,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(
@@ -42,7 +47,10 @@ export async function PUT(
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to edit brands.');
     }
 
     const { id } = await params;
@@ -71,7 +79,10 @@ export async function DELETE(
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, ['brands.delete', 'brands.manage', 'products.delete', 'categories.delete'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to delete brands.');
     }
 
     const { id } = await params;

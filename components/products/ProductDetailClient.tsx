@@ -23,6 +23,7 @@ import {
   X,
   Minus,
   Plus,
+  ArrowLeft,
   ChevronRight as BreadcrumbChevron,
 } from 'lucide-react';
 import { getProductBySlug, getProducts, fetchProductBySlug, syncProductsFromApi } from '@/lib/db/products';
@@ -424,11 +425,11 @@ export function ProductDetailClient({
   const compareAt = product.compareAtPrice || 0;
   const isDiscounted = compareAt > effectivePrice;
 
-  // Stock determination
+  // Stock determination (Purchasing availability is unrestricted for all customers)
   const currentStock = selectedModelObj
     ? (selectedModelObj.shopStock ?? selectedModelObj.stock ?? 0)
     : (product.shopStock ?? product.stock ?? 0);
-  const isOutOfStock = currentStock <= 0;
+  const isOutOfStock = false;
 
   const handleAddToCart = () => {
     if (!product || !canAddToCart) return;
@@ -488,15 +489,31 @@ export function ProductDetailClient({
   return (
     <div className="bg-white min-h-screen py-8 sm:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Breadcrumb Navigation */}
-        <nav className="flex items-center gap-2 text-xs text-neutral-400 mb-8 overflow-x-auto whitespace-nowrap pb-2">
-          <Link href="/" className="hover:text-neutral-950 transition-colors">
-            Home
-          </Link>
-          <BreadcrumbChevron className="w-3.5 h-3.5 shrink-0" />
-          <Link href="/shop" className="hover:text-neutral-950 transition-colors">
-            Shop
-          </Link>
+        {/* Breadcrumb Navigation & In-App Back Button */}
+        <div className="flex items-center justify-between mb-8 pb-2 border-b border-neutral-100/80">
+          <nav className="flex items-center gap-2 text-xs text-neutral-400 overflow-x-auto whitespace-nowrap">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  router.back();
+                } else {
+                  router.push('/shop');
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold transition-colors mr-2 cursor-pointer shrink-0"
+              title="Return to previous product list"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+            <Link href="/" className="hover:text-neutral-950 transition-colors">
+              Home
+            </Link>
+            <BreadcrumbChevron className="w-3.5 h-3.5 shrink-0" />
+            <Link href="/shop" className="hover:text-neutral-950 transition-colors">
+              Shop
+            </Link>
           {product.categorySlug && (
             <>
               <BreadcrumbChevron className="w-3.5 h-3.5 shrink-0" />
@@ -522,6 +539,7 @@ export function ProductDetailClient({
           <BreadcrumbChevron className="w-3.5 h-3.5 shrink-0" />
           <span className="text-neutral-900 font-semibold truncate max-w-xs">{product.name}</span>
         </nav>
+      </div>
 
         {/* Main Grid: Gallery on Left, Details on Right */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
@@ -706,22 +724,10 @@ export function ProductDetailClient({
 
               {/* Stock Indicator */}
               <div className="pt-2 flex items-center gap-2 text-xs font-semibold">
-                {isOutOfStock ? (
-                  <span className="text-rose-600 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500" />
-                    Out of Stock
-                  </span>
-                ) : currentStock <= 5 ? (
-                  <span className="text-amber-600 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    Only {currentStock} left in stock - order soon
-                  </span>
-                ) : (
-                  <span className="text-emerald-700 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                    In Stock · Ready for Immediate Dispatch
-                  </span>
-                )}
+                <span className="text-emerald-700 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                  In Stock · Ready for Immediate Dispatch
+                </span>
               </div>
             </div>
 
@@ -744,8 +750,6 @@ export function ProductDetailClient({
                     const isSelected =
                       selectedModel?.toLowerCase() === m.name.toLowerCase() ||
                       selectedModel === m.id;
-                    const modelStock = m.shopStock ?? m.stock ?? 0;
-                    const isModelOOS = modelStock <= 0;
 
                     return (
                       <button
@@ -755,8 +759,6 @@ export function ProductDetailClient({
                         className={`p-2.5 rounded-xl border text-xs font-semibold text-left transition-all cursor-pointer ${
                           isSelected
                             ? 'border-neutral-950 bg-neutral-950 text-white shadow-xs'
-                            : isModelOOS
-                            ? 'border-neutral-100 bg-neutral-50 text-neutral-400 opacity-60'
                             : 'border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300'
                         }`}
                       >
@@ -847,7 +849,7 @@ export function ProductDetailClient({
                   <button
                     type="button"
                     onClick={handleDecrement}
-                    disabled={quantity <= 1 || isOutOfStock}
+                    disabled={quantity <= 1}
                     className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
                     <Minus className="w-3.5 h-3.5" />
@@ -859,13 +861,11 @@ export function ProductDetailClient({
                     value={quantityInput}
                     onChange={handleQuantityInputChange}
                     onBlur={handleQuantityInputBlur}
-                    disabled={isOutOfStock}
                     className="w-12 text-center text-xs sm:text-sm font-bold text-neutral-900 bg-transparent focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleIncrement}
-                    disabled={isOutOfStock}
                     className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -876,11 +876,11 @@ export function ProductDetailClient({
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={!canAddToCart || isOutOfStock}
+                  disabled={!canAddToCart}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold tracking-wider uppercase transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>{isOutOfStock ? 'Out of Stock' : 'Add to Cart'}</span>
+                  <span>Add to Cart</span>
                 </button>
 
                 {/* Wishlist Button */}
@@ -902,11 +902,11 @@ export function ProductDetailClient({
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={!canAddToCart || isOutOfStock}
+                disabled={!canAddToCart}
                 className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs sm:text-sm font-bold tracking-wider uppercase transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <Zap className="w-4 h-4 fill-neutral-950" />
-                <span>Buy Now with 1-Click</span>
+                <span>Buy Now</span>
               </button>
             </div>
 

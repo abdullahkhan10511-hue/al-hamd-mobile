@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, 'staff.view')) {
+    if (!hasAdminPermission(session, ['staff.view', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to view staff accounts.');
     }
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, 'staff.add')) {
+    if (!hasAdminPermission(session, ['staff.add', 'staff.create', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to create staff accounts.');
     }
 
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     // 5. Role & Permissions assignment
     const assignedPermissions =
-      Array.isArray(permissions) && permissions.length > 0
+      Array.isArray(permissions)
         ? permissions
         : ROLE_DEFAULT_PERMISSIONS[assignedRole] ||
           (assignedRole === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
         (avatar || '').trim() ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
       status: status === 'inactive' ? 'inactive' : 'active',
-      isOwner: (Boolean(body.isOwner) || assignedRole === 'OWNER') && isSessionSuperAdmin,
+      isOwner: Boolean(body.isOwner && session?.isOwner),
       salt,
       passwordHash,
       createdAt: new Date().toISOString(),
@@ -258,15 +258,15 @@ export async function PATCH(request: NextRequest) {
     );
 
     if (isPasswordResetOnly) {
-      if (!hasAdminPermission(session, 'staff.reset_passwords') && !hasAdminPermission(session, 'staff.edit')) {
+      if (!hasAdminPermission(session, ['staff.reset_passwords', 'staff.manage', 'staff.edit'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to reset staff passwords.');
       }
     } else if (role !== undefined || permissions !== undefined) {
-      if (!hasAdminPermission(session, 'staff.change_roles') && !hasAdminPermission(session, 'staff.edit')) {
+      if (!hasAdminPermission(session, ['staff.change_roles', 'staff.manage', 'staff.edit'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to change staff roles or permissions.');
       }
     } else {
-      if (!hasAdminPermission(session, 'staff.edit')) {
+      if (!hasAdminPermission(session, ['staff.edit', 'staff.manage'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to edit staff accounts.');
       }
     }
@@ -537,7 +537,7 @@ export async function DELETE(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, 'staff.delete')) {
+    if (!hasAdminPermission(session, ['staff.delete', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to delete staff accounts.');
     }
 

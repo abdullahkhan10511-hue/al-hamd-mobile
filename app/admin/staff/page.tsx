@@ -1841,6 +1841,7 @@ function PermissionsMatrixModal({
   const { admin: currentAdmin } = useAdminAuth();
   const [permissions, setPermissions] = useState<string[]>(staff.permissions || []);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleToggle = (key: string) => {
     setPermissions((prev) =>
@@ -1860,8 +1861,13 @@ function PermissionsMatrixModal({
 
   const handleSave = async () => {
     setIsSubmitting(true);
-    await updateStaffUser(staff.id, { permissions }, currentAdmin?.email);
+    setErrorMessage('');
+    const res = await updateStaffUser(staff.id, { permissions }, currentAdmin?.email);
     setIsSubmitting(false);
+    if (!res.success) {
+      setErrorMessage(res.error || 'Failed to update permissions.');
+      return;
+    }
     onSuccess();
   };
 
@@ -1883,6 +1889,12 @@ function PermissionsMatrixModal({
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
+          {errorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 font-medium flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
           {PERMISSION_MODULES.map((module) => {
             const modulePerms = ALL_PERMISSIONS.filter((p) => p.module === module);
 

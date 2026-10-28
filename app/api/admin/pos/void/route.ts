@@ -15,17 +15,12 @@ export async function POST(request: NextRequest) {
       return unauthorizedResponse('Unauthorized: Staff session required.');
     }
 
-    const roleStr = (session.role || '').toLowerCase();
-    const isPrivileged =
+    const hasVoidPerm =
       session.isOwner ||
-      roleStr === 'super_admin' ||
-      roleStr === 'admin' ||
-      roleStr === 'owner' ||
-      roleStr === 'manager';
-    const hasVoidPerm = session.permissions?.includes('pos.void_sale');
+      (Array.isArray(session.permissions) && (session.permissions.includes('*') || session.permissions.includes('pos.void_sale')));
 
-    if (!isPrivileged && !hasVoidPerm) {
-      return forbiddenResponse('Permission Denied: Your staff role is not authorized to void completed sales.');
+    if (!hasVoidPerm) {
+      return forbiddenResponse('Permission Denied: Your staff account is not authorized to void completed sales.');
     }
 
     const body = await request.json();

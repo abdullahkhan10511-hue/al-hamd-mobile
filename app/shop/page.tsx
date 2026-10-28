@@ -17,6 +17,12 @@ import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
 import { Brand } from '@/types/admin';
+import {
+  getSavedListingState,
+  saveListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 export default function ShopPage() {
   return (
@@ -31,30 +37,66 @@ function ShopContent() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const currentUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return `${pathname}${qs ? `?${qs}` : ''}`;
+  }, [pathname, searchParams]);
+
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState(currentUrl);
+  }, [currentUrl]);
+
   const initialCategory = searchParams.get('category') || 'all';
   const initialBrand = searchParams.get('brand') || '';
   const initialFilter = searchParams.get('filter') || '';
   const initialSearch = searchParams.get('search') || '';
 
-  const [productsList, setProductsList] = useState<Product[]>([]);
-  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
-  const [brandsList, setBrandsList] = useState<Brand[]>([]);
+  const [productsList, setProductsList] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getProducts().filter(
+        (p) =>
+          (p as any).status !== 'archived' &&
+          (p as any).status !== 'inactive' &&
+          (p as any).isActive !== false
+      );
+    }
+    return [];
+  });
+  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      return deduplicateCategoriesById(getActiveCategories());
+    }
+    return [];
+  });
+  const [brandsList, setBrandsList] = useState<Brand[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getBrands().filter((b) => b.status === 'active');
+    }
+    return [];
+  });
 
   // Filter States
-  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
-  const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrand ? [initialBrand] : []);
-  const [maxPrice, setMaxPrice] = useState<number>(1000000);
-  const [minRating, setMinRating] = useState<number | null>(null);
-  const [sortBy, setSortBy] = useState<string>(
-    initialFilter === 'new'
-      ? 'newest'
-      : initialFilter === 'bestseller'
-      ? 'best-selling'
-      : 'featured'
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    () => savedState?.selectedCategory || initialCategory
   );
-  const [searchQuery, setSearchQuery] = useState<string>(initialSearch);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(
+    () => savedState?.selectedBrands || (initialBrand ? [initialBrand] : [])
+  );
+  const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
+  const [minRating, setMinRating] = useState<number | null>(() => savedState?.minRating ?? null);
+  const [sortBy, setSortBy] = useState<string>(
+    () =>
+      savedState?.sortBy ||
+      (initialFilter === 'new'
+        ? 'newest'
+        : initialFilter === 'bestseller'
+        ? 'best-selling'
+        : 'featured')
+  );
+  const [searchQuery, setSearchQuery] = useState<string>(() => savedState?.searchQuery || initialSearch);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState<number>(12);
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 12);
 
   // Category Horizontal Scrolling & Drag State
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -62,6 +104,30 @@ function ShopContent() {
   const [startX, setStartX] = useState(0);
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
+
+  // Save listing state when filters or visibleCount change
+  useEffect(() => {
+    saveListingState(currentUrl, {
+      visibleCount,
+      selectedCategory,
+      selectedBrands,
+      maxPrice,
+      minRating,
+      sortBy,
+      searchQuery,
+    });
+  }, [currentUrl, visibleCount, selectedCategory, selectedBrands, maxPrice, minRating, sortBy, searchQuery]);
+
+  // Restore scroll position when returning from a product detail page
+  const hasRestoredScroll = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   const applyData = (prods: Product[], cats: Category[], brands: Brand[]) => {
     const activeProds = prods.filter(

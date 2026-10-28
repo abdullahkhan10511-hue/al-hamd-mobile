@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ROLE_DEFAULT_PERMISSIONS } from '../constants/permissions';
 import {
   COOKIE_NAME,
   FALLBACK_COOKIE_NAME,
@@ -68,9 +69,17 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
 
       const role = (dbUser.role || '').toUpperCase();
       if (role === 'CUSTOMER') return null;
-      if (!dbUser.isOwner && !['ADMIN', 'SUPER_ADMIN', 'OWNER', 'STAFF', 'MANAGER'].includes(role)) {
-        return null;
-      }
+
+      const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+      const isOwner = Boolean(
+        dbUser.isOwner ||
+        dbUser.id === 'staff-owner-1' ||
+        email === 'admin@alhamdmobile.com' ||
+        (envAdminEmail && email === envAdminEmail)
+      );
+      const permissions = Array.isArray(dbUser.permissions)
+        ? dbUser.permissions
+        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[dbUser.role || ''] || []));
 
       // Populate authoritative session strictly from database record
       return {
@@ -78,8 +87,8 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
         name: dbUser.name,
         email: dbUser.email,
         role: dbUser.role || 'ADMIN',
-        isOwner: Boolean(dbUser.isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'),
-        permissions: Array.isArray(dbUser.permissions) ? dbUser.permissions : [],
+        isOwner,
+        permissions,
         status: dbUser.status || 'active',
         expiresAt: payload.exp,
       };
@@ -113,17 +122,24 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
 
     const role = (serverUser.role || '').toUpperCase();
     if (role === 'CUSTOMER') return null;
-    if (!serverUser.isOwner && !['ADMIN', 'SUPER_ADMIN', 'OWNER', 'STAFF', 'MANAGER'].includes(role)) {
-      return null;
-    }
+
+    const isOwner = Boolean(
+      serverUser.isOwner ||
+      serverUser.id === 'staff-owner-1' ||
+      email === 'admin@alhamdmobile.com' ||
+      (envAdminEmail && email === envAdminEmail)
+    );
+    const permissions = Array.isArray(serverUser.permissions)
+      ? serverUser.permissions
+      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
 
     return {
       id: serverUser.id,
       name: serverUser.name,
       email: serverUser.email,
       role: serverUser.role || 'ADMIN',
-      isOwner: Boolean(serverUser.isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'),
-      permissions: Array.isArray(serverUser.permissions) ? serverUser.permissions : [],
+      isOwner,
+      permissions,
       status: serverUser.status || 'active',
       expiresAt: payload.exp,
     };
@@ -151,16 +167,24 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
       }
       const role = (serverUser.role || '').toUpperCase();
       if (role === 'CUSTOMER') return null;
-      if (!serverUser.isOwner && !['ADMIN', 'SUPER_ADMIN', 'OWNER', 'STAFF', 'MANAGER'].includes(role)) {
-        return null;
-      }
+      const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+      const isOwner = Boolean(
+        serverUser.isOwner ||
+        serverUser.id === 'staff-owner-1' ||
+        payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
+      );
+      const permissions = Array.isArray(serverUser.permissions)
+        ? serverUser.permissions
+        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
+
       return {
         id: serverUser.id,
         name: serverUser.name,
         email: serverUser.email,
         role: serverUser.role || 'ADMIN',
-        isOwner: Boolean(serverUser.isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'),
-        permissions: Array.isArray(serverUser.permissions) ? serverUser.permissions : [],
+        isOwner,
+        permissions,
         status: serverUser.status || 'active',
         expiresAt: payload.exp,
       };
@@ -188,17 +212,24 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
 
     const role = (serverUser.role || '').toUpperCase();
     if (role === 'CUSTOMER') return null;
-    if (!serverUser.isOwner && !['ADMIN', 'SUPER_ADMIN', 'OWNER', 'STAFF', 'MANAGER'].includes(role)) {
-      return null;
-    }
+
+    const isOwner = Boolean(
+      serverUser.isOwner ||
+      serverUser.id === 'staff-owner-1' ||
+      payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
+    );
+    const permissions = Array.isArray(serverUser.permissions)
+      ? serverUser.permissions
+      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
 
     return {
       id: serverUser.id,
       name: serverUser.name,
       email: serverUser.email,
       role: serverUser.role || 'ADMIN',
-      isOwner: Boolean(serverUser.isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'),
-      permissions: Array.isArray(serverUser.permissions) ? serverUser.permissions : [],
+      isOwner,
+      permissions,
       status: serverUser.status || 'active',
       expiresAt: payload.exp,
     };
@@ -224,32 +255,18 @@ export function isValidAdminSessionObject(session: any): session is AdminSession
   const role = (session.role || '').toUpperCase();
   if (role === 'CUSTOMER') return false;
 
-  return Boolean(
-    session.isOwner ||
-    role === 'ADMIN' ||
-    role === 'SUPER_ADMIN' ||
-    role === 'OWNER' ||
-    role === 'STAFF' ||
-    role === 'MANAGER'
-  );
+  return true;
 }
 
 export function isAuthorizedForShopBill(session: AdminSession | null, writeOperation: boolean = false): boolean {
   if (!session || !session.email) return false;
   if (session.status === 'inactive') return false;
 
-  const role = (session.role || '').toLowerCase();
-  if (
-    session.isOwner ||
-    role === 'admin' ||
-    role === 'super_admin' ||
-    role === 'owner' ||
-    session.email.toLowerCase().includes('admin')
-  ) {
-    return true;
-  }
+  if (session.isOwner) return true;
 
   const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
+  if (perms.includes('*')) return true;
+
   if (writeOperation) {
     return perms.includes('inventory.shop_bill');
   }
@@ -264,18 +281,10 @@ export function isAuthorizedForVoidBill(session: AdminSession | null): boolean {
   if (!session || !session.email) return false;
   if (session.status === 'inactive') return false;
 
-  const role = (session.role || '').toLowerCase();
-  if (
-    session.isOwner ||
-    role === 'admin' ||
-    role === 'super_admin' ||
-    role === 'owner' ||
-    session.email.toLowerCase().includes('admin')
-  ) {
-    return true;
-  }
+  if (session.isOwner) return true;
 
   const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
+  if (perms.includes('*')) return true;
   return perms.includes('inventory.void_shop_bill') || perms.includes('inventory.shop_bill');
 }
 

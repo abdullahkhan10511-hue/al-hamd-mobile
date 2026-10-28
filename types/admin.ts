@@ -17,6 +17,7 @@ export type PermissionModule =
   | 'Orders'
   | 'Shop Counter'
   | 'Categories'
+  | 'Brands'
   | 'Promotions'
   | 'Customers'
   | 'Wholesale Account Management'

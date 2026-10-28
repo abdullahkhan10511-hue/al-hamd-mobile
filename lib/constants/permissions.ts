@@ -179,6 +179,43 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
     description: 'Remove empty or deprecated categories from the store.',
   },
 
+  // BRANDS
+  {
+    id: 'perm-brand-1',
+    key: 'brands.view',
+    name: 'View Brands',
+    module: 'Brands',
+    description: 'Inspect registered store brands, search brands, and view brand details.',
+  },
+  {
+    id: 'perm-brand-2',
+    key: 'brands.add',
+    name: 'Add Brands',
+    module: 'Brands',
+    description: 'Register and create new brand entries with logo, description, and status.',
+  },
+  {
+    id: 'perm-brand-3',
+    key: 'brands.edit',
+    name: 'Edit Brands',
+    module: 'Brands',
+    description: 'Update brand names, logos, display ordering, and featured status.',
+  },
+  {
+    id: 'perm-brand-4',
+    key: 'brands.delete',
+    name: 'Delete Brands',
+    module: 'Brands',
+    description: 'Permanently remove brands from the store catalog.',
+  },
+  {
+    id: 'perm-brand-5',
+    key: 'brands.manage',
+    name: 'Manage Brands',
+    module: 'Brands',
+    description: 'Comprehensive operational control over store brand listings and display ordering.',
+  },
+
   // PROMOTIONS & DEALS
   {
     id: 'perm-promo-1',
@@ -375,6 +412,13 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
 
   // STAFF MANAGEMENT
   {
+    id: 'perm-staff-0',
+    key: 'staff.manage',
+    name: 'Manage Staff',
+    module: 'Staff Management',
+    description: 'Comprehensive operational authority over staff accounts, permissions, and directory.',
+  },
+  {
     id: 'perm-staff-1',
     key: 'staff.view',
     name: 'View Staff',
@@ -387,6 +431,13 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
     name: 'Add Staff',
     module: 'Staff Management',
     description: 'Register new staff accounts with credentials and assigned roles.',
+  },
+  {
+    id: 'perm-staff-2b',
+    key: 'staff.create',
+    name: 'Create Staff Accounts',
+    module: 'Staff Management',
+    description: 'Register and create new staff accounts with assigned permissions.',
   },
   {
     id: 'perm-staff-3',
@@ -424,6 +475,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   'Orders',
   'Shop Counter',
   'Categories',
+  'Brands',
   'Promotions',
   'Customers',
   'Wholesale Account Management',
@@ -464,6 +516,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'categories.add',
     'categories.edit',
     'categories.delete',
+    'brands.view',
+    'brands.add',
+    'brands.edit',
     'promotions.view',
     'promotions.add',
     'promotions.edit',
@@ -514,6 +569,10 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'categories.add',
     'categories.edit',
     'categories.delete',
+    'brands.view',
+    'brands.add',
+    'brands.edit',
+    'brands.delete',
     'inventory.view',
   ],
   'Category Manager': [
@@ -521,6 +580,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'categories.add',
     'categories.edit',
     'categories.delete',
+    'brands.view',
     'products.view',
   ],
   'Promotion Manager': [

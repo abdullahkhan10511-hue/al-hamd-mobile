@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllBrandsFromDb, insertBrandToDb } from '@/lib/db/repositories/brands';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import {
+  getAdminSession,
+  hasAdminPermission,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
@@ -48,10 +53,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, ['brands.add', 'brands.create', 'brands.manage', 'products.add', 'categories.add'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to create brands.');
     }
 
     const body = await request.json();
@@ -84,10 +89,10 @@ export async function PUT(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to reorder brands.');
     }
 
     const body = await request.json();

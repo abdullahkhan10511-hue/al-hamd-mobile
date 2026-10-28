@@ -160,7 +160,7 @@ export async function createStaffInDb(data: {
   const id = `staff-${Date.now()}`;
   const assignedRole = data.role || 'Manager';
   const assignedPermissions =
-    Array.isArray(data.permissions) && data.permissions.length > 0
+    Array.isArray(data.permissions)
       ? data.permissions
       : ROLE_DEFAULT_PERMISSIONS[assignedRole] || (assignedRole === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
 

@@ -8,15 +8,32 @@ import { getProducts, getCanonicalProducts, syncProductsFromApi } from '@/lib/db
 import { getActiveCategories, getCanonicalCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Product, Category } from '@/types';
+import {
+  getSavedListingState,
+  saveListingState,
+} from '@/lib/scrollRestoration';
 
 type ProductItem = Product & { status?: string; isActive?: boolean };
 
 export function AllProductsSection() {
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState('/');
+  }, []);
+
   const [products, setProducts] = useState<Product[]>(() => getCanonicalProducts());
   const [categories, setCategories] = useState<Category[]>(() => getCanonicalCategories());
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [visibleCount, setVisibleCount] = useState<number>(12);
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 12);
   const [isLoaded, setIsLoaded] = useState(true);
+
+  // Keep state saved
+  useEffect(() => {
+    saveListingState('/', {
+      visibleCount,
+      selectedCategory,
+    });
+  }, [visibleCount, selectedCategory]);
 
   const loadData = React.useCallback(() => {
     const allProds = getProducts().filter((p) => {

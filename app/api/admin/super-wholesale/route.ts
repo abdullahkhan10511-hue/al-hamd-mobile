@@ -27,16 +27,16 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
     email: session.email,
     role: session.role || 'ADMIN',
     status: 'active',
-    isOwner: Boolean(session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'),
-    permissions: Array.isArray(session.permissions) ? session.permissions : [...ALL_PERMISSION_KEYS],
+    isOwner: Boolean(session.isOwner),
+    permissions: Array.isArray(session.permissions) ? session.permissions : [],
     createdAt: new Date().toISOString(),
   } as any;
 }
 
 function verifyWholesaleAccess(user: StaffUser | null): boolean {
   if (!user || user.status === 'inactive') return false;
-  if (user.isOwner || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') return true;
-  return Array.isArray(user.permissions) && user.permissions.includes('wholesale.manage');
+  if (user.isOwner) return true;
+  return Array.isArray(user.permissions) && (user.permissions.includes('*') || user.permissions.includes('wholesale.manage'));
 }
 
 /**

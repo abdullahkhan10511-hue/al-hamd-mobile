@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { insertProductToDb, getAllProductsFromDb } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
@@ -9,10 +9,11 @@ export async function GET(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse('Unauthorized: Admin session required.');
+    }
+
+    if (!hasAdminPermission(session, 'products.view')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to view products.');
     }
 
     if (isDbConfigured()) {
@@ -40,10 +41,11 @@ export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin credentials required to add products.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse('Unauthorized: Admin credentials required to add products.');
+    }
+
+    if (!hasAdminPermission(session, 'products.add')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to add products.');
     }
 
     const body = await request.json();

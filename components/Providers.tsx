@@ -7,6 +7,7 @@ import { SearchProvider } from '@/context/SearchContext';
 import { CustomerAuthProvider } from '@/context/CustomerAuthContext';
 import dynamic from 'next/dynamic';
 import { CartToast } from '@/components/ui/Toast';
+import { ScrollRestorationManager } from '@/components/ScrollRestorationManager';
 
 const CartDrawer = dynamic(
   () => import('@/components/cart/CartDrawer').then((mod) => mod.CartDrawer),
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <WishlistProvider>
           <SearchProvider>
             {children}
+            <ScrollRestorationManager />
             <CartDrawer />
             <SearchModal />
             <CartToast />

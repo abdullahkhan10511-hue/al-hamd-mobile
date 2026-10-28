@@ -243,7 +243,7 @@ export function getStaffUsers(): StaffUser[] {
     }
 
     // Ensure permissions array exists
-    if (!Array.isArray(userCopy.permissions) || userCopy.permissions.length === 0) {
+    if (!Array.isArray(userCopy.permissions)) {
       userCopy.permissions =
         ROLE_DEFAULT_PERMISSIONS[userCopy.role] ||
         (userCopy.role === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
@@ -380,7 +380,7 @@ export async function createStaffUser(
 
   // Determine permissions
   const assignedPermissions =
-    data.permissions && data.permissions.length > 0
+    Array.isArray(data.permissions)
       ? data.permissions
       : ROLE_DEFAULT_PERMISSIONS[data.role] || (data.role === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
 
@@ -399,7 +399,7 @@ export async function createStaffUser(
       data.avatar?.trim() ||
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
     status: data.status || 'active',
-    isOwner: Boolean((data as any).isOwner) || data.role === 'OWNER',
+    isOwner: Boolean((data as any).isOwner && data.role === 'OWNER'),
     salt,
     passwordHash,
     createdAt: new Date().toISOString(),
@@ -408,6 +408,14 @@ export async function createStaffUser(
 
   const updated = [...users, newStaff];
   await persistCollection(STAFF_COLLECTION, updated);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: STAFF_COLLECTION, value: updated },
+      })
+    );
+  }
 
   await logActivity({
     adminEmail: operatorEmail,
@@ -516,7 +524,7 @@ export async function updateStaffUser(
     ...(updates.role ? { role: updates.role } : {}),
     ...(updates.avatar ? { avatar: updates.avatar } : {}),
     ...(updates.status ? { status: updates.status } : {}),
-    ...(updates.permissions ? { permissions: updates.permissions } : {}),
+    ...(Array.isArray(updates.permissions) ? { permissions: updates.permissions } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -525,6 +533,14 @@ export async function updateStaffUser(
   try {
     localStorage.setItem('admin_users', JSON.stringify(users));
   } catch {}
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: STAFF_COLLECTION, value: users },
+      })
+    );
+  }
 
   await logActivity({
     adminEmail: operatorEmail,
@@ -820,6 +836,14 @@ export async function deleteStaffUser(
     localStorage.setItem('admin_users', JSON.stringify(filtered));
   } catch {}
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('alhamd:data-updated', {
+        detail: { key: STAFF_COLLECTION, value: filtered },
+      })
+    );
+  }
+
   await logActivity({
     adminEmail: operatorEmail,
     action: 'Deleted Staff Account',
@@ -836,13 +860,46 @@ export async function deleteStaffUser(
 export function hasStaffPermission(staff?: StaffUser | null, permissionKey?: string): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (!permissionKey) return true;
-  if (staff.isOwner || staff.role === 'SUPER_ADMIN' || staff.role === 'ADMIN') return true;
-  return Array.isArray(staff.permissions) && staff.permissions.includes(permissionKey);
+  if (staff.isOwner || staff.id === 'staff-owner-1') return true;
+  if (Array.isArray(staff.permissions)) {
+    if (staff.permissions.includes('*')) return true;
+    if (staff.permissions.includes(permissionKey)) return true;
+
+    // Semantic aliases: staff management
+    if (
+      (permissionKey === 'staff.add' || permissionKey === 'staff.create') &&
+      (staff.permissions.includes('staff.add') || staff.permissions.includes('staff.create') || staff.permissions.includes('staff.manage'))
+    ) {
+      return true;
+    }
+    if (permissionKey === 'staff.view' && staff.permissions.includes('staff.manage')) return true;
+    if (permissionKey === 'staff.edit' && staff.permissions.includes('staff.manage')) return true;
+    if (permissionKey === 'staff.delete' && staff.permissions.includes('staff.manage')) return true;
+    if (permissionKey === 'staff.change_roles' && staff.permissions.includes('staff.manage')) return true;
+    if (permissionKey === 'staff.reset_passwords' && staff.permissions.includes('staff.manage')) return true;
+
+    // Semantic aliases: brands
+    if (
+      (permissionKey === 'brands.add' || permissionKey === 'brands.create') &&
+      (staff.permissions.includes('brands.add') || staff.permissions.includes('brands.create') || staff.permissions.includes('brands.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'brands.view' &&
+      (staff.permissions.includes('brands.manage') || staff.permissions.includes('brands.add') || staff.permissions.includes('brands.edit') || staff.permissions.includes('brands.view'))
+    ) {
+      return true;
+    }
+    if (permissionKey === 'brands.edit' && staff.permissions.includes('brands.manage')) return true;
+    if (permissionKey === 'brands.delete' && staff.permissions.includes('brands.manage')) return true;
+  }
+  return false;
 }
 
 export function hasAnyStaffPermission(staff?: StaffUser | null, permissionKeys: string[] = []): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (permissionKeys.length === 0) return true;
-  if (staff.isOwner || staff.role === 'SUPER_ADMIN' || staff.role === 'ADMIN') return true;
+  if (staff.isOwner || staff.id === 'staff-owner-1') return true;
   return permissionKeys.some((key) => hasStaffPermission(staff, key));
 }

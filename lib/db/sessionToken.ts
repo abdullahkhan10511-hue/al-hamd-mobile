@@ -20,6 +20,8 @@ export interface SessionTokenPayload {
   sub: string;
   email: string;
   role?: string;
+  permissions?: string[];
+  isOwner?: boolean;
   iat: number;
   exp: number;
   nonce: string;
@@ -241,6 +243,8 @@ export function createSignedSessionToken(data: {
   id?: string;
   email: string;
   role?: string;
+  permissions?: string[];
+  isOwner?: boolean;
   expiresAt?: number;
 }): string {
   const secret = getSessionSigningSecret();
@@ -251,6 +255,8 @@ export function createSignedSessionToken(data: {
     sub: data.id || data.email,
     email: data.email.trim().toLowerCase(),
     role: data.role || 'ADMIN',
+    permissions: Array.isArray(data.permissions) ? data.permissions : undefined,
+    isOwner: data.isOwner ? true : undefined,
     iat: now,
     exp,
     nonce: generateSecureNonce(16),
@@ -377,6 +383,8 @@ export function verifyCsrfOrigin(request: NextRequest): boolean {
 
 /**
  * Authoritatively determines if the session payload has a specific operational permission.
+ * Only the verified root owner possesses global bypass; all other administrators (including Super Admin)
+ * are strictly restricted to their explicitly assigned permissions.
  */
 export function hasAdminPermission(
   session: AdminSession | SessionTokenPayload,
@@ -384,16 +392,54 @@ export function hasAdminPermission(
 ): boolean {
   if (!session) return false;
 
-  const role = (session.role || '').toUpperCase();
-  if (role === 'SUPER_ADMIN' || role === 'OWNER') return true;
-  if ('isOwner' in session && session.isOwner) return true;
+  // Root owner emergency / recovery bypass
+  const isRootOwner = Boolean(
+    ('isOwner' in session && session.isOwner) ||
+    ('id' in session && session.id === 'staff-owner-1') ||
+    ('sub' in session && session.sub === 'staff-owner-1') ||
+    (session.email && session.email.toLowerCase() === 'admin@alhamdmobile.com') ||
+    (process.env.ADMIN_EMAIL && session.email && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+  );
+  if (isRootOwner) return true;
 
   if ('permissions' in session && Array.isArray(session.permissions)) {
     if (session.permissions.includes('*')) return true;
-    if (Array.isArray(permission)) {
-      return permission.some((p) => (session.permissions as string[]).includes(p));
-    }
-    if (session.permissions.includes(permission)) return true;
+    const userPerms = session.permissions as string[];
+    const permsToCheck = Array.isArray(permission) ? permission : [permission];
+
+    return permsToCheck.some((p) => {
+      if (userPerms.includes(p)) return true;
+      // Semantic aliases: staff management
+      if (
+        (p === 'staff.add' || p === 'staff.create') &&
+        (userPerms.includes('staff.add') || userPerms.includes('staff.create') || userPerms.includes('staff.manage'))
+      ) {
+        return true;
+      }
+      if (p === 'staff.view' && userPerms.includes('staff.manage')) return true;
+      if (p === 'staff.edit' && userPerms.includes('staff.manage')) return true;
+      if (p === 'staff.delete' && userPerms.includes('staff.manage')) return true;
+      if (p === 'staff.change_roles' && userPerms.includes('staff.manage')) return true;
+      if (p === 'staff.reset_passwords' && userPerms.includes('staff.manage')) return true;
+
+      // Semantic aliases: brands
+      if (
+        (p === 'brands.add' || p === 'brands.create') &&
+        (userPerms.includes('brands.add') || userPerms.includes('brands.create') || userPerms.includes('brands.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'brands.view' &&
+        (userPerms.includes('brands.manage') || userPerms.includes('brands.add') || userPerms.includes('brands.edit') || userPerms.includes('brands.view'))
+      ) {
+        return true;
+      }
+      if (p === 'brands.edit' && userPerms.includes('brands.manage')) return true;
+      if (p === 'brands.delete' && userPerms.includes('brands.manage')) return true;
+
+      return false;
+    });
   }
 
   return false;

@@ -147,8 +147,8 @@ export async function POST(request: NextRequest) {
     const role = staffUser.role || 'SUPER_ADMIN';
     const isOwner = Boolean(
       staffUser.isOwner ||
-      role === 'SUPER_ADMIN' ||
-      role === 'OWNER' ||
+      staffUser.id === 'staff-owner-1' ||
+      normalizedEmail === 'admin@alhamdmobile.com' ||
       (envAdminEmail && normalizedEmail === envAdminEmail)
     );
 
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       email: staffUser.email,
       role: role,
       isOwner: isOwner,
-      permissions: staffUser.permissions || [],
+      permissions: Array.isArray(staffUser.permissions) ? staffUser.permissions : (isOwner ? ['*'] : []),
       status: staffUser.status || 'active',
       avatar: staffUser.avatar || '',
       lastLogin: new Date().toISOString(),
@@ -168,6 +168,8 @@ export async function POST(request: NextRequest) {
       id: staffUser.id,
       email: staffUser.email,
       role: role,
+      permissions: safeUser.permissions,
+      isOwner: safeUser.isOwner,
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 

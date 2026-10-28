@@ -9,11 +9,10 @@ import { InquiryStatus, InquiryPriority, InquiryType } from '@/types/admin';
 function canAccessInquiries(session: any): boolean {
   if (!session || session.status === 'inactive') return false;
   if (session.isOwner) return true;
-  const role = (session.role || '').toLowerCase();
-  if (role === 'admin' || role === 'super_admin' || role === 'owner') return true;
-  if (session.email && (session.email.includes('admin') || session.email.includes('alhamd'))) return true;
 
   const perms = Array.isArray(session.permissions) ? session.permissions : [];
+  if (perms.includes('*')) return true;
+
   return (
     perms.includes('inquiries.view') ||
     perms.includes('customers.view') ||

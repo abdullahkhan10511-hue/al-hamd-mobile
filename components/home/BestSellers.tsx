@@ -116,28 +116,10 @@ const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }:
   const { isInWishlist, toggleWishlist } = useWishlist();
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
-  const [outOfStockToast, setOutOfStockToast] = useState(false);
-  const [toastText, setToastText] = useState('This product is currently out of stock.');
   const isFavorited = isInWishlist(product.id);
-  // Authoritative Rule 8: Public availability is TOTAL AVAILABLE = WAREHOUSE STOCK + SHOP STOCK
-  const totalAvailableStock = (product.stock ?? 0) + (product.shopStock ?? 0);
-  const isOutOfStock = totalAvailableStock <= 0;
-  const isWarehouseAvailable = (product.stock ?? 0) > 0;
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (isOutOfStock) {
-      setToastText('This product is currently out of stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
-    if (!isWarehouseAvailable) {
-      setToastText('Available at physical shop. Online delivery requires warehouse stock.');
-      setOutOfStockToast(true);
-      setTimeout(() => setOutOfStockToast(false), 2500);
-      return;
-    }
     if (isAdding || justAdded) return;
     setIsAdding(true);
     addToCart(product, 1);
@@ -151,13 +133,7 @@ const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }:
       {/* Media with Badges */}
       <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-neutral-100">
         <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 items-start">
-          {isOutOfStock ? (
-            <span className="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white shadow-xs">
-              Out of Stock
-            </span>
-          ) : (
-            <Badge variant="bestseller">BESTSELLER</Badge>
-          )}
+          <Badge variant="bestseller">BESTSELLER</Badge>
         </div>
 
         <button
@@ -231,19 +207,13 @@ const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }:
             type="button"
             onClick={handleQuickAdd}
             disabled={isAdding}
-            aria-disabled={isOutOfStock}
-            title={isOutOfStock ? 'This product is currently out of stock.' : undefined}
             className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
-              isOutOfStock
-                ? 'bg-neutral-200 text-neutral-400 border border-neutral-300 cursor-not-allowed select-none'
-                : justAdded
+              justAdded
                 ? 'bg-emerald-600 text-white'
                 : 'bg-neutral-950 text-white hover:bg-neutral-800'
             }`}
           >
-            {isOutOfStock ? (
-              <span>Out of Stock</span>
-            ) : isAdding ? (
+            {isAdding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : justAdded ? (
               <>
@@ -259,22 +229,6 @@ const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }:
           </button>
         </div>
       </div>
-
-      {/* Animated Out of Stock Toast */}
-      <AnimatePresence>
-        {outOfStockToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-x-4 bottom-20 z-30 p-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-xl shadow-xl text-center border border-neutral-800 flex items-center justify-center gap-1.5 pointer-events-none"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            <span>{toastText}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 });

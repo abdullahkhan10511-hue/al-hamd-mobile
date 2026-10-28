@@ -1,12 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, PackageX, ChevronDown, Tag, Layers, RotateCcw } from 'lucide-react';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Brand } from '@/types/admin';
 import { Product, Category } from '@/types';
+import {
+  getSavedListingState,
+  saveListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 interface BrandPageClientProps {
   brand: Brand;
@@ -43,18 +49,56 @@ function BrandPageContent({
   const router = useRouter();
   const pathname = usePathname();
 
+  const currentUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return `${pathname}${qs ? `?${qs}` : ''}`;
+  }, [pathname, searchParams]);
+
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState(currentUrl);
+  }, [currentUrl]);
+
   const selectedCategoryParam = searchParams.get('category') || '';
 
   const [brandProducts, setBrandProducts] = useState<Product[]>(initialProducts);
-  const [maxPrice, setMaxPrice] = useState<number>(1000000);
-  const [sortBy, setSortBy] = useState<string>('featured');
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [visibleCount, setVisibleCount] = useState<number>(16);
+  const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
+  const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'featured');
+  const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
+  const [searchQuery, setSearchQuery] = useState<string>(() => savedState?.searchQuery || '');
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 16);
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     setVisibleCount(16);
   }, [selectedCategoryParam, maxPrice, sortBy, inStockOnly, searchQuery, brand.slug]);
+
+  // Save listing state when filters or visibleCount change
+  useEffect(() => {
+    saveListingState(currentUrl, {
+      visibleCount,
+      selectedCategory: selectedCategoryParam || 'all',
+      maxPrice,
+      inStockOnly,
+      sortBy,
+      searchQuery,
+    });
+  }, [currentUrl, visibleCount, selectedCategoryParam, maxPrice, inStockOnly, sortBy, searchQuery]);
+
+  // Restore scroll position when returning from a product detail page
+  const hasRestoredScroll = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   // Keep live sync with background updates
   useEffect(() => {
@@ -149,7 +193,7 @@ function BrandPageContent({
     }
 
     if (inStockOnly) {
-      list = list.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
+      list = list.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
     }
 
     if (searchQuery.trim()) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getProductByIdFromDb, updateProductInDb, deleteProductInDb } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
@@ -39,10 +39,11 @@ export async function PUT(
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse('Unauthorized: Admin session required.');
+    }
+
+    if (!hasAdminPermission(session, 'products.edit')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to edit products.');
     }
 
     const { id } = await params;
@@ -112,10 +113,11 @@ export async function DELETE(
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse('Unauthorized: Admin session required.');
+    }
+
+    if (!hasAdminPermission(session, 'products.delete')) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to delete products.');
     }
 
     const { id } = await params;

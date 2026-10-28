@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import {
+  getAdminSession,
+  hasAdminPermission,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
 import { saveMediaBuffer } from '@/lib/mediaStorage';
 
 const ALLOWED_LOGO_MIMES = new Set([
@@ -24,10 +29,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin credentials required to upload brand media.' },
-        { status: 401 }
-      );
+      return unauthorizedResponse();
+    }
+    if (!hasAdminPermission(session, ['brands.add', 'brands.create', 'brands.edit', 'brands.manage', 'products.add', 'products.edit'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to upload brand assets.');
     }
 
     const formData = await request.formData();
