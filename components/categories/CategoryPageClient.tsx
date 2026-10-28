@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -8,6 +8,12 @@ import { ChevronRight, PackageX, ChevronDown, Tag, RotateCcw } from 'lucide-reac
 import { ProductCard } from '@/components/products/ProductCard';
 import { Category, Product } from '@/types';
 import { Brand } from '@/types/admin';
+import {
+  getSavedListingState,
+  saveListingState,
+  restoreScrollPosition,
+  clearListingReturnFlag,
+} from '@/lib/scrollRestoration';
 
 interface CategoryPageClientProps {
   category: Category;
@@ -44,17 +50,54 @@ function CategoryPageContent({
   const router = useRouter();
   const pathname = usePathname();
 
+  const currentUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return `${pathname}${qs ? `?${qs}` : ''}`;
+  }, [pathname, searchParams]);
+
+  const savedState = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getSavedListingState(currentUrl);
+  }, [currentUrl]);
+
   const selectedBrandParam = searchParams.get('brand') || '';
 
   const [categoryProducts, setCategoryProducts] = useState<Product[]>(initialProducts);
-  const [maxPrice, setMaxPrice] = useState<number>(1000000);
-  const [sortBy, setSortBy] = useState<string>('featured');
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
-  const [visibleCount, setVisibleCount] = useState<number>(16);
+  const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
+  const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'featured');
+  const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
+  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 16);
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     setVisibleCount(16);
   }, [selectedBrandParam, maxPrice, sortBy, inStockOnly, category.slug]);
+
+  // Save listing state when filters or visibleCount change
+  useEffect(() => {
+    saveListingState(currentUrl, {
+      visibleCount,
+      selectedBrands: selectedBrandParam ? [selectedBrandParam] : [],
+      maxPrice,
+      inStockOnly,
+      sortBy,
+    });
+  }, [currentUrl, visibleCount, selectedBrandParam, maxPrice, inStockOnly, sortBy]);
+
+  // Restore scroll position when returning from a product detail page
+  const hasRestoredScroll = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
+      hasRestoredScroll.current = true;
+      restoreScrollPosition(savedState.scrollY, () => {
+        clearListingReturnFlag();
+      });
+    }
+  }, [savedState]);
 
   // Keep live sync with background updates
   useEffect(() => {
@@ -70,7 +113,7 @@ function CategoryPageContent({
             setCategoryProducts(data.products);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
@@ -150,7 +193,7 @@ function CategoryPageContent({
     }
 
     if (inStockOnly) {
-      list = list.filter((p) => (p.shopStock ?? 0) > 0 && p.isShopActive !== false);
+      list = list.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
     }
 
     switch (sortBy) {
@@ -253,11 +296,10 @@ function CategoryPageContent({
               <button
                 type="button"
                 onClick={() => handleBrandChange('all')}
-                className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  !selectedBrandParam
+                className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${!selectedBrandParam
                     ? 'bg-neutral-950 text-white shadow-sm'
                     : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
+                  }`}
               >
                 All Brands ({categoryProducts.length})
               </button>
@@ -272,17 +314,15 @@ function CategoryPageContent({
                     key={b.slug}
                     type="button"
                     onClick={() => handleBrandChange(b.slug)}
-                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
+                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${isSelected
                         ? 'bg-neutral-950 text-white shadow-sm'
                         : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
+                      }`}
                   >
                     <span>{b.name}</span>
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                        isSelected ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'
-                      }`}
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-neutral-800 text-neutral-300' : 'bg-neutral-200 text-neutral-600'
+                        }`}
                     >
                       {b.count}
                     </span>
