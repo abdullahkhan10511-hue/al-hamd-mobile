@@ -42,9 +42,9 @@ export function getAdminAuthHeaders(operatorEmail?: string): HeadersInit {
 }
 
 // Initial pre-hashed fallback constants for instant synchronous boot
-const SEED_SALT = 'f376c3cf528e527535b3d352ef6e49ce';
+const SEED_SALT = 'fd9205ff2f83d43d1744b872fc962cfe';
 // Salted SHA-256 Web Crypto hash for AlHamd@Admin2026!
-const SEED_HASH = 'c420262734ea8537651c3e53b3a0708468d33b1cb4a4a6c24c3efbb6032313b1';
+const SEED_HASH = 'e540ebe0a9c6ce8109025d4436d1867a15d8ec213af7a0fa9bd470d3aa64a2d6';
 
 export const INITIAL_SYSTEM_ROLES: StaffRole[] = [
   {

@@ -72,10 +72,21 @@ function LoginContent() {
     else if (tab === 'login') setActiveTab('login');
   }, [searchParams]);
 
-  // If already authenticated, redirect to /account
+  // If already authenticated, redirect to /account (or /admin/dashboard for admin/staff)
   useEffect(() => {
     if (isAuthenticated && customer) {
       router.replace(redirectUrl);
+    } else if (typeof window !== 'undefined') {
+      try {
+        const adminStr = localStorage.getItem('alhamd_current_admin');
+        const token = localStorage.getItem('alhamd_admin_token') || sessionStorage.getItem('alhamd_admin_token');
+        if (adminStr && token && token.startsWith('v1.')) {
+          const parsed = JSON.parse(adminStr);
+          if (parsed && parsed.email && parsed.status === 'active') {
+            router.replace('/admin/dashboard');
+          }
+        }
+      } catch {}
     }
   }, [isAuthenticated, customer, router, redirectUrl]);
 
@@ -114,8 +125,8 @@ function LoginContent() {
 
     setIsLoggingIn(true);
     try {
-      const authResult = await login(identifier, loginPassword);
-      if (authResult?.isAdmin || authResult?.accountType === 'ADMIN') {
+      const authResult = await login(identifier, loginPassword, redirectUrl);
+      if (authResult?.isAdmin || authResult?.accountType === 'ADMIN' || authResult?.accountType === 'STAFF') {
         window.location.href = authResult.redirect || '/admin/dashboard';
         return;
       }

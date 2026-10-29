@@ -15,7 +15,7 @@ interface CustomerAuthContextType {
   isWholesale: boolean;
   isSuperWholesale: boolean;
   isLoading: boolean;
-  login: (emailOrShopName: string, password: string) => Promise<any>;
+  login: (emailOrShopName: string, password: string, intendedRedirect?: string) => Promise<any>;
   register: (data: {
     fullName: string;
     email: string;
@@ -178,13 +178,13 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     restoreSession();
   }, [restoreSession]);
 
-  const login = async (emailOrShopName: string, password: string): Promise<any> => {
+  const login = async (emailOrShopName: string, password: string, intendedRedirect?: string): Promise<any> => {
     setIsLoading(true);
     try {
       const res = await fetch('/api/auth/customer/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: emailOrShopName, password }),
+        body: JSON.stringify({ identifier: emailOrShopName, password, redirect: intendedRedirect }),
       });
       const contentType = res.headers.get('content-type') || '';
       const data = contentType.includes('application/json')
@@ -199,8 +199,8 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         throw new Error(data?.error || defaultMsg);
       }
 
-      // Check if server recognized active administrator credentials
-      if (data.isAdmin || data.accountType === 'ADMIN') {
+      // Check if server recognized active administrator or staff credentials
+      if (data.isAdmin || data.accountType === 'ADMIN' || data.accountType === 'STAFF') {
         // Clear any customer session to keep roles completely separate
         setCustomer(null);
         if (typeof window !== 'undefined') {
@@ -214,17 +214,19 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
             sessionStorage.setItem('alhamd_admin_token', data.token);
             const isHttps = window.location.protocol === 'https:';
             const secureSuffix = isHttps ? '; Secure' : '';
+            document.cookie = `alhamd_admin_session=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${secureSuffix}`;
             document.cookie = `admin_session=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${secureSuffix}`;
           }
         }
         return {
           id: data.user?.id || 'admin',
           email: data.user?.email || emailOrShopName,
-          fullName: data.user?.name || 'Administrator',
+          fullName: data.user?.name || (data.accountType === 'STAFF' ? 'Staff Member' : 'Administrator'),
           customerType: 'RETAIL',
           status: 'active',
           isAdmin: true,
-          accountType: 'ADMIN',
+          accountType: data.accountType || 'ADMIN',
+          role: data.role || data.user?.role || 'ADMIN',
           token: data.token,
           redirect: data.redirect || '/admin/dashboard',
         };
