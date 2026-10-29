@@ -85,19 +85,19 @@ export function saveListingState(url: string, state: Partial<ListingState>): voi
     if (raw) {
       try {
         existing = JSON.parse(raw);
-      } catch {}
+      } catch { }
     }
 
     const currentScrollY =
       state.scrollY !== undefined
         ? state.scrollY
         : typeof window !== 'undefined' && window.scrollY > 0
-        ? window.scrollY
-        : existing.scrollY !== undefined
-        ? existing.scrollY
-        : typeof window !== 'undefined'
-        ? window.scrollY
-        : 0;
+          ? window.scrollY
+          : existing.scrollY !== undefined
+            ? existing.scrollY
+            : typeof window !== 'undefined'
+              ? window.scrollY
+              : 0;
 
     const merged: ListingState = {
       scrollY: currentScrollY,
@@ -129,7 +129,7 @@ export function markNavigatingToProduct(currentUrl: string, state?: Partial<List
     saveListingState(normalized, state || {});
     sessionStorage.setItem(RETURN_FLAG_KEY, 'true');
     sessionStorage.setItem(LAST_LISTING_URL_KEY, normalized);
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -177,7 +177,7 @@ export function clearListingReturnFlag(): void {
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.removeItem(RETURN_FLAG_KEY);
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -187,7 +187,7 @@ export function clearListingReturnFlag(): void {
 export function restoreScrollPosition(targetY: number, onDone?: () => void): () => void {
   if (typeof window === 'undefined' || targetY <= 0) {
     if (onDone) onDone();
-    return () => {};
+    return () => { };
   }
 
   let cancelled = false;
@@ -221,12 +221,12 @@ export function restoreScrollPosition(targetY: number, onDone?: () => void): () 
  * Disables default premature browser scroll reset so controlled restoration can apply.
  */
 export function initScrollRestoration(): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') return () => { };
 
   if ('scrollRestoration' in window.history) {
     try {
       window.history.scrollRestoration = 'manual';
-    } catch {}
+    } catch { }
   }
 
   // Global click interceptor: When customer clicks any link to /product/...
@@ -251,7 +251,7 @@ export function initScrollRestoration(): () => void {
           sessionStorage.setItem(LAST_LISTING_URL_KEY, normalizeListingUrl(currentUrl));
         }
       }
-    } catch {}
+    } catch { }
   };
 
   // Listen to popstate (browser back/forward)
@@ -261,7 +261,7 @@ export function initScrollRestoration(): () => void {
       if (lastUrl) {
         sessionStorage.setItem(RETURN_FLAG_KEY, 'true');
       }
-    } catch {}
+    } catch { }
   };
 
   document.addEventListener('click', handleDocumentClick, { capture: true });

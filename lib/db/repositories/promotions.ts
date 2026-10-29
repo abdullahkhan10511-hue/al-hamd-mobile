@@ -107,6 +107,20 @@ export async function getPromoCodeByCodeFromDb(code: string): Promise<PromoCode 
   return mapRowToPromo(rows[0]);
 }
 
+export async function getPromoCodeByIdFromDb(id: string): Promise<PromoCode | null> {
+  if (!isDbConfigured()) {
+    throw new Error('Database is not configured.');
+  }
+
+  const rows = await query<PromoRow[]>(
+    'SELECT * FROM promotions WHERE id = ? LIMIT 1',
+    [id]
+  );
+
+  if (!rows || rows.length === 0) return null;
+  return mapRowToPromo(rows[0]);
+}
+
 export async function insertPromoCodeToDb(data: Partial<PromoCode>): Promise<PromoCode> {
   const code = (data.code || '').trim().toUpperCase();
   if (!code) throw new Error('Promo code is required.');

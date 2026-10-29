@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getInventoryLogs, recordInventoryLog } from '@/lib/db/repositories/inventory';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Admin session required.');
+    }
+
+    if (!hasAdminPermission(session, ['inventory.view_history', 'inventory.view'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to view inventory audit history.');
     }
 
     const { searchParams } = new URL(request.url);
@@ -33,7 +37,11 @@ export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Admin session required.');
+    }
+
+    if (!hasAdminPermission(session, ['inventory.adjust_stock', 'inventory.stock.edit'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to adjust inventory stock.');
     }
 
     const body = await request.json();
@@ -78,4 +86,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to record inventory log' }, { status: 500 });
   }
 }
-

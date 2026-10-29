@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { allowDevMockFallback } from '../env';
 import { deduplicateCategoriesById } from '@/lib/utils';
+import { getAdminAuthHeaders } from './staff';
 
 export { deduplicateCategoriesById };
 
@@ -118,7 +119,7 @@ export async function syncCategoriesFromApi(force = false): Promise<Category[]> 
 
   inFlightCategoriesPromise = (async () => {
     try {
-      const res = await fetch('/api/categories');
+      const res = await fetch(`/api/categories?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.categories)) {
@@ -215,7 +216,11 @@ export async function createCategory(
       try {
         const res = await fetch('/api/categories', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAdminAuthHeaders(adminEmail),
+          },
+          credentials: 'include',
           body: JSON.stringify(newCat),
         });
         const data = await res.json();
@@ -329,7 +334,11 @@ export async function updateCategory(
       try {
         const res = await fetch(`/api/categories/${encodeURIComponent(id)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAdminAuthHeaders(adminEmail),
+          },
+          credentials: 'include',
           body: JSON.stringify(sanitizedUpdates),
         });
         const data = await res.json();
@@ -374,18 +383,26 @@ export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'
     const target = categories.find((c) => c.id === id);
     if (!target) return false;
 
-    const filtered = categories.filter((c) => c.id !== id);
-    await persistCollection(COLLECTION_KEY, filtered);
-
     if (typeof window !== 'undefined') {
       try {
-        await fetch(`/api/categories/${encodeURIComponent(id)}`, {
+        const res = await fetch(`/api/categories/${encodeURIComponent(id)}`, {
           method: 'DELETE',
+          headers: getAdminAuthHeaders(adminEmail),
+          credentials: 'include',
         });
+        const resData = await res.json().catch(() => ({}));
+        if (!res.ok || !resData.success) {
+          console.error('API error deleting category:', resData.error);
+          return false;
+        }
       } catch (err) {
         console.warn('API error deleting category:', err);
+        return false;
       }
     }
+
+    const filtered = categories.filter((c) => c.id !== id);
+    await persistCollection(COLLECTION_KEY, filtered);
 
     // Blacklist deleted slug so getCategories() seed rehydration never resurrects it
     const deletedSlugs = getLocal<string[]>(DELETED_CATEGORY_SLUGS_KEY, []);

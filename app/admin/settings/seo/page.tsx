@@ -32,6 +32,7 @@ import {
   updateStoreSettings,
   normalizeCanonicalUrl,
   syncStoreSettingsFromApi,
+  fetchAuthoritativeAdminSettings,
 } from '@/lib/db/settings';
 import { getAdminAuthHeaders } from '@/lib/db/staff';
 
@@ -125,9 +126,9 @@ export default function AdminSeoSettingsPage() {
       setSettings(initial);
       setIsLoading(false);
 
-      // 2. Fresh server sync
+      // 2. Authoritative server sync
       try {
-        const fresh = await syncStoreSettingsFromApi();
+        const fresh = await fetchAuthoritativeAdminSettings();
         if (fresh) {
           populateForm(fresh);
           setSettings(fresh);
@@ -250,13 +251,14 @@ export default function AdminSeoSettingsPage() {
       setSettings(saved);
 
       // 2. Direct server verification
-      const authHeaders = getAdminAuthHeaders();
+      const authHeaders = getAdminAuthHeaders(currentAdmin?.email);
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...authHeaders,
         },
+        credentials: 'include',
         body: JSON.stringify(saved),
       });
 

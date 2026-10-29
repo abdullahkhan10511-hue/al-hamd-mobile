@@ -72,24 +72,6 @@ function LoginContent() {
     else if (tab === 'login') setActiveTab('login');
   }, [searchParams]);
 
-  // If already authenticated, redirect to /account (or /admin/dashboard for admin/staff)
-  useEffect(() => {
-    if (isAuthenticated && customer) {
-      router.replace(redirectUrl);
-    } else if (typeof window !== 'undefined') {
-      try {
-        const adminStr = localStorage.getItem('alhamd_current_admin');
-        const token = localStorage.getItem('alhamd_admin_token') || sessionStorage.getItem('alhamd_admin_token');
-        if (adminStr && token && token.startsWith('v1.')) {
-          const parsed = JSON.parse(adminStr);
-          if (parsed && parsed.email && parsed.status === 'active') {
-            router.replace('/admin/dashboard');
-          }
-        }
-      } catch {}
-    }
-  }, [isAuthenticated, customer, router, redirectUrl]);
-
   // Login Form States
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');

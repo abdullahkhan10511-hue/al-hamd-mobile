@@ -52,7 +52,7 @@ export default function AdminCategoriesPage() {
 
   const loadData = async () => {
     try {
-      const res = await fetch('/api/categories', { cache: 'no-store' });
+      const res = await fetch(`/api/categories?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.categories)) {

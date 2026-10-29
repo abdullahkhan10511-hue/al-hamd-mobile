@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 import {
   readPersistentPaymentConfig,
   writePersistentPaymentConfig,
@@ -15,6 +15,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['settings.view', 'settings.edit'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view payment settings.' },
+      { status: 403 }
     );
   }
 
@@ -35,6 +42,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['settings.edit'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to modify payment configuration.' },
+      { status: 403 }
     );
   }
 

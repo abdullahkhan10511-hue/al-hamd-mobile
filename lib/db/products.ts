@@ -127,6 +127,19 @@ let inFlightProductsPromise: Promise<(Product & { sku: string; lowStockThreshold
 let lastProductsSyncTimestamp = 0;
 const PRODUCTS_SYNC_DEBOUNCE_MS = 15000; // 15s client-side sync debounce
 
+export function resetProductsSyncTimestamp(): void {
+  lastProductsSyncTimestamp = 0;
+  hasSyncedProductsFromApi = false;
+  inFlightProductsPromise = null;
+}
+
+export async function fetchAuthoritativeProducts(): Promise<
+  (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
+> {
+  resetProductsSyncTimestamp();
+  return syncProductsFromApi(true);
+}
+
 export async function syncProductsFromApi(forceFresh = false): Promise<
   (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
 > {
@@ -377,6 +390,7 @@ export async function createProduct(
       const res = await fetch('/api/admin/products', {
         method: 'POST',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify(newProduct),
       });
       const resData = await res.json();
@@ -540,6 +554,7 @@ export async function updateProduct(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify(updates),
       });
       const resData = await res.json();
@@ -612,6 +627,7 @@ export async function deleteProduct(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: authHeaders,
+        credentials: 'include',
       });
       const resData = await res.json();
       if (!res.ok || !resData.success) {
@@ -800,7 +816,11 @@ export async function adjustStock(
   if (typeof window !== 'undefined') {
     fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
       body: JSON.stringify({ stock: product.stock, models: product.models }),
     }).catch(() => {});
   }
@@ -891,7 +911,11 @@ export async function adjustShopStock(
   if (typeof window !== 'undefined') {
     fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
       body: JSON.stringify({ shopStock: product.shopStock, models: product.models }),
     }).catch(() => {});
   }
@@ -971,6 +995,7 @@ export async function setModelStock(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
         method: 'PATCH',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({
           stock: totalModelStock,
           models: updatedModels,
@@ -1098,6 +1123,7 @@ export async function setProductModelsStock(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
         method: 'PATCH',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({
           stock: totalModelStock,
           models: updatedModels,
@@ -1196,6 +1222,7 @@ export async function setProductStock(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
         method: 'PATCH',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ stock: safeStock }),
       });
       const resData = await res.json();
@@ -1295,6 +1322,7 @@ export async function setProductLowStockThreshold(
       const res = await fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
         method: 'PATCH',
         headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ lowStockThreshold: safeThreshold }),
       });
       const resData = await res.json();
@@ -1380,7 +1408,11 @@ export async function setProductShopStock(
   if (typeof window !== 'undefined') {
     fetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
       body: JSON.stringify({ shopStock: safeStock }),
     }).catch(() => {});
     window.dispatchEvent(

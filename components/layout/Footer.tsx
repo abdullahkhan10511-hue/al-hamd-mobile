@@ -344,7 +344,7 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
         {/* Footer Bottom Bar */}
         <div className="pt-8 border-t border-neutral-900 flex items-center justify-start text-xs text-neutral-500 text-left">
           <p className="leading-relaxed">
-            © 2026 AL-HAMD SHOP | Made By{' '}
+            © 2026 AL-HAMD SHOP | MADE BY{' '}
             <a
               href="https://veltrivo.codes/"
               target="_blank"

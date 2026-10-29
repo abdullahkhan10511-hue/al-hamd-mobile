@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllPagesFromDb, savePageInDb } from '@/lib/db/repositories/pages';
 import { readPersistentPages, savePersistentPage } from '@/lib/db/pagesStorage';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission, forbiddenResponse } from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,6 +13,10 @@ export async function GET(request: NextRequest) {
     const session = getAdminSession(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!hasAdminPermission(session, ['pages.view', 'pages.create', 'pages.edit', 'pages.delete', 'pages.publish', 'pages.manage_nav', 'content.navigation', 'content.footer'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to view pages.');
     }
 
     let pages: any[] = [];
@@ -38,6 +42,10 @@ export async function POST(request: NextRequest) {
     const session = getAdminSession(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
+    }
+
+    if (!hasAdminPermission(session, ['pages.create', 'pages.edit'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to create pages.');
     }
 
     const body = await request.json();

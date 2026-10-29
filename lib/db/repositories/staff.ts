@@ -66,17 +66,34 @@ function parseJsonField<T>(field: any, fallback: T): T {
 }
 
 function mapRowToStaff(row: StaffRow): StaffUser {
+  const parsedPerms = parseJsonField<string[]>(row.permissions, []);
+  const emailLower = (row.email || '').trim().toLowerCase();
+  const isOwner = Boolean(
+    row.is_owner ||
+    row.id === 'staff-owner-1' ||
+    emailLower === 'admin@alhamdmobile.com' ||
+    emailLower === 'admin@alhamd.com'
+  );
+  const role = row.role || (isOwner ? 'SUPER_ADMIN' : 'Manager');
+  const fallbackPerms = isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'
+    ? [...ALL_PERMISSION_KEYS]
+    : (ROLE_DEFAULT_PERMISSIONS[role] || []);
+
+  const permissions = Array.isArray(parsedPerms) && parsedPerms.length > 0
+    ? parsedPerms
+    : fallbackPerms;
+
   return {
     id: row.id,
     name: row.name,
     email: row.email,
     phone: row.phone || undefined,
-    role: row.role as any,
+    role: role as any,
     roleId: row.role_id || undefined,
-    permissions: parseJsonField<string[]>(row.permissions, []),
+    permissions,
     avatar: row.avatar || undefined,
     status: row.status,
-    isOwner: Boolean(row.is_owner),
+    isOwner,
     passwordHash: row.password_hash,
     salt: row.salt,
     lastLogin: row.last_login || undefined,

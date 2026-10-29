@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllCategoriesFromDb, insertCategoryToDb } from '@/lib/db/repositories/categories';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 import { deduplicateCategoriesById } from '@/lib/utils';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(request: NextRequest) {
   try {
     let list: any[] = [];
     if (isDbConfigured()) {
@@ -34,7 +37,7 @@ export async function GET() {
       { success: true, count: uniqueCategories.length, categories: uniqueCategories },
       {
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         },
       }
     );
@@ -46,6 +49,13 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
+    }
+    if (!hasAdminPermission(session, ['categories.add', 'categories.manage'])) {
+      return NextResponse.json({ success: false, error: 'Forbidden: Insufficient permissions to create categories.' }, { status: 403 });
+    }
+
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized: Admin session required.' },

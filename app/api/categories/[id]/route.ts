@@ -4,6 +4,9 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getCategoryByIdFromDb, updateCategoryInDb, deleteCategoryInDb } from '@/lib/db/repositories/categories';
 import { allowDevMockFallback } from '@/lib/env';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

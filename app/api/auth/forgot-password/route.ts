@@ -6,12 +6,24 @@ import { getServerStaffUsers } from '@/lib/db/staff-server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getCustomerByEmailFromDb } from '@/lib/db/repositories/customers';
 import { getStaffByEmailFromDb } from '@/lib/db/repositories/staff';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 const GENERIC_SUCCESS_MESSAGE =
   'If an account associated with this email address exists, you will receive password reset instructions shortly.';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`forgot_pw_${ip}`, 5, 300000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many password reset requests. Please wait ${rateCheck.retryAfterSeconds} seconds before requesting again.`,
+        },
+        { status: 429 }
+      );
+    }
     const body = await request.json().catch(() => ({}));
     const rawEmail = typeof body.email === 'string' ? body.email.trim() : '';
     const portal = body.portal === 'staff' ? 'staff' : 'customer';

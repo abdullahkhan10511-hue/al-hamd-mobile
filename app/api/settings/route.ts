@@ -46,11 +46,8 @@ async function readServerSettings(): Promise<StoreSettings> {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const isFresh = searchParams.has('fresh') || searchParams.has('t');
     const settings = await readServerSettings();
-    const cacheControl = isFresh
-      ? 'no-cache, no-store, must-revalidate, max-age=0'
-      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
+    const cacheControl = 'no-cache, no-store, must-revalidate, max-age=0';
     return NextResponse.json(
       { success: true, settings },
       {

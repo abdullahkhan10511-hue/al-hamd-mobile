@@ -46,7 +46,8 @@ const STATUS_ICONS: Record<string, React.ComponentType<any>> = {
 };
 
 export default function ShopInventoryPage() {
-  const { admin } = useAdminAuth();
+  const { admin, hasPermission, isLoading } = useAdminAuth();
+  const canViewShop = hasPermission('inventory.view_shop') || hasPermission('inventory.view');
   const searchParams = useSearchParams();
 
   // Active view tab: 'stock' (Shop Stock) | 'bills' (Shop Bill History)
@@ -428,6 +429,26 @@ export default function ShopInventoryPage() {
       setVoidLoading(false);
     }
   };
+
+  if (!isLoading && admin && !canViewShop && !admin?.isOwner) {
+    return (
+      <div className="bg-white rounded-3xl p-8 sm:p-12 border border-neutral-200 shadow-sm text-center max-w-lg mx-auto my-12 space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <Store className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-bold text-neutral-900">Access Restricted</h2>
+        <p className="text-xs text-neutral-500 leading-relaxed">
+          Your staff account does not have permission to view Shop Inventory. Contact your system administrator to assign the Shop Inventory View permission.
+        </p>
+        <Link
+          href="/admin"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-950 text-white text-xs font-bold hover:bg-neutral-800 transition-colors"
+        >
+          Return to Dashboard
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

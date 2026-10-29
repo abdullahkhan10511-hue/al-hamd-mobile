@@ -22,7 +22,7 @@ import {
 import { getOrders, syncOrdersFromApi } from '@/lib/db/orders';
 import { getProducts, getLowStockProducts, getOutOfStockProducts } from '@/lib/db/products';
 import { subscribeToKey } from '@/lib/db/storage';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, getAdminGreeting } from '@/lib/utils';
 import { Order } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
@@ -37,6 +37,7 @@ export default function AdminDashboardPage() {
     highOrUrgentCount: 0,
   });
 
+  const canViewDashboard = Boolean(admin?.isOwner || hasPermission('dashboard.view'));
   const canViewProducts = hasPermission('products.view');
   const canAddProducts = hasPermission('products.add');
   const canViewInventory = hasPermission('inventory.view');
@@ -46,6 +47,7 @@ export default function AdminDashboardPage() {
   const canViewCategories = hasPermission('categories.view');
 
   useEffect(() => {
+    if (!canViewDashboard) return;
     syncOrdersFromApi(admin?.email).catch(() => {});
     const unsubOrders = subscribeToKey('orders', (data: Order[]) => setOrders(data));
     const unsubProducts = subscribeToKey('products', (data: any) => setProducts(data));
@@ -64,7 +66,7 @@ export default function AdminDashboardPage() {
       unsubOrders();
       unsubProducts();
     };
-  }, [admin?.email]);
+  }, [admin?.email, canViewDashboard]);
 
   // Compute metrics
   const totalSales = orders.reduce((sum, o) => sum + o.total, 0);
@@ -118,6 +120,8 @@ export default function AdminDashboardPage() {
   // =========================================================================
   // MANAGER / STAFF OPERATIONAL DASHBOARD (Dynamically scoped to permissions)
   // =========================================================================
+  if (!canViewDashboard) return null;
+
   if (!isSuperAdmin) {
     return (
       <div className="space-y-8">
@@ -126,10 +130,10 @@ export default function AdminDashboardPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500 text-white shadow-xs">
-                {admin?.role?.toUpperCase() || 'STAFF PANEL'}
+                ADMIN PANEL
               </span>
-              <span className="text-xs text-neutral-500 font-mono">
-                Logged in as {admin?.name || 'Staff Member'}
+              <span className="text-xs font-semibold text-neutral-700">
+                {getAdminGreeting(admin?.name)}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight">
@@ -466,7 +470,7 @@ export default function AdminDashboardPage() {
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-600 text-white shadow-xs">
               ADMIN PANEL
             </span>
-            <span className="text-xs text-neutral-500 font-mono">Logged in as {admin?.name || 'Administrator'} ({admin?.role || 'SUPER_ADMIN'})</span>
+            <span className="text-xs font-semibold text-neutral-700">{getAdminGreeting(admin?.name)}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight">
             Store Performance
@@ -536,9 +540,13 @@ export default function AdminDashboardPage() {
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-2xl font-extrabold text-amber-600 font-mono">{lowStockProducts.length}</p>
-          <Link href="/admin/inventory" className="text-[11px] text-neutral-500 hover:text-neutral-900 mt-1 block underline">
-            Review stock levels
-          </Link>
+          {canViewInventory ? (
+            <Link href="/admin/inventory" className="text-[11px] text-neutral-500 hover:text-neutral-900 mt-1 block underline">
+              Review stock levels
+            </Link>
+          ) : (
+            <span className="text-[11px] text-neutral-400 mt-1 block">Inventory restricted</span>
+          )}
         </div>
 
         {/* Out of Stock */}

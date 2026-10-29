@@ -4,6 +4,13 @@ import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenRes
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getProductByIdFromDb, updateProductInDb, deleteProductInDb } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
+import {
+  sanitizeProductForSession,
+  validateProductWritePermissions,
+} from '@/lib/productSanitizer';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +33,10 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, product });
+    const session = getAdminSession(request);
+    const safeProduct = session ? sanitizeProductForSession(product, session) : product;
+
+    return NextResponse.json({ success: true, product: safeProduct });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
   }
@@ -42,12 +52,30 @@ export async function PUT(
       return unauthorizedResponse('Unauthorized: Admin session required.');
     }
 
-    if (!hasAdminPermission(session, 'products.edit')) {
+    if (!hasAdminPermission(session, ['products.edit', 'products.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to edit products.');
     }
 
     const { id } = await params;
     const body = await request.json();
+
+    let existing: any = null;
+    if (isDbConfigured()) {
+      existing = await getProductByIdFromDb(id);
+    } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
+      const { getDevProductById } = await import('@/lib/db/serverDevStorage');
+      existing = getDevProductById(id);
+    }
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
+    }
+
+    // Granular write validation for pricing, stock, sku, and media
+    const writeError = validateProductWritePermissions(body, session, existing);
+    if (writeError) {
+      return forbiddenResponse(writeError);
+    }
 
     if (Array.isArray(body.images) && body.images.length > 50) {
       return NextResponse.json(
@@ -89,7 +117,8 @@ export async function PUT(
       console.warn('revalidatePath notice:', revErr);
     }
 
-    return NextResponse.json({ success: true, product });
+    const safeProduct = sanitizeProductForSession(product, session);
+    return NextResponse.json({ success: true, product: safeProduct });
   } catch (err: any) {
     console.error('Error updating product:', err);
     return NextResponse.json(
@@ -116,7 +145,7 @@ export async function DELETE(
       return unauthorizedResponse('Unauthorized: Admin session required.');
     }
 
-    if (!hasAdminPermission(session, 'products.delete')) {
+    if (!hasAdminPermission(session, ['products.delete', 'products.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to delete products.');
     }
 

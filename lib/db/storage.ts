@@ -142,6 +142,16 @@ export async function setStoredData<T>(collectionName: string, value: T): Promis
 }
 
 /**
+ * Clears the in-memory cache to guarantee zero cross-account state bleeding on login/logout
+ */
+export function invalidateClientCache(): void {
+  for (const k of Object.keys(memoryCache)) {
+    delete memoryCache[k];
+  }
+}
+
+
+/**
  * React hook or listener for data changes
  */
 export function subscribeToKey<T>(key: string, callback: (value: T) => void): () => void {

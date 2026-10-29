@@ -37,7 +37,18 @@ export async function GET(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, ['staff.view', 'staff.manage'])) {
+    const isSessionSuperAdmin = Boolean(
+      session?.isOwner ||
+      session?.role === 'SUPER_ADMIN' ||
+      session?.role === 'OWNER' ||
+      session?.id === 'staff-owner-1' ||
+      (session?.email && (
+        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        session.email.toLowerCase() === 'admin@alhamd.com' ||
+        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+      ))
+    );
+    if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.view', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to view staff accounts.');
     }
 
@@ -71,7 +82,19 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, ['staff.add', 'staff.create', 'staff.manage'])) {
+    const isSessionSuperAdmin = Boolean(
+      session?.isOwner ||
+      session?.role === 'SUPER_ADMIN' ||
+      session?.role === 'OWNER' ||
+      session?.id === 'staff-owner-1' ||
+      (session?.email && (
+        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        session.email.toLowerCase() === 'admin@alhamd.com' ||
+        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+      ))
+    );
+    const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
+    if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.add', 'staff.create', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to create staff accounts.');
     }
 
@@ -113,11 +136,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. RBAC & Privilege Escalation Prevention
-    const isSessionSuperAdmin = Boolean(
-      session.isOwner || session.role === 'SUPER_ADMIN' || session.role === 'OWNER'
-    );
-    const isSessionAdmin = isSessionSuperAdmin || session.role === 'ADMIN';
-
     const assignedRole = role || 'Manager';
 
     if (
@@ -191,6 +209,7 @@ export async function POST(request: NextRequest) {
         status: newStaff.status,
         permissions: newStaff.permissions,
       });
+      saveServerStaffUsers([...allStaff, createdStaffUser || newStaff]);
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       saveServerStaffUsers([...allStaff, newStaff]);
       createdStaffUser = newStaff;
@@ -239,6 +258,19 @@ export async function PATCH(request: NextRequest) {
       return unauthorizedResponse();
     }
 
+    const isSessionSuperAdmin = Boolean(
+      session?.isOwner ||
+      session?.role === 'SUPER_ADMIN' ||
+      session?.role === 'OWNER' ||
+      session?.id === 'staff-owner-1' ||
+      (session?.email && (
+        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        session.email.toLowerCase() === 'admin@alhamd.com' ||
+        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+      ))
+    );
+    const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
+
     const body = await request.json();
     const { id, email, status, role, permissions, newPassword, name, phone, avatar } = body;
 
@@ -258,15 +290,15 @@ export async function PATCH(request: NextRequest) {
     );
 
     if (isPasswordResetOnly) {
-      if (!hasAdminPermission(session, ['staff.reset_passwords', 'staff.manage', 'staff.edit'])) {
+      if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.reset_passwords', 'staff.manage', 'staff.edit'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to reset staff passwords.');
       }
     } else if (role !== undefined || permissions !== undefined) {
-      if (!hasAdminPermission(session, ['staff.change_roles', 'staff.manage', 'staff.edit'])) {
+      if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.change_roles', 'staff.manage', 'staff.edit'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to change staff roles or permissions.');
       }
     } else {
-      if (!hasAdminPermission(session, ['staff.edit', 'staff.manage'])) {
+      if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.edit', 'staff.manage'])) {
         return forbiddenResponse('Forbidden: Insufficient permissions to edit staff accounts.');
       }
     }
@@ -281,10 +313,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     const target = allStaff[index];
-    const isSessionSuperAdmin = Boolean(
-      session?.isOwner || session?.role === 'SUPER_ADMIN' || session?.role === 'OWNER'
-    );
-    const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
 
     const isSelf = Boolean(
       (session?.id && target.id === session.id) ||
@@ -321,7 +349,11 @@ export async function PATCH(request: NextRequest) {
 
     // 3. Target Admin & Super Admin protections
     const isTargetOwner =
-      Boolean(target.isOwner) || target.role === 'OWNER' || target.id === 'staff-owner-1';
+      Boolean(target.isOwner) ||
+      target.role === 'OWNER' ||
+      target.id === 'staff-owner-1' ||
+      target.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      target.email.toLowerCase() === 'admin@alhamd.com';
     const isTargetSuperAdmin = isTargetOwner || target.role === 'SUPER_ADMIN';
     const isTargetAdmin = isTargetSuperAdmin || target.role === 'ADMIN';
 
@@ -495,6 +527,7 @@ export async function PATCH(request: NextRequest) {
         permissions: updated.permissions,
         newPassword: passwordToSet,
       });
+      saveServerStaffUsers(allStaff.map((u) => (u.id === target.id ? updatedFromDb : u)));
       const { passwordHash: _, salt: __, ...safe } = updatedFromDb;
       safeUpdatedStaff = safe;
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
@@ -537,7 +570,20 @@ export async function DELETE(request: NextRequest) {
     if (!session) {
       return unauthorizedResponse();
     }
-    if (!hasAdminPermission(session, ['staff.delete', 'staff.manage'])) {
+    const isSessionSuperAdmin = Boolean(
+      session?.isOwner ||
+      session?.role === 'SUPER_ADMIN' ||
+      session?.role === 'OWNER' ||
+      session?.id === 'staff-owner-1' ||
+      (session?.email && (
+        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        session.email.toLowerCase() === 'admin@alhamd.com' ||
+        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+      ))
+    );
+    const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
+
+    if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.delete', 'staff.manage'])) {
       return forbiddenResponse('Forbidden: Insufficient permissions to delete staff accounts.');
     }
 
@@ -568,14 +614,12 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const isSessionSuperAdmin =
-      Boolean(session?.isOwner) || session?.role === 'SUPER_ADMIN';
-
-    const isSessionAdmin =
-      isSessionSuperAdmin || session?.role === 'ADMIN' || session?.role === 'OWNER';
-
     const isTargetOwner =
-      Boolean(target.isOwner) || target.role === 'OWNER' || target.id === 'staff-owner-1';
+      Boolean(target.isOwner) ||
+      target.role === 'OWNER' ||
+      target.id === 'staff-owner-1' ||
+      target.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      target.email.toLowerCase() === 'admin@alhamd.com';
 
     const isTargetSuperAdmin =
       isTargetOwner || target.role === 'SUPER_ADMIN';
@@ -633,6 +677,10 @@ export async function DELETE(request: NextRequest) {
 
     if (isDbConfigured()) {
       await deleteStaffInDb(target.id);
+      const filtered = allStaff.filter(
+        (u) => u.id !== target.id && u.email.toLowerCase() !== target.email.toLowerCase()
+      );
+      saveServerStaffUsers(filtered);
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       const filtered = allStaff.filter(
         (u) => u.id !== target.id && u.email.toLowerCase() !== target.email.toLowerCase()

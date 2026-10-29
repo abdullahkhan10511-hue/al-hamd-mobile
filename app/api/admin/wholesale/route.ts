@@ -33,10 +33,18 @@ function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string 
   } as any;
 }
 
-function verifyWholesaleAccess(user: StaffUser | null): boolean {
+function verifyWholesaleReadAccess(user: StaffUser | null): boolean {
   if (!user || user.status === 'inactive') return false;
   if (user.isOwner) return true;
-  return Array.isArray(user.permissions) && (user.permissions.includes('*') || user.permissions.includes('wholesale.manage'));
+  const p = Array.isArray(user.permissions) ? user.permissions : [];
+  return p.includes('*') || p.includes('wholesale.view') || p.includes('wholesale.manage') || p.includes('wholesale.create') || p.includes('wholesale.approve');
+}
+
+function verifyWholesaleWriteAccess(user: StaffUser | null): boolean {
+  if (!user || user.status === 'inactive') return false;
+  if (user.isOwner) return true;
+  const p = Array.isArray(user.permissions) ? user.permissions : [];
+  return p.includes('*') || p.includes('wholesale.manage') || p.includes('wholesale.create');
 }
 
 /**
@@ -53,11 +61,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!verifyWholesaleAccess(session)) {
+    if (!verifyWholesaleReadAccess(session)) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Access denied: You do not have permission for Wholesale Account Management.',
+          error: 'Access denied: You do not have permission to view Wholesale Accounts.',
         },
         { status: 403 }
       );
@@ -92,11 +100,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!verifyWholesaleAccess(session)) {
+    if (!verifyWholesaleWriteAccess(session)) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Access denied: You do not have permission for Wholesale Account Management.',
+          error: 'Access denied: You do not have permission to create Wholesale Accounts.',
         },
         { status: 403 }
       );

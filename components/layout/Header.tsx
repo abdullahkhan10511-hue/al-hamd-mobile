@@ -141,7 +141,7 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
 
   useEffect(() => {
     loadData();
-    syncNavigationFromApi().then(() => {
+    syncNavigationFromApi(true).then(() => {
       loadData();
     }).catch(() => {});
     syncCategoriesFromApi().then(() => {

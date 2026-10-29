@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllOrdersFromDb, createOrderInDb } from '@/lib/db/repositories/orders';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
+import { seedOrders } from '@/lib/db/seed';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!isDbConfigured()) {
-      return NextResponse.json({ success: true, count: 0, orders: [] });
+      return NextResponse.json({ success: true, count: seedOrders.length, orders: seedOrders });
     }
 
     const { searchParams } = new URL(request.url);

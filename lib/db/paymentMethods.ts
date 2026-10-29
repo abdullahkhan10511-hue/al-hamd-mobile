@@ -130,6 +130,34 @@ export const seedPaymentSecuritySettings: PaymentSecuritySettings = {
 
 let inFlightPaymentPromise: Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> | null = null;
 
+export async function fetchAuthoritativePaymentConfig(): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
+  if (typeof window === 'undefined') {
+    return { methods: getPaymentMethods(), security: getPaymentSecuritySettings() };
+  }
+  try {
+    const res = await fetch('/api/admin/payment-methods?t=' + Date.now(), {
+      headers: getAdminAuthHeaders(),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.methods)) {
+        const sorted = data.methods.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
+        await persistCollection(METHODS_KEY, sorted, true);
+        if (data.security) {
+          setLocal(SECURITY_KEY, data.security, true);
+        }
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: METHODS_KEY, value: sorted } }));
+        return { methods: sorted, security: data.security || getPaymentSecuritySettings() };
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching authoritative payment config:', err);
+  }
+  return syncPaymentMethodsFromApi();
+}
+
 export async function syncPaymentMethodsFromApi(): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
   if (typeof window === 'undefined') {
     return { methods: getPaymentMethods(), security: getPaymentSecuritySettings() };
@@ -169,7 +197,18 @@ export async function syncPaymentMethodsFromApi(): Promise<{ methods: PaymentMet
 }
 
 export function getPaymentMethods(): PaymentMethodConfig[] {
-  const methods = getStoredCollection<PaymentMethodConfig>(METHODS_KEY, seedPaymentMethods);
+  let fallback = seedPaymentMethods;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentPaymentConfig } = require('./paymentMethodsStorage');
+      const saved = readPersistentPaymentConfig();
+      if (Array.isArray(saved.methods) && saved.methods.length > 0) {
+        fallback = saved.methods;
+      }
+    } catch {}
+  }
+  const methods = getStoredCollection<PaymentMethodConfig>(METHODS_KEY, fallback);
   return [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }
 
@@ -184,23 +223,23 @@ export function getPaymentMethodById(id: string): PaymentMethodConfig | undefine
 async function savePaymentConfigToServer(
   payload: { methods?: PaymentMethodConfig[]; security?: PaymentSecuritySettings },
   adminEmail = 'admin@alhamd.com'
-): Promise<void> {
+): Promise<any> {
   if (typeof window === 'undefined') return;
-  try {
-    const res = await fetch('/api/admin/payment-methods', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAdminAuthHeaders(adminEmail),
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      console.warn('Failed to save payment configuration to server API, status:', res.status);
-    }
-  } catch (err) {
-    console.warn('Network error saving payment configuration to server:', err);
+  const res = await fetch('/api/admin/payment-methods', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAdminAuthHeaders(adminEmail),
+    },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.error || `Failed to save payment configuration (Server status: ${res.status})`);
   }
+  return data;
 }
 
 export async function updatePaymentMethod(
@@ -283,7 +322,18 @@ export async function reorderPaymentMethods(
 }
 
 export function getPaymentSecuritySettings(): PaymentSecuritySettings {
-  return getLocal<PaymentSecuritySettings>(SECURITY_KEY, seedPaymentSecuritySettings);
+  let fallback = seedPaymentSecuritySettings;
+  if (typeof window === 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { readPersistentPaymentConfig } = require('./paymentMethodsStorage');
+      const saved = readPersistentPaymentConfig();
+      if (saved.security && typeof saved.security === 'object') {
+        fallback = { ...seedPaymentSecuritySettings, ...saved.security };
+      }
+    } catch {}
+  }
+  return getLocal<PaymentSecuritySettings>(SECURITY_KEY, fallback);
 }
 
 export async function updatePaymentSecuritySettings(
@@ -331,9 +381,10 @@ export async function saveCompletePaymentConfig(
   adminEmail = 'admin@alhamd.com'
 ): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
   const sortedMethods = [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  // Authoritative server persistence first
+  await savePaymentConfigToServer({ methods: sortedMethods, security }, adminEmail);
   await persistCollection(METHODS_KEY, sortedMethods);
   setLocal(SECURITY_KEY, security);
-  await savePaymentConfigToServer({ methods: sortedMethods, security }, adminEmail);
 
   await logActivity({
     adminEmail,

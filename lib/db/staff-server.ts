@@ -72,6 +72,9 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
     try {
       const users = await getAllStaffFromDb();
       memoryStaffUsers = users;
+      if (users.length > 0) {
+        saveLocalFileStaff(users);
+      }
       return users;
     } catch (err) {
       console.warn('MySQL error in getServerStaffUsers:', err);
@@ -109,9 +112,7 @@ export function getServerStaffUsersSync(): StaffUser[] {
 
 export async function saveServerStaffUsers(users: StaffUser[]): Promise<void> {
   memoryStaffUsers = users;
-  if (!isDbConfigured()) {
-    saveLocalFileStaff(users);
-  }
+  saveLocalFileStaff(users);
 }
 
 export async function getServerStaffByEmail(email: string): Promise<StaffUser | undefined> {

@@ -21,6 +21,7 @@ import {
 import {
   getHomepageSections,
   syncHomepageSettingsFromApi,
+  fetchAuthoritativeHomepageSettings,
   updateHomepageSections,
   getHeroConfig,
   updateHeroConfig,
@@ -63,6 +64,7 @@ export default function HomepageControlPage() {
   const [isBenefitsSaved, setIsBenefitsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'sections' | 'benefits' | 'all-products' | 'flash' | 'preview'>('sections');
   const [isSaved, setIsSaved] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
   const loadDeals = () => {
@@ -70,7 +72,7 @@ export default function HomepageControlPage() {
   };
 
   useEffect(() => {
-    syncHomepageSettingsFromApi().then(() => {
+    fetchAuthoritativeHomepageSettings().then(() => {
       setSections(getHomepageSections());
       setHeroConfig(getHeroConfig());
       setFloatingProducts(getFloatingProducts());
@@ -179,10 +181,16 @@ export default function HomepageControlPage() {
   }, [trustBenefits, initialBenefits]);
 
   const handleSaveBenefits = async () => {
-    await updateTrustBenefits(trustBenefits);
-    setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
-    setIsBenefitsSaved(true);
-    setTimeout(() => setIsBenefitsSaved(false), 2500);
+    setErrorMessage('');
+    try {
+      await updateTrustBenefits(trustBenefits);
+      setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
+      setIsBenefitsSaved(true);
+      setTimeout(() => setIsBenefitsSaved(false), 2500);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to save trust benefits.');
+      setTimeout(() => setErrorMessage(''), 6000);
+    }
   };
 
   const handleCancelBenefits = () => {
@@ -196,17 +204,23 @@ export default function HomepageControlPage() {
       floatingProducts: floatingProducts.slice(0, 4),
     };
 
-    await updateAllHomepageSettings({
-      sections,
-      hero: heroWithFloating,
-      flashSale,
-      allProducts: allProductsConfig,
-      trustBenefits,
-    });
-    setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
+    setErrorMessage('');
+    try {
+      await updateAllHomepageSettings({
+        sections,
+        hero: heroWithFloating,
+        flashSale,
+        allProducts: allProductsConfig,
+        trustBenefits,
+      });
+      setInitialBenefits(JSON.parse(JSON.stringify(trustBenefits)));
 
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2500);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2500);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to save homepage settings.');
+      setTimeout(() => setErrorMessage(''), 6000);
+    }
   };
 
   return (
@@ -242,6 +256,13 @@ export default function HomepageControlPage() {
           </button>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-semibold flex items-center gap-2.5">
+          <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-neutral-200 overflow-x-auto whitespace-nowrap pb-px">

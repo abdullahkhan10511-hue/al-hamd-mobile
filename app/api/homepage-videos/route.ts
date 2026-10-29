@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getActiveHomepageVideosFromDb } from '@/lib/db/repositories/homepageVideos';
 import { readPersistentHomepageVideos } from '@/lib/db/homepageVideosStorage';
@@ -7,7 +7,7 @@ import { HomepageVideo } from '@/types/admin';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     let items: HomepageVideo[] = [];
 
@@ -53,7 +53,7 @@ export async function GET() {
       },
       {
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         },
       }
     );

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { PermissionManager } from '@/components/admin/PermissionManager';
 import { StaffUser, StaffRole, AdminRole, PermissionModule } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import {
@@ -1538,79 +1539,19 @@ function AddStaffModal({
 
           {/* Section 3: Permission Matrix */}
           <div className="space-y-4 pt-2 border-t border-neutral-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-[11px] uppercase font-bold text-neutral-400 tracking-wider">
-                  Role Permissions Matrix ({permissions.length} selected)
-                </h4>
-                <p className="text-[11px] text-neutral-500">
-                  Customizing these checkboxes overrides default role permissions for this staff member.
-                </p>
-              </div>
+            <div>
+              <h4 className="text-[11px] uppercase font-bold text-neutral-400 tracking-wider">
+                Granular Permissions ({permissions.length} granted)
+              </h4>
+              <p className="text-[11px] text-neutral-500">
+                Assign or deny individual permissions for this staff account. Selecting a role pre-fills its standard permissions.
+              </p>
             </div>
 
-            <div className="space-y-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200/80">
-              {PERMISSION_MODULES.map((module) => {
-                const modulePerms = ALL_PERMISSIONS.filter((p) => p.module === module);
-                const allSelected = modulePerms.every((p) => permissions.includes(p.key));
-
-                return (
-                  <div key={module} className="bg-white rounded-xl p-3 border border-neutral-200 shadow-xs space-y-2">
-                    <div className="flex items-center justify-between pb-1.5 border-b border-neutral-100">
-                      <span className="font-bold text-neutral-900 text-xs uppercase tracking-tight">
-                        {module}
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectModuleAll(module)}
-                          className="text-neutral-600 hover:text-neutral-900 font-semibold cursor-pointer"
-                        >
-                          Select All
-                        </button>
-                        <span className="text-neutral-300">•</span>
-                        <button
-                          type="button"
-                          onClick={() => handleClearModuleAll(module)}
-                          className="text-neutral-400 hover:text-rose-600 font-semibold cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      {modulePerms.map((perm) => {
-                        const checked = permissions.includes(perm.key);
-                        return (
-                          <label
-                            key={perm.key}
-                            className={`flex items-start gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                              checked
-                                ? 'bg-neutral-900 text-white border-neutral-900'
-                                : 'bg-neutral-50/60 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => handleTogglePermission(perm.key)}
-                              className="mt-0.5 rounded accent-neutral-900 cursor-pointer"
-                            />
-                            <div>
-                              <p className="font-semibold leading-tight">{perm.name}</p>
-                              <p className={`text-[10px] mt-0.5 ${checked ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                                {perm.description}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <PermissionManager
+              selectedPermissions={permissions}
+              onChange={setPermissions}
+            />
           </div>
 
           {/* Modal Footer */}
@@ -1662,6 +1603,7 @@ function EditStaffModal({
   const [avatar, setAvatar] = useState(staff.avatar || '');
   const [status, setStatus] = useState<'active' | 'inactive'>(staff.status);
   const [role, setRole] = useState(staff.role);
+  const [permissions, setPermissions] = useState<string[]>(staff.permissions || []);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -1697,6 +1639,7 @@ function EditStaffModal({
         avatar: avatar.trim(),
         status: isSelf ? 'active' : status,
         role: isSelf ? staff.role : role,
+        permissions: isSelf ? staff.permissions : permissions,
       },
       currentAdmin?.email
     );
@@ -1713,7 +1656,7 @@ function EditStaffModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-neutral-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full overflow-hidden my-8 max-h-[90vh] flex flex-col border border-neutral-200">
         <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
           <h3 className="font-bold text-neutral-900 text-sm">Edit Staff Account: {staff.name}</h3>
           <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700">
@@ -1721,7 +1664,7 @@ function EditStaffModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 font-medium">
               {errorMessage}
@@ -1802,6 +1745,24 @@ function EditStaffModal({
                 <option value="inactive">Inactive</option>
               </select>
             </div>
+          </div>
+
+          {/* Section 3: Permission Matrix */}
+          <div className="space-y-4 pt-2 border-t border-neutral-100">
+            <div>
+              <h4 className="text-[11px] uppercase font-bold text-neutral-400 tracking-wider">
+                Granular Permissions ({permissions.length} granted)
+              </h4>
+              <p className="text-[11px] text-neutral-500">
+                Assign or deny individual permissions for this staff member.
+              </p>
+            </div>
+
+            <PermissionManager
+              selectedPermissions={permissions}
+              onChange={setPermissions}
+              disabled={isSelf || staff.isOwner}
+            />
           </div>
 
           <div className="pt-3 border-t border-neutral-200 flex justify-end gap-2">
@@ -1895,65 +1856,12 @@ function PermissionsMatrixModal({
               <span>{errorMessage}</span>
             </div>
           )}
-          {PERMISSION_MODULES.map((module) => {
-            const modulePerms = ALL_PERMISSIONS.filter((p) => p.module === module);
 
-            return (
-              <div key={module} className="bg-neutral-50 rounded-2xl p-4 border border-neutral-200/80 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
-                  <span className="font-bold text-neutral-900 text-xs uppercase tracking-tight">
-                    {module}
-                  </span>
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectModuleAll(module)}
-                      className="text-neutral-700 hover:text-neutral-900 font-semibold cursor-pointer"
-                    >
-                      Select All
-                    </button>
-                    <span className="text-neutral-300">•</span>
-                    <button
-                      type="button"
-                      onClick={() => handleClearModuleAll(module)}
-                      className="text-neutral-400 hover:text-rose-600 font-semibold cursor-pointer"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {modulePerms.map((perm) => {
-                    const checked = permissions.includes(perm.key);
-                    return (
-                      <label
-                        key={perm.key}
-                        className={`flex items-start gap-2.5 p-2 rounded-xl border cursor-pointer transition-colors ${
-                          checked
-                            ? 'bg-neutral-900 text-white border-neutral-900'
-                            : 'bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-100/60'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleToggle(perm.key)}
-                          className="mt-0.5 rounded accent-neutral-900 cursor-pointer"
-                        />
-                        <div>
-                          <p className="font-semibold leading-tight">{perm.name}</p>
-                          <p className={`text-[10px] mt-0.5 ${checked ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                            {perm.description}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          <PermissionManager
+            selectedPermissions={permissions}
+            onChange={setPermissions}
+            disabled={staff.isOwner}
+          />
         </div>
 
         <div className="p-4 border-t border-neutral-200 bg-neutral-50 flex justify-end gap-2">
@@ -2346,67 +2254,11 @@ function RoleEditorModal({
               </h4>
             </div>
 
-            <div className="space-y-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200/80">
-              {PERMISSION_MODULES.map((module) => {
-                const modulePerms = ALL_PERMISSIONS.filter((p) => p.module === module);
-
-                return (
-                  <div key={module} className="bg-white rounded-xl p-3 border border-neutral-200 shadow-xs space-y-2">
-                    <div className="flex items-center justify-between pb-1.5 border-b border-neutral-100">
-                      <span className="font-bold text-neutral-900 text-xs uppercase tracking-tight">
-                        {module}
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectModuleAll(module)}
-                          className="text-neutral-700 hover:text-neutral-900 font-semibold cursor-pointer"
-                        >
-                          Select All
-                        </button>
-                        <span className="text-neutral-300">•</span>
-                        <button
-                          type="button"
-                          onClick={() => handleClearModuleAll(module)}
-                          className="text-neutral-400 hover:text-rose-600 font-semibold cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      {modulePerms.map((perm) => {
-                        const checked = permissions.includes(perm.key);
-                        return (
-                          <label
-                            key={perm.key}
-                            className={`flex items-start gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-colors ${
-                              checked
-                                ? 'bg-neutral-900 text-white border-neutral-900'
-                                : 'bg-neutral-50/60 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => handleToggle(perm.key)}
-                              className="mt-0.5 rounded accent-neutral-900 cursor-pointer"
-                            />
-                            <div>
-                              <p className="font-semibold leading-tight">{perm.name}</p>
-                              <p className={`text-[10px] mt-0.5 ${checked ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                                {perm.description}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <PermissionManager
+              selectedPermissions={permissions}
+              onChange={setPermissions}
+              disabled={initialRole?.isSystemRole && initialRole?.name === 'SUPER_ADMIN'}
+            />
           </div>
 
           <div className="pt-3 border-t border-neutral-200 flex justify-end gap-2">

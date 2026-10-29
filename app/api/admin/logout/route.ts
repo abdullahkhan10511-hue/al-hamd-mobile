@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
+const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
+
+function clearAllAuthCookies(response: NextResponse, isHttps: boolean) {
+  const commonOptions = {
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+    sameSite: 'lax' as const,
+  };
+
+  response.cookies.set(COOKIE_NAME, '', {
+    ...commonOptions,
+    httpOnly: true,
+    secure: isHttps,
+  });
+
+  response.cookies.set(FALLBACK_COOKIE_NAME, '', {
+    ...commonOptions,
+    httpOnly: true,
+    secure: isHttps,
+  });
+
+  response.cookies.set(CUSTOMER_COOKIE_NAME, '', commonOptions);
+}
 
 export async function POST(request: NextRequest) {
   const isHttps =
@@ -10,24 +34,17 @@ export async function POST(request: NextRequest) {
     request.headers.get('x-forwarded-ssl') === 'on';
 
   const response = NextResponse.json({ success: true, message: 'Logged out successfully' });
+  clearAllAuthCookies(response, isHttps);
+  return response;
+}
 
-  response.cookies.set(COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: isHttps,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-    expires: new Date(0),
-  });
+export async function GET(request: NextRequest) {
+  const isHttps =
+    request.nextUrl.protocol === 'https:' ||
+    request.headers.get('x-forwarded-proto') === 'https' ||
+    request.headers.get('x-forwarded-ssl') === 'on';
 
-  response.cookies.set(FALLBACK_COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: isHttps,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-    expires: new Date(0),
-  });
-
+  const response = NextResponse.json({ success: true, message: 'Logged out successfully' });
+  clearAllAuthCookies(response, isHttps);
   return response;
 }

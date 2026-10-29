@@ -1079,6 +1079,22 @@ export async function getCustomerOrdersForCustomer(customerIdOrEmail: string): P
  * Securely fetch an order ensuring customer ownership.
  */
 export async function getCustomerOrderById(customerIdOrEmail: string, orderId: string): Promise<Order | null> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?t=${Date.now()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.order) {
+          return data.order;
+        }
+      }
+    } catch (e) {
+      console.warn('API notice fetching customer order:', e);
+    }
+  }
   const allOrders = await getOrders();
   const target = allOrders.find((o) => o.id.toLowerCase() === orderId.trim().toLowerCase());
   if (!target) return null;

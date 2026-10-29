@@ -529,7 +529,7 @@ export async function updateOrderStatus(
   await persistCollection(COLLECTION_KEY, orders);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -537,7 +537,10 @@ export async function updateOrderStatus(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ status, paymentStatus }),
-    }).catch(() => {});
+    });
+    if (!res.ok) {
+      console.warn('API error updating order:', await res.text().catch(() => ''));
+    }
   }
 
   // Direct Firestore doc sync
@@ -589,7 +592,7 @@ export async function verifyPayment(
   await persistCollection(COLLECTION_KEY, orders);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -597,7 +600,10 @@ export async function verifyPayment(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ paymentStatus: newPaymentStatus, note }),
-    }).catch(() => {});
+    });
+    if (!res.ok) {
+      console.warn('API error updating order:', await res.text().catch(() => ''));
+    }
   }
 
   // Requirement 23: Payment Audit Log
@@ -646,7 +652,7 @@ export async function rejectPayment(
   await persistCollection(COLLECTION_KEY, orders);
 
   if (typeof window !== 'undefined') {
-    fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -654,7 +660,10 @@ export async function rejectPayment(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ paymentStatus: newPaymentStatus, note }),
-    }).catch(() => {});
+    });
+    if (!res.ok) {
+      console.warn('API error updating order:', await res.text().catch(() => ''));
+    }
   }
 
   // Requirement 23: Payment Audit Log

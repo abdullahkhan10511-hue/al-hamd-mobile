@@ -12,6 +12,7 @@ import {
   getCustomerOrders,
 } from '@/lib/db/customers';
 import { useAdminAuth } from '@/context/AdminAuthContext';
+import { getAdminAuthHeaders } from '@/lib/db/staff';
 import { formatPrice } from '@/lib/utils';
 import {
   Building2,
@@ -91,7 +92,8 @@ export default function WholesaleManagementPage() {
       setIsLoading(true);
       const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
-      const res = await fetch('/api/admin/wholesale', {
+      const res = await fetch(`/api/admin/wholesale?t=${Date.now()}`, {
+        credentials: 'include',
         headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
       });
       if (res.ok) {
@@ -202,7 +204,8 @@ export default function WholesaleManagementPage() {
       const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
-      const res = await fetch('/api/admin/wholesale', {
+      const res = await fetch(`/api/admin/wholesale?t=${Date.now()}`, {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -295,6 +298,7 @@ export default function WholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(editingAccount.id)}`, {
+        credentials: 'include',
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -347,6 +351,7 @@ export default function WholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(account.id)}`, {
+        credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -384,6 +389,7 @@ export default function WholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(pendingDelete.id)}`, {
+        credentials: 'include',
         method: 'DELETE',
         headers: {
           ...(authHeader ? { Authorization: authHeader } : {}),

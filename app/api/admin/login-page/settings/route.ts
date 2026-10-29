@@ -8,7 +8,7 @@ import {
   updateLoginPageSettingsInDb,
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -91,6 +91,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify settings.' },
         { status: 401 }
+      );
+    }
+
+    if (!hasAdminPermission(session, ['settings.edit', 'settings.manage'])) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient permissions to modify login page settings.' },
+        { status: 403 }
       );
     }
 

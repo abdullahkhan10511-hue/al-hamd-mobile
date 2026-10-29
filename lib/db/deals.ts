@@ -103,6 +103,7 @@ export async function saveDeal(
     const endpoint = existingIndex >= 0 ? `/api/admin/deals/${encodeURIComponent(id)}` : '/api/admin/deals';
     const method = existingIndex >= 0 ? 'PUT' : 'POST';
     const res = await fetch(endpoint, {
+      credentials: 'include',
       method,
       headers: authHeaders,
       body: JSON.stringify(newDeal),
@@ -163,6 +164,7 @@ export async function deleteDeal(id: string, adminEmail: string = 'admin@alhamd.
       'Content-Type': 'application/json',
     };
     const res = await fetch(`/api/admin/deals/${encodeURIComponent(id)}`, {
+      credentials: 'include',
       method: 'DELETE',
       headers: authHeaders,
     });

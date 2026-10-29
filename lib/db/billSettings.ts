@@ -69,6 +69,7 @@ export async function syncBillSettingsFromApi(): Promise<boolean> {
       const res = await fetch(`/api/admin/bill-settings?t=${Date.now()}`, {
         cache: 'no-store',
         headers: getAdminAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
@@ -194,30 +195,33 @@ export async function updateBillSettings(
     updatedBy: adminEmail,
   };
 
-  setLocal(BILL_SETTINGS_KEY, updated);
+  let serverSavedSettings: BillSettings = updated;
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/admin/bill-settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
+      credentials: 'include',
+      body: JSON.stringify(settings),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Failed to save bill settings (Server status: ${res.status})`);
+    }
+    if (data.settings) {
+      serverSavedSettings = data.settings;
+    }
+  }
+
+  setLocal(BILL_SETTINGS_KEY, serverSavedSettings);
 
   if (typeof window !== 'undefined') {
-    try {
-      const res = await fetch('/api/admin/bill-settings', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAdminAuthHeaders(adminEmail),
-        },
-        body: JSON.stringify(settings),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.settings) {
-          setLocal(BILL_SETTINGS_KEY, data.settings, true);
-        }
-      }
-    } catch (err) {
-      console.warn('Network error updating bill settings:', err);
-    }
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
-        detail: { key: BILL_SETTINGS_KEY, value: updated },
+        detail: { key: BILL_SETTINGS_KEY, value: serverSavedSettings },
       })
     );
   }
@@ -229,5 +233,5 @@ export async function updateBillSettings(
     details: `Updated fields: ${Object.keys(settings).join(', ')}`,
   });
 
-  return updated;
+  return serverSavedSettings;
 }

@@ -4,6 +4,7 @@ import { getActiveDealsFromDb } from '@/lib/db/repositories/deals';
 import { getDeals, isDealCurrentlyActive } from '@/lib/db/deals';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         },
       }
     );

@@ -8,30 +8,61 @@ const COLLECTION_KEY = 'navigation';
 
 function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
   const filtered = (items || [])
-    .filter((n) => n && n.href !== '/blog' && n.label?.toLowerCase() !== 'blog')
-    .map((n) => {
-      if (n.label?.toLowerCase() === 'new arrivals' && n.href !== '/new-arrivals') return { ...n, href: '/new-arrivals' };
-      if (n.label?.toLowerCase() === 'best sellers' && n.href !== '/best-sellers') return { ...n, href: '/best-sellers' };
-      if ((n.label?.toLowerCase() === 'categories' || n.href === '/#categories') && n.href !== '/categories') return { ...n, href: '/categories' };
-      return n;
-    });
+    .filter((n) => n && typeof n === 'object' && n.label && n.href && n.href !== '/blog' && n.label?.toLowerCase() !== 'blog')
+    .map((n, index) => {
+      let href = (n.href || '').trim();
+      const label = (n.label || '').trim();
+      if (label.toLowerCase() === 'new arrivals' && href !== '/new-arrivals') href = '/new-arrivals';
+      if (label.toLowerCase() === 'best sellers' && href !== '/best-sellers') href = '/best-sellers';
+      if ((label.toLowerCase() === 'categories' || href === '/#categories') && href !== '/categories') href = '/categories';
 
-  if (!filtered.some((n) => n.href === '/deals' || n.label?.toLowerCase() === 'deals')) {
-    filtered.push({
-      id: 'nav-deals',
-      label: 'Deals',
-      href: '/deals',
-      displayOrder: 8,
-      visible: true,
+      return {
+        id: n.id || `nav-${Date.now()}-${index}`,
+        label,
+        href,
+        displayOrder: typeof n.displayOrder === 'number' ? n.displayOrder : index + 1,
+        visible: n.visible !== false,
+      };
     });
-  }
 
   return filtered.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }
 
 let inFlightNavigationPromise: Promise<NavigationItem[]> | null = null;
 let lastNavigationSyncTimestamp = 0;
-const NAVIGATION_SYNC_DEBOUNCE_MS = 60000; // 60s client-side sync debounce
+const NAVIGATION_SYNC_DEBOUNCE_MS = 5000; // 5s client-side sync debounce
+
+export function resetNavigationSyncTimestamp(): void {
+  lastNavigationSyncTimestamp = 0;
+}
+
+export async function fetchAuthoritativeNavigation(): Promise<NavigationItem[]> {
+  if (typeof window === 'undefined') return getNavigation();
+  try {
+    const res = await fetch('/api/admin/navigation?t=' + Date.now(), {
+      headers: getAdminAuthHeaders(),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        const normalized = normalizeNavigationList(data.items);
+        await persistCollection(COLLECTION_KEY, normalized, false);
+        lastNavigationSyncTimestamp = Date.now();
+        window.dispatchEvent(
+          new CustomEvent('alhamd:data-updated', {
+            detail: { key: COLLECTION_KEY, value: normalized },
+          })
+        );
+        return normalized;
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching authoritative navigation:', err);
+  }
+  return syncNavigationFromApi(true);
+}
 
 export async function syncNavigationFromApi(forceFresh = false): Promise<NavigationItem[]> {
   if (typeof window === 'undefined') return getNavigation();
@@ -42,15 +73,15 @@ export async function syncNavigationFromApi(forceFresh = false): Promise<Navigat
 
   inFlightNavigationPromise = (async () => {
     try {
-      const url = forceFresh ? `/api/navigation?t=${Date.now()}` : '/api/navigation';
-      const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
+      const url = `/api/navigation?t=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.items)) {
           const normalized = normalizeNavigationList(data.items);
           const current = getNavigation();
           const hasChanged = JSON.stringify(current) !== JSON.stringify(normalized);
-          await persistCollection(COLLECTION_KEY, normalized, true);
+          await persistCollection(COLLECTION_KEY, normalized, !hasChanged);
           lastNavigationSyncTimestamp = Date.now();
           if (hasChanged) {
             window.dispatchEvent(
@@ -91,39 +122,53 @@ export function getNavigation(): NavigationItem[] {
 
 export async function updateNavigation(
   items: NavigationItem[],
-  adminEmail = 'admin@alhamd.com'
-): Promise<void> {
+  adminEmail = 'admin@alhamdmobile.com'
+): Promise<NavigationItem[]> {
   const normalized = normalizeNavigationList(items);
-  await persistCollection(COLLECTION_KEY, normalized);
 
+  let serverItems = normalized;
   if (typeof window !== 'undefined') {
-    try {
-      const res = await fetch('/api/admin/navigation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAdminAuthHeaders(adminEmail),
-        },
-        body: JSON.stringify({ items: normalized }),
-      });
-      if (!res.ok) {
-        console.warn('Failed to sync navigation to server API, status:', res.status);
-      }
-    } catch (err) {
-      console.warn('Network error saving navigation to server:', err);
+    const res = await fetch('/api/admin/navigation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ items: normalized }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Failed to save navigation menu (Server status: ${res.status})`);
+    }
+    if (Array.isArray(data.items)) {
+      serverItems = normalizeNavigationList(data.items);
     }
   }
+
+  // Update storage & invalidate in-flight cache
+  await persistCollection(COLLECTION_KEY, serverItems, false);
+  lastNavigationSyncTimestamp = Date.now();
+
+  window.dispatchEvent(
+    new CustomEvent('alhamd:data-updated', {
+      detail: { key: COLLECTION_KEY, value: serverItems },
+    })
+  );
 
   await logActivity({
     adminEmail,
     action: 'Updated Header Navigation Menu',
     target: 'Header Menu',
   });
+
+  return serverItems;
 }
 
 export async function createNavigationItem(
   data: Omit<NavigationItem, 'id'>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'admin@alhamdmobile.com'
 ): Promise<NavigationItem> {
   const items = getNavigation();
   const newItem: NavigationItem = {
@@ -137,7 +182,10 @@ export async function createNavigationItem(
   return newItem;
 }
 
-export async function deleteNavigationItem(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteNavigationItem(
+  id: string,
+  adminEmail = 'admin@alhamdmobile.com'
+): Promise<boolean> {
   const items = getNavigation();
   const filtered = items.filter((n) => n.id !== id);
   await updateNavigation(filtered, adminEmail);

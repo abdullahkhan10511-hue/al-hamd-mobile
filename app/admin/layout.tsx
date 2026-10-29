@@ -58,38 +58,36 @@ interface NavItemConfig {
 
 // Master Admin Navigation Items mapped to permissions
 const allAdminNavItems: NavItemConfig[] = [
-  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { label: 'Shop Counter / POS', href: '/admin/pos', icon: Store, permissions: ['orders.view', 'pos.view'] },
+  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard, permission: 'dashboard.view' },
+  { label: 'Shop Counter / POS', href: '/admin/pos', icon: Store, permissions: ['pos.view', 'orders.view'] },
   { label: 'Orders', href: '/admin/orders', icon: ShoppingBag, permission: 'orders.view' },
   { label: 'Invoices & Bills', href: '/admin/invoices', icon: Printer, permissions: ['orders.print_bills', 'orders.view'] },
   { label: 'Store & Bill Settings', href: '/admin/bill-settings', icon: ReceiptText, permissions: ['settings.view', 'orders.print_bills'] },
-  { label: 'Payment Methods & CMS', href: '/admin/payment-methods', icon: CreditCard, permissions: ['settings.view', 'settings.edit'] },
+  { label: 'Payment Methods & CMS', href: '/admin/payment-methods', icon: CreditCard, permissions: ['settings.payment_methods', 'settings.edit', 'settings.view'] },
   { label: 'Payment Verification', href: '/admin/payments', icon: ShieldCheck, permissions: ['orders.process', 'orders.view'] },
-  { label: 'Products', href: '/admin/products', icon: Package, permission: 'products.view' },
+  { label: 'Products', href: '/admin/products', icon: Package, permissions: ['products.view', 'products.create', 'products.add', 'products.edit'] },
   { label: 'New Arrivals', href: '/admin/new-arrivals', icon: Sparkles, permission: 'content.new_arrivals' },
   { label: 'Best Sellers', href: '/admin/best-sellers', icon: Flame, permission: 'content.best_sellers' },
   { label: 'Categories', href: '/admin/categories', icon: Layers, permission: 'categories.view' },
-  { label: 'Brands', href: '/admin/brands', icon: Tag, permissions: ['brands.view', 'brands.manage', 'brands.add', 'brands.create', 'brands.edit', 'brands.delete', 'categories.view', 'products.view'] },
+  { label: 'Brands', href: '/admin/brands', icon: Tag, permissions: ['brands.view', 'brands.manage', 'brands.add', 'brands.create', 'brands.edit'] },
   { label: 'Inventory (Warehouse)', href: '/admin/inventory', icon: Warehouse, permission: 'inventory.view' },
-  { label: 'Shop Inventory', href: '/admin/shop-inventory', icon: Store, permission: 'inventory.view_shop' },
+  { label: 'Shop Inventory', href: '/admin/shop-inventory', icon: Store, permissions: ['inventory.view_shop', 'inventory.view'] },
   { label: 'Customers', href: '/admin/customers', icon: Users, permission: 'customers.view' },
-  { label: 'Customer Inquiries', href: '/admin/inquiries', icon: MessageSquare, permissions: ['inquiries.view', 'customers.view', 'orders.view'] },
-  { label: 'Wholesale Accounts', href: '/admin/wholesale', icon: Building2, permission: 'wholesale.manage' },
-  { label: 'Super Wholesale Accounts', href: '/admin/super-wholesale', icon: Crown, permission: 'wholesale.manage' },
-  { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['orders.view', 'products.view'] },
-  { label: 'Home Page Videos', href: '/admin/homepage-videos', icon: Video, permissions: ['content.homepage', 'content.media'] },
+  { label: 'Customer Inquiries', href: '/admin/inquiries', icon: MessageSquare, permissions: ['inquiries.view', 'customers.view'] },
+  { label: 'Wholesale Accounts', href: '/admin/wholesale', icon: Building2, permissions: ['wholesale.view', 'wholesale.manage'] },
+  { label: 'Super Wholesale Accounts', href: '/admin/super-wholesale', icon: Crown, permissions: ['wholesale.view', 'wholesale.manage'] },
+  { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['finance.view', 'orders.view'] },
+  { label: 'Home Page Videos', href: '/admin/homepage-videos', icon: Video, permissions: ['content.videos', 'content.homepage'] },
   { label: 'Homepage Control', href: '/admin/homepage', icon: Sparkles, permission: 'content.homepage' },
-  { label: 'Deals', href: '/admin/deals', icon: Zap, permissions: ['deals.view', 'deals.manage', 'promotions.view', 'promotions.add', 'content.deals'] },
-  { label: 'Promo Codes', href: '/admin/promo-codes', icon: TicketPercent, permissions: ['promotions.view', 'promotions.add', 'promotions.edit'] },
+  { label: 'Deals', href: '/admin/deals', icon: Zap, permissions: ['deals.view', 'deals.manage', 'promotions.view'] },
+  { label: 'Promo Codes', href: '/admin/promo-codes', icon: TicketPercent, permissions: ['promotions.view', 'promotions.add', 'promotions.create', 'promotions.edit'] },
   { label: 'Navigation Menu', href: '/admin/navigation', icon: MenuIcon, permission: 'content.navigation' },
-  // Media & Asset Library hidden from navigation per workflow requirements (page & files preserved at /admin/media)
-  // { label: 'Media Library', href: '/admin/media', icon: ImageIcon, permissions: ['content.homepage', 'content.banners', 'products.add'] },
-  { label: 'Pages & Legal', href: '/admin/pages', icon: FileCode, permissions: ['pages.view', 'content.navigation', 'settings.view'] },
+  { label: 'Pages & Legal', href: '/admin/pages', icon: FileCode, permissions: ['pages.view', 'pages.edit', 'pages.create'] },
   { label: 'Shop Location', href: '/admin/shop-location', icon: MapPin, permission: 'settings.view' },
   { label: 'Store Settings', href: '/admin/settings', icon: Settings, permissions: ['settings.view', 'settings.edit'] },
   { label: 'SEO & Website Settings', href: '/admin/settings/seo', icon: Globe, permissions: ['settings.view', 'settings.edit'] },
   { label: 'Login Appearance', href: '/admin/settings/login-appearance', icon: Palette, permissions: ['settings.view', 'settings.edit'] },
-  { label: 'Staff Management', href: '/admin/staff', icon: Users, permissions: ['staff.view', 'staff.manage', 'staff.add', 'staff.create', 'staff.edit', 'staff.change_roles'] },
+  { label: 'Staff Management', href: '/admin/staff', icon: Users, permissions: ['staff.view', 'staff.manage', 'staff.add', 'staff.create', 'staff.edit'] },
   { label: 'Activity Logs', href: '/admin/activity', icon: History, permissions: ['staff.view', 'settings.view'] },
 ];
 
@@ -101,7 +99,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 }
 
-function AccessDeniedView({ userRole, pathname }: { userRole?: string; pathname: string }) {
+function AccessDeniedView({
+  userRole,
+  pathname,
+  fallbackHref = '/admin',
+  fallbackLabel = 'Return to Dashboard',
+}: {
+  userRole?: string;
+  pathname: string;
+  fallbackHref?: string;
+  fallbackLabel?: string;
+}) {
   const router = useRouter();
   const [countdown, setCountdown] = useState(5);
   const redirectedRef = React.useRef(false);
@@ -123,9 +131,9 @@ function AccessDeniedView({ userRole, pathname }: { userRole?: string; pathname:
   useEffect(() => {
     if (countdown <= 0 && !redirectedRef.current) {
       redirectedRef.current = true;
-      router.replace('/admin');
+      router.replace(fallbackHref);
     }
-  }, [countdown, router]);
+  }, [countdown, router, fallbackHref]);
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center p-4">
@@ -150,10 +158,10 @@ function AccessDeniedView({ userRole, pathname }: { userRole?: string; pathname:
 
         <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2">
           <Link
-            href="/admin"
+            href={fallbackHref}
             className="w-full py-3 px-4 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
           >
-            <span>Return to Dashboard</span>
+            <span>{fallbackLabel}</span>
           </Link>
           <span className="text-[10px] text-neutral-400">
             Automatically redirecting in {countdown}s...
@@ -181,6 +189,21 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
+  // Check if current user is authorized for the active route
+  const isAuthorized = admin ? canAccessAdminRoute(admin, pathname) : true;
+
+  // Dynamically filter navigation items based on current staff member's exact permissions
+  const navItems = allAdminNavItems.filter((item) => {
+    if (admin?.isOwner) return true;
+    if (item.superOnly && !isSuperAdmin) return false;
+    if (!item.permission && (!item.permissions || item.permissions.length === 0)) return true;
+    if (item.permission && hasPermission(item.permission)) return true;
+    if (item.permissions && hasAnyPermission(item.permissions)) return true;
+    return false;
+  });
+
+  const firstAllowed = navItems.find((item) => item.href !== '/admin' && item.href !== '/admin/dashboard');
+
   // Client-side route protection redirect if unauthenticated
   // All React hooks MUST be declared at the top before any conditional returns!
   useEffect(() => {
@@ -192,6 +215,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       router.replace(redirectUrl);
     }
   }, [isLoading, authLoading, isAuthenticated, admin, pathname, router]);
+
+  // If user lands on /admin or /admin/dashboard without dashboard.view permission, redirect to their first authorized module
+  useEffect(() => {
+    if (!isLoading && !authLoading && isAuthenticated && admin && pathname !== '/admin/login') {
+      const isDashboardRoute = pathname === '/admin' || pathname === '/admin/dashboard';
+      if (isDashboardRoute && !isAuthorized && firstAllowed?.href) {
+        router.replace(firstAllowed.href);
+      }
+    }
+  }, [isLoading, authLoading, isAuthenticated, admin, pathname, isAuthorized, firstAllowed, router]);
 
   // If on login page, render plain without sidebar (AFTER all hooks are executed)
   if (pathname === '/admin/login') {
@@ -214,19 +247,6 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated || !admin) {
     return null;
   }
-
-  // Check if current user is authorized for the active route
-  const isAuthorized = canAccessAdminRoute(admin, pathname);
-
-  // Dynamically filter navigation items based on current staff member's exact permissions
-  const navItems = allAdminNavItems.filter((item) => {
-    if (admin?.isOwner) return true;
-    if (item.superOnly && !isSuperAdmin) return false;
-    if (!item.permission && (!item.permissions || item.permissions.length === 0)) return true;
-    if (item.permission && hasPermission(item.permission)) return true;
-    if (item.permissions && hasAnyPermission(item.permissions)) return true;
-    return false;
-  });
 
   const notifications = getNotifications();
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -441,10 +461,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               />
               <div className="flex flex-col text-left">
                 <span className="text-xs font-semibold text-neutral-800 truncate max-w-[150px]">
-                  {admin.name}
-                </span>
-                <span className="text-[10px] text-neutral-400 font-mono uppercase">
-                  {admin.role}
+                  {admin.name || 'Account'}
                 </span>
               </div>
             </div>
@@ -456,7 +473,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           {isAuthorized ? (
             children
           ) : (
-            <AccessDeniedView userRole={admin.role} pathname={pathname} />
+            <AccessDeniedView
+              userRole={admin.role}
+              pathname={pathname}
+              fallbackHref={firstAllowed?.href || (canAccessAdminRoute(admin, '/admin') ? '/admin' : '/admin/login')}
+              fallbackLabel={firstAllowed ? `Go to ${firstAllowed.label}` : (canAccessAdminRoute(admin, '/admin') ? 'Return to Dashboard' : 'Return to Login')}
+            />
           )}
         </main>
       </div>

@@ -96,3 +96,33 @@ export function deduplicateCategoriesById<T extends { id?: string | number }>(ca
   return result;
 }
 
+/**
+ * Formats a personalized welcome message for the admin panel header.
+ * Uses the authenticated user's actual name (e.g. "Welcome Abdullah", "Welcome Ahmed", "Welcome Ali").
+ * Removes email addresses, role names, and access levels.
+ * Falls back safely to "Welcome" if name is missing, empty, or a role/email placeholder.
+ */
+export function getAdminGreeting(name?: string | null): string {
+  if (!name || typeof name !== 'string') return 'Welcome';
+  const clean = name.trim();
+  if (!clean) return 'Welcome';
+
+  const upper = clean.toUpperCase();
+  // If the name is an email address or generic role title, fall back to "Welcome"
+  if (
+    clean.includes('@') ||
+    upper === 'SUPER_ADMIN' ||
+    upper === 'SUPER ADMIN' ||
+    upper === 'ADMIN' ||
+    upper === 'ADMINISTRATOR' ||
+    upper === 'STAFF' ||
+    upper === 'STAFF MEMBER' ||
+    upper === 'MANAGER' ||
+    upper === 'OWNER' ||
+    upper === 'ROOT'
+  ) {
+    return 'Welcome';
+  }
+
+  return `Welcome ${clean}`;
+}

@@ -16,7 +16,7 @@ import {
 } from '@/lib/db/homepageVideosStorage';
 import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,6 +27,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['content.homepage', 'content.banners', 'settings.edit', 'settings.view'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view homepage videos.' },
+      { status: 403 }
     );
   }
 
@@ -74,6 +81,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify homepage videos.' },
         { status: 401 }
+      );
+    }
+
+    if (!hasAdminPermission(session, ['content.homepage', 'content.banners', 'settings.edit'])) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient permissions to modify homepage videos.' },
+        { status: 403 }
       );
     }
 

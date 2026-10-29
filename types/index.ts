@@ -41,6 +41,9 @@ export interface ProductModelVariant {
   compareAtPrice?: number;
   wholesalePrice?: number;
   superWholesalePrice?: number;
+  costPrice?: number;
+  profit?: number;
+  margin?: number;
   stock?: number;
   shopStock?: number;
   isShopActive?: boolean;
@@ -69,6 +72,9 @@ export interface Product {
   compareAtPrice?: number;
   wholesalePrice?: number;
   superWholesalePrice?: number;
+  costPrice?: number;
+  profit?: number;
+  margin?: number;
   discountPercentage?: number;
   images: string[];
   videos?: string[];

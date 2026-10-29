@@ -43,7 +43,17 @@ interface ProductFormProps {
 
 export function ProductForm({ initialProduct, isNew = false }: ProductFormProps) {
   const router = useRouter();
-  const { admin } = useAdminAuth();
+  const { admin, hasPermission } = useAdminAuth();
+  const canViewRetail = hasPermission('pricing.retail.view');
+  const canEditRetail = hasPermission('pricing.retail.edit');
+  const canViewWholesale = hasPermission('pricing.wholesale.view');
+  const canEditWholesale = hasPermission('pricing.wholesale.edit');
+  const canViewSuperWholesale = hasPermission('pricing.super_wholesale.view');
+  const canEditSuperWholesale = hasPermission('pricing.super_wholesale.edit');
+  const canViewInventory = hasPermission('inventory.view') || hasPermission('inventory.view_shop');
+  const canEditStock = hasPermission('inventory.stock.edit') || hasPermission('inventory.adjust_stock');
+  const canEditStockWarning = hasPermission('inventory.edit_warning');
+  const canEditSku = hasPermission('products.sku_barcode');
   const categories = deduplicateCategoriesById(getCategories());
 
   // Form Fields - All fields are completely optional
@@ -612,10 +622,12 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     const rawStock = stock === '' || stock === undefined || stock === null ? 0 : Number(stock);
     const rawShopStock = shopStock === '' || shopStock === undefined || shopStock === null ? 0 : Number(shopStock);
 
-    const numStock = isShopLoc ? 0 : rawStock;
-    const numShopStock = isShopLoc
-      ? (rawShopStock > 0 ? rawShopStock : rawStock)
-      : (isNew ? 0 : rawShopStock);
+    const numStock = canEditStock
+      ? (isShopLoc ? 0 : rawStock)
+      : (isNew ? 0 : (initialProduct?.stock ?? 0));
+    const numShopStock = canEditStock
+      ? (isShopLoc ? (rawShopStock > 0 ? rawShopStock : rawStock) : (isNew ? 0 : rawShopStock))
+      : (isNew ? 0 : (initialProduct?.shopStock ?? 0));
 
     const numLowStock =
       lowStockThreshold === '' || lowStockThreshold === undefined || lowStockThreshold === null
@@ -666,6 +678,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       compareAtPrice: numCompareAtPrice,
       wholesalePrice: numWholesalePrice,
       superWholesalePrice: numSuperWholesalePrice,
+      costPrice: initialProduct?.costPrice,
       discountPercentage:
         numCompareAtPrice && numCompareAtPrice > numPrice
           ? Math.round(((numCompareAtPrice - numPrice) / numCompareAtPrice) * 100)
@@ -700,10 +713,12 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 compareAtPrice: m.compareAtPrice ? Number(m.compareAtPrice) : undefined,
                 wholesalePrice: m.wholesalePrice ? Number(m.wholesalePrice) : undefined,
                 superWholesalePrice: m.superWholesalePrice ? Number(m.superWholesalePrice) : undefined,
-                stock: isShopLoc ? 0 : mRawStock,
-                shopStock: isShopLoc
-                  ? (mRawShopStock > 0 ? mRawShopStock : mRawStock)
-                  : (isNew ? 0 : mRawShopStock),
+                stock: canEditStock
+                  ? (isShopLoc ? 0 : mRawStock)
+                  : (isNew ? 0 : (m.stock !== undefined ? Number(m.stock) : 0)),
+                shopStock: canEditStock
+                  ? (isShopLoc ? (mRawShopStock > 0 ? mRawShopStock : mRawStock) : (isNew ? 0 : mRawShopStock))
+                  : (isNew ? 0 : (m.shopStock !== undefined ? Number(m.shopStock) : 0)),
                 isActive: m.isActive !== false,
                 images: Array.isArray(m.images) ? m.images.filter(Boolean) : [],
                 videos: Array.isArray(m.videos) ? m.videos.filter(Boolean) : [],
@@ -829,6 +844,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         {/* Left Form: Details, Descriptions & Specs (8 cols) */}
         <div className="lg:col-span-8 space-y-6">
           {/* Inventory Location Selection */}
+          {(canViewInventory || canEditStock) && (
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
               <div>
@@ -904,7 +920,8 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 </div>
               </button>
             </div>
-          </div>
+            </div>
+          )}
 
           {/* General Info */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4">
@@ -1389,15 +1406,16 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                               </label>
                               <input
                                 type="number"
-                                value={mod.shopStock ?? mod.stock ?? ''}
+                                value={canEditStock ? (mod.shopStock ?? mod.stock ?? '') : (isNew ? 0 : (mod.shopStock ?? mod.stock ?? 0))}
                                 onChange={(e) =>
                                   handleUpdateModel(idx, {
                                     shopStock: e.target.value === '' ? 0 : Number(e.target.value),
                                     stock: 0,
                                   })
                                 }
-                                placeholder="e.g. 10"
-                                className="w-full p-2 rounded-xl border border-amber-300 bg-amber-50/40 font-mono font-bold"
+                                disabled={!canEditStock}
+                                placeholder={canEditStock ? "e.g. 10" : "0"}
+                                className="w-full p-2 rounded-xl border border-amber-300 bg-amber-50/40 font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                               />
                             </div>
                           ) : (
@@ -1407,15 +1425,16 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                               </label>
                               <input
                                 type="number"
-                                value={mod.stock ?? ''}
+                                value={canEditStock ? (mod.stock ?? '') : (isNew ? 0 : (mod.stock ?? 0))}
                                 onChange={(e) =>
                                   handleUpdateModel(idx, {
                                     stock: e.target.value === '' ? 0 : Number(e.target.value),
                                     shopStock: 0,
                                   })
                                 }
-                                placeholder="e.g. 15"
-                                className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono"
+                                disabled={!canEditStock}
+                                placeholder={canEditStock ? "e.g. 15" : "0"}
+                                className="w-full p-2 rounded-xl border border-neutral-200 bg-white font-mono disabled:opacity-60 disabled:cursor-not-allowed"
                               />
                             </div>
                           )}
@@ -1433,41 +1452,47 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                             />
                           </div>
 
-                          <div className="sm:col-span-2">
-                            <label className="font-semibold text-neutral-700 block mb-1">
-                              Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={mod.wholesalePrice ?? ''}
-                              onChange={(e) =>
-                                handleUpdateModel(idx, {
-                                  wholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
-                                })
-                              }
-                              placeholder="Special wholesale rate"
-                              className="w-full p-2 rounded-xl border border-indigo-200 bg-indigo-50/20 font-mono"
-                            />
-                          </div>
+                          {canViewWholesale && (
+                            <div className="sm:col-span-2">
+                              <label className="font-semibold text-neutral-700 block mb-1">
+                                Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                disabled={!canEditWholesale}
+                                value={mod.wholesalePrice ?? ''}
+                                onChange={(e) =>
+                                  handleUpdateModel(idx, {
+                                    wholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
+                                  })
+                                }
+                                placeholder="Special wholesale rate"
+                                className="w-full p-2 rounded-xl border border-indigo-200 bg-indigo-50/20 font-mono disabled:opacity-60"
+                              />
+                            </div>
+                          )}
 
-                          <div className="sm:col-span-2">
-                            <label className="font-semibold text-purple-900 block mb-1">
-                              Super Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={mod.superWholesalePrice ?? ''}
-                              onChange={(e) =>
-                                handleUpdateModel(idx, {
-                                  superWholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
-                                })
-                              }
-                              placeholder="Super wholesale tier rate"
-                              className="w-full p-2 rounded-xl border border-purple-200 bg-purple-50/30 font-mono text-purple-950 font-bold"
-                            />
-                          </div>
+                          {canViewSuperWholesale && (
+                            <div className="sm:col-span-2">
+                              <label className="font-semibold text-purple-900 block mb-1">
+                                Super Wholesale Price (PKR) <span className="text-neutral-400 font-normal">(optional)</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                disabled={!canEditSuperWholesale}
+                                value={mod.superWholesalePrice ?? ''}
+                                onChange={(e) =>
+                                  handleUpdateModel(idx, {
+                                    superWholesalePrice: e.target.value === '' ? undefined : Number(e.target.value),
+                                  })
+                                }
+                                placeholder="Super wholesale tier rate"
+                                className="w-full p-2 rounded-xl border border-purple-200 bg-purple-50/30 font-mono text-purple-950 font-bold disabled:opacity-60"
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {/* Model-Specific Images (Optional) */}
@@ -1728,7 +1753,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           {/* Pricing & Stock */}
           <div className="bg-white p-6 rounded-3xl border border-neutral-200/80 shadow-xs space-y-4 text-xs">
             <h3 className="font-bold text-neutral-950 uppercase tracking-tight border-b border-neutral-100 pb-2">
-              Pricing & Inventory
+              {canViewInventory || canEditStock ? 'Pricing & Inventory' : 'Pricing & Catalog Details'}
             </h3>
 
             <div>
@@ -1739,8 +1764,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 step="1"
                 value={compareAtPrice}
                 onChange={(e) => setCompareAtPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={!canEditRetail}
                 placeholder="e.g. 6000 (strike-through)"
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono"
+                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono disabled:opacity-60"
               />
             </div>
 
@@ -1752,8 +1778,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 step="1"
                 value={price}
                 onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={!canEditRetail}
                 placeholder="e.g. 2500"
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
+                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm disabled:opacity-60"
               />
               {compareAtPrice && Number(compareAtPrice) > Number(price || 0) && (
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1">
@@ -1762,61 +1789,67 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               )}
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="font-semibold text-neutral-700">Wholesale Price (PKR)</label>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
-                  Wholesale
+            {canViewWholesale && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-neutral-700">Wholesale Price (PKR)</label>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                    Wholesale
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  disabled={!canEditWholesale}
+                  value={wholesalePrice}
+                  onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Special wholesale rate (optional)"
+                  className="w-full p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/30 font-mono font-bold text-sm text-indigo-950 focus:bg-white focus:border-indigo-400 disabled:opacity-60"
+                />
+                <span className="text-[10px] text-neutral-500 mt-1 block">
+                  {wholesalePrice && Number(wholesalePrice) > 0 && Number(price || 0) > Number(wholesalePrice) ? (
+                    <span className="text-emerald-600 font-semibold">
+                      Wholesale savings: Rs. {(Number(price) - Number(wholesalePrice)).toLocaleString('en-PK')} (
+                      {Math.round(((Number(price) - Number(wholesalePrice)) / Number(price)) * 100)}% discount)
+                    </span>
+                  ) : (
+                    'Leave blank to automatically apply standard retail price to wholesale buyers.'
+                  )}
                 </span>
               </div>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={wholesalePrice}
-                onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Special wholesale rate (optional)"
-                className="w-full p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/30 font-mono font-bold text-sm text-indigo-950 focus:bg-white focus:border-indigo-400"
-              />
-              <span className="text-[10px] text-neutral-500 mt-1 block">
-                {wholesalePrice && Number(wholesalePrice) > 0 && Number(price || 0) > Number(wholesalePrice) ? (
-                  <span className="text-emerald-600 font-semibold">
-                    Wholesale savings: Rs. {(Number(price) - Number(wholesalePrice)).toLocaleString('en-PK')} (
-                    {Math.round(((Number(price) - Number(wholesalePrice)) / Number(price)) * 100)}% discount)
-                  </span>
-                ) : (
-                  'Leave blank to automatically apply standard retail price to wholesale buyers.'
-                )}
-              </span>
-            </div>
+            )}
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="font-semibold text-neutral-700">Super Wholesale Price (PKR)</label>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
-                  Super Wholesale
+            {canViewSuperWholesale && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-neutral-700">Super Wholesale Price (PKR)</label>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                    Super Wholesale
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  disabled={!canEditSuperWholesale}
+                  value={superWholesalePrice}
+                  onChange={(e) => setSuperWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Super wholesale tier rate (optional)"
+                  className="w-full p-2.5 rounded-xl border border-purple-200 bg-purple-50/30 font-mono font-bold text-sm text-purple-950 focus:bg-white focus:border-purple-400 disabled:opacity-60"
+                />
+                <span className="text-[10px] text-neutral-500 mt-1 block">
+                  {superWholesalePrice && Number(superWholesalePrice) > 0 && Number(price || 0) > Number(superWholesalePrice) ? (
+                    <span className="text-purple-700 font-semibold">
+                      Super wholesale savings: Rs. {(Number(price) - Number(superWholesalePrice)).toLocaleString('en-PK')} (
+                      {Math.round(((Number(price) - Number(superWholesalePrice)) / Number(price)) * 100)}% discount)
+                    </span>
+                  ) : (
+                    'Leave blank or 0 for safe fallback: wholesale price will apply automatically to super wholesale partners.'
+                  )}
                 </span>
               </div>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={superWholesalePrice}
-                onChange={(e) => setSuperWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Super wholesale tier rate (optional)"
-                className="w-full p-2.5 rounded-xl border border-purple-200 bg-purple-50/30 font-mono font-bold text-sm text-purple-950 focus:bg-white focus:border-purple-400"
-              />
-              <span className="text-[10px] text-neutral-500 mt-1 block">
-                {superWholesalePrice && Number(superWholesalePrice) > 0 && Number(price || 0) > Number(superWholesalePrice) ? (
-                  <span className="text-purple-700 font-semibold">
-                    Super wholesale savings: Rs. {(Number(price) - Number(superWholesalePrice)).toLocaleString('en-PK')} (
-                    {Math.round(((Number(price) - Number(superWholesalePrice)) / Number(price)) * 100)}% discount)
-                  </span>
-                ) : (
-                  'Leave blank or 0 for safe fallback: wholesale price will apply automatically to super wholesale partners.'
-                )}
-              </span>
-            </div>
+            )}
 
             {inventoryLocation === 'SHOP' ? (
               <div>
@@ -1830,8 +1863,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                     const val = e.target.value === '' ? '' : Number(e.target.value);
                     setShopStock(val);
                   }}
+                  disabled={!canEditStock}
                   placeholder="e.g. 10 (Shop Stock)"
-                  className="w-full p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-mono font-bold text-sm text-neutral-950 focus:bg-white focus:border-amber-500"
+                  className="w-full p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-mono font-bold text-sm text-neutral-950 focus:bg-white focus:border-amber-500 disabled:opacity-60"
                 />
                 <span className="text-[10px] text-amber-700 font-medium mt-1 block">
                   Physical units stored at the retail shop. This product will NOT receive warehouse stock.
@@ -1844,11 +1878,17 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 </label>
                 <input
                   type="number"
-                  value={stock}
+                  value={canEditStock ? stock : (isNew ? 0 : (initialProduct?.stock ?? 0))}
                   onChange={(e) => setStock(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="e.g. 50 (Warehouse Stock)"
-                  className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm"
+                  disabled={!canEditStock}
+                  placeholder={canEditStock ? "e.g. 50 (Warehouse Stock)" : "0 (Requires Inventory Permission)"}
+                  className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono font-bold text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                 />
+                {!canEditStock && (
+                  <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mt-1 block">
+                    Stock modification requires Inventory permissions. {isNew ? 'New product will start with 0 stock.' : 'Existing stock is preserved.'}
+                  </span>
+                )}
                 <span className="text-[10px] text-neutral-400 mt-1 block">
                   Physical units stored in warehouse. Transferred to shop only via Shop Bills.
                 </span>
@@ -1861,8 +1901,9 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 type="number"
                 value={lowStockThreshold}
                 onChange={(e) => setLowStockThreshold(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={!canEditStockWarning}
                 placeholder="e.g. 5 (optional)"
-                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono"
+                className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50 font-mono disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <span className="text-[10px] text-neutral-400 mt-1 block">
                 Warning triggers when stock reaches this level or below.

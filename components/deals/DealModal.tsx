@@ -14,7 +14,7 @@ export interface DealModalProps {
 }
 
 export function DealModal({ deal, onClose }: DealModalProps) {
-  const { addDealToCart } = useCart();
+  const { addDealToCart, buyNowDeal } = useCart();
   const router = useRouter();
   const [justAdded, setJustAdded] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -40,10 +40,10 @@ export function DealModal({ deal, onClose }: DealModalProps) {
 
   const handleBuyNow = () => {
     if (!canPurchase) return;
-    const res = addDealToCart(deal, 1, { openDrawer: false, showToast: false });
+    const res = buyNowDeal(deal, 1);
     if (res.success) {
       onClose();
-      router.push('/checkout');
+      router.push('/checkout?buyNow=1');
     } else if (res.error) {
       setErrorMsg(res.error);
       setTimeout(() => setErrorMsg(null), 3500);

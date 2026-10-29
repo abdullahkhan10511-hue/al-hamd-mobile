@@ -153,7 +153,7 @@ export interface DealCardProps {
 }
 
 export function DealCard({ deal, onViewDetails: _onViewDetails, index = 0 }: DealCardProps) {
-  const { addDealToCart } = useCart();
+  const { addDealToCart, buyNowDeal } = useCart();
   const router = useRouter();
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -195,9 +195,9 @@ export function DealCard({ deal, onViewDetails: _onViewDetails, index = 0 }: Dea
 
     if (!canPurchase) return;
 
-    const res = addDealToCart(deal, 1, { openDrawer: false, showToast: false });
+    const res = buyNowDeal(deal, 1);
     if (res.success) {
-      router.push('/checkout');
+      router.push('/checkout?buyNow=1');
     } else if (res.error) {
       setErrorToast(res.error);
       setTimeout(() => setErrorToast(null), 3500);

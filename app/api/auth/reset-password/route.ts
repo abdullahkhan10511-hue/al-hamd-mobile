@@ -3,6 +3,7 @@ import {
   verifyPasswordResetToken,
   completePasswordReset,
 } from '@/lib/db/repositories/passwordReset';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 /**
  * GET /api/auth/reset-password?token=...
@@ -10,6 +11,14 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`reset_pw_get_${ip}`, 15, 60000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { valid: false, error: `Too many attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.` },
+        { status: 429 }
+      );
+    }
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('token') || '';
 
@@ -48,6 +57,14 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`reset_pw_post_${ip}`, 10, 60000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Too many password reset attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.` },
+        { status: 429 }
+      );
+    }
     const body = await request.json().catch(() => ({}));
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';

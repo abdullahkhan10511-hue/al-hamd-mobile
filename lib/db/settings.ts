@@ -265,6 +265,10 @@ export function getStoreSettings(): StoreSettings {
   return base;
 }
 
+export function resetSettingsSyncTimestamp(): void {
+  lastSettingsSyncTimestamp = 0;
+}
+
 let inFlightSettingsPromise: Promise<StoreSettings> | null = null;
 let lastSettingsSyncTimestamp = 0;
 const SETTINGS_SYNC_DEBOUNCE_MS = 60000; // 60s client-side sync debounce
@@ -323,6 +327,47 @@ export async function syncStoreSettingsFromApi(forceFresh = false): Promise<Stor
   return inFlightSettingsPromise;
 }
 
+export async function fetchAuthoritativeAdminSettings(): Promise<StoreSettings> {
+  if (typeof window === 'undefined') return getStoreSettings();
+  try {
+    const authHeaders = getAdminAuthHeaders();
+    const res = await fetch('/api/admin/settings?t=' + Date.now(), {
+      headers: authHeaders,
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        const serverData = data.settings;
+        const freshSettings: StoreSettings = {
+          ...seedStoreSettings,
+          ...serverData,
+          storeName: serverData.storeName || 'AL-HAMD SHOP',
+          websiteTitle: serverData.websiteTitle || serverData.seo?.websiteTitle || 'AL-HAMD SHOP | Mobile Accessories Pakistan',
+          canonicalUrl: normalizeCanonicalUrl(serverData.canonicalUrl || serverData.seo?.canonicalUrl || 'https://alhamdshop.com'),
+          ogImageUrl: serverData.ogImageUrl || serverData.seo?.ogImageUrl || '',
+          seo: {
+            ...seedStoreSettings.seo,
+            ...(serverData.seo || {}),
+            websiteTitle: serverData.websiteTitle || serverData.seo?.websiteTitle || 'AL-HAMD SHOP | Mobile Accessories Pakistan',
+            canonicalUrl: normalizeCanonicalUrl(serverData.canonicalUrl || serverData.seo?.canonicalUrl || 'https://alhamdshop.com'),
+            ogImageUrl: serverData.ogImageUrl || serverData.seo?.ogImageUrl || '',
+          },
+          socialLinks: normalizeSocialLinks(serverData.socialLinks),
+        };
+        setLocal(SETTINGS_KEY, freshSettings, true);
+        lastSettingsSyncTimestamp = Date.now();
+        window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: SETTINGS_KEY, value: freshSettings } }));
+        return freshSettings;
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching authoritative admin settings:', err);
+  }
+  return syncStoreSettingsFromApi(true);
+}
+
 export async function updateStoreSettings(
   settings: Partial<StoreSettings>,
   adminEmail = 'admin@alhamd.com'
@@ -354,29 +399,33 @@ export async function updateStoreSettings(
     socialLinks: settings.socialLinks ? normalizeSocialLinks({ ...current.socialLinks, ...settings.socialLinks }) : current.socialLinks,
   };
 
-  setLocal(SETTINGS_KEY, updated);
-
-  // Sync to server storage and database via API
+  // Authoritative server persistence first
+  let serverSavedSettings: StoreSettings = updated;
   if (typeof window !== 'undefined') {
-    try {
-      const authHeaders = getAdminAuthHeaders();
-      const res = await fetch('/api/admin/settings', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(updated),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.settings) {
-          setLocal(SETTINGS_KEY, data.settings, true);
-        }
-      } else {
-        console.warn('POST /api/admin/settings returned status:', res.status);
-      }
-    } catch (apiErr) {
-      console.warn('API error updating store settings:', apiErr);
+    const authHeaders = getAdminAuthHeaders(adminEmail);
+    const res = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      credentials: 'include',
+      body: JSON.stringify(updated),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      const errMsg = data?.error || `Failed to save store settings (Server status: ${res.status})`;
+      throw new Error(errMsg);
+    }
+
+    if (data.settings) {
+      serverSavedSettings = data.settings;
     }
   }
+
+  // Only update local storage once authoritative database/server persistence succeeds
+  setLocal(SETTINGS_KEY, serverSavedSettings);
 
   // Attempt Firestore sync with non-destructive merge
   const hasRealFirebase =
@@ -406,7 +455,7 @@ export async function updateStoreSettings(
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
   }
 
-  return updated;
+  return serverSavedSettings;
 }
 
 // Check if a specific social platform is active and has a valid URL

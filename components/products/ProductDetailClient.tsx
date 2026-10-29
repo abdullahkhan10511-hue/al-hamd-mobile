@@ -32,7 +32,7 @@ import { useWishlist } from '@/context/WishlistContext';
 import { StarRating } from '@/components/ui/StarRating';
 import { Badge } from '@/components/ui/Badge';
 import { ProductCard } from '@/components/products/ProductCard';
-import { formatPrice, DEFAULT_PRODUCT_IMAGE } from '@/lib/utils';
+import { formatPrice, DEFAULT_PRODUCT_IMAGE, getValidImageSrc } from '@/lib/utils';
 import { Product, ProductModelVariant } from '@/types';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
@@ -433,26 +433,41 @@ export function ProductDetailClient({
 
   const handleAddToCart = () => {
     if (!product || !canAddToCart) return;
+    const modelName = selectedModelObj?.name || selectedModel;
+    const modelPrice = selectedModelObj?.price;
+    const modelImage =
+      selectedModelObj?.images?.[0] ||
+      (product.images?.[0] ? getValidImageSrc(product.images) : undefined);
+
     addToCart(
       product,
       quantity,
-      selectedColor,
       selectedSize,
-      selectedModelObj?.name || selectedModel,
-      selectedModelObj?.id
+      selectedColor,
+      modelName,
+      modelPrice,
+      modelImage
     );
   };
 
   const handleBuyNow = () => {
     if (!product || !canAddToCart) return;
+    const modelName = selectedModelObj?.name || selectedModel;
+    const modelPrice = selectedModelObj?.price;
+    const modelImage =
+      selectedModelObj?.images?.[0] ||
+      (product.images?.[0] ? getValidImageSrc(product.images) : undefined);
+
     buyNow(
       product,
       quantity,
-      selectedColor,
       selectedSize,
-      selectedModelObj?.name || selectedModel,
-      selectedModelObj?.id
+      selectedColor,
+      modelName,
+      modelPrice,
+      modelImage
     );
+    router.push('/checkout?buyNow=1');
   };
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
@@ -465,6 +480,7 @@ export function ProductDetailClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: product.id,
+          author: reviewName.trim(),
           userName: reviewName.trim(),
           rating: reviewRating,
           comment: reviewComment.trim(),

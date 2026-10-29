@@ -242,11 +242,15 @@ export function getStaffUsers(): StaffUser[] {
       modified = true;
     }
 
-    // Ensure permissions array exists
-    if (!Array.isArray(userCopy.permissions)) {
+    // Ensure permissions array exists and is hydrated for admin/super-admin/owner
+    if (
+      !Array.isArray(userCopy.permissions) ||
+      (userCopy.permissions.length === 0 && (userCopy.isOwner || userCopy.role === 'SUPER_ADMIN' || userCopy.role === 'OWNER' || userCopy.role === 'ADMIN'))
+    ) {
       userCopy.permissions =
-        ROLE_DEFAULT_PERMISSIONS[userCopy.role] ||
-        (userCopy.role === 'SUPER_ADMIN' ? [...ALL_PERMISSION_KEYS] : []);
+        userCopy.isOwner || userCopy.role === 'SUPER_ADMIN' || userCopy.role === 'OWNER'
+          ? [...ALL_PERMISSION_KEYS]
+          : (ROLE_DEFAULT_PERMISSIONS[userCopy.role] || []);
       modified = true;
     }
 
@@ -860,39 +864,143 @@ export async function deleteStaffUser(
 export function hasStaffPermission(staff?: StaffUser | null, permissionKey?: string): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (!permissionKey) return true;
-  if (staff.isOwner || staff.id === 'staff-owner-1') return true;
-  if (Array.isArray(staff.permissions)) {
-    if (staff.permissions.includes('*')) return true;
-    if (staff.permissions.includes(permissionKey)) return true;
+  const isRoot = Boolean(
+    staff.isOwner ||
+    staff.id === 'staff-owner-1' ||
+    staff.role === 'SUPER_ADMIN' ||
+    staff.role === 'OWNER' ||
+    (staff.email && (
+      staff.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      staff.email.toLowerCase() === 'admin@alhamd.com'
+    ))
+  );
+  if (isRoot) return true;
+
+  const staffPerms = Array.isArray(staff.permissions) && staff.permissions.length > 0
+    ? staff.permissions
+    : (ROLE_DEFAULT_PERMISSIONS[staff.role] || []);
+
+  if (staffPerms && staffPerms.length > 0) {
+    if (staffPerms.includes('*')) return true;
+    if (staffPerms.includes(permissionKey)) return true;
+
+    // PRICING PERMISSIONS ARE STRICT - DO NOT AUTO-GRANT FROM OTHER DOMAINS!
+    if (permissionKey.startsWith('pricing.')) {
+      if (staffPerms.includes('pricing.*') || staffPerms.includes('*')) return true;
+      return false;
+    }
 
     // Semantic aliases: staff management
     if (
       (permissionKey === 'staff.add' || permissionKey === 'staff.create') &&
-      (staff.permissions.includes('staff.add') || staff.permissions.includes('staff.create') || staff.permissions.includes('staff.manage'))
+      (staffPerms.includes('staff.add') || staffPerms.includes('staff.create') || staffPerms.includes('staff.manage'))
     ) {
       return true;
     }
-    if (permissionKey === 'staff.view' && staff.permissions.includes('staff.manage')) return true;
-    if (permissionKey === 'staff.edit' && staff.permissions.includes('staff.manage')) return true;
-    if (permissionKey === 'staff.delete' && staff.permissions.includes('staff.manage')) return true;
-    if (permissionKey === 'staff.change_roles' && staff.permissions.includes('staff.manage')) return true;
-    if (permissionKey === 'staff.reset_passwords' && staff.permissions.includes('staff.manage')) return true;
+    if (permissionKey === 'staff.view' && (staffPerms.includes('staff.manage') || staffPerms.includes('staff.view'))) return true;
+    if (permissionKey === 'staff.edit' && (staffPerms.includes('staff.manage') || staffPerms.includes('staff.edit'))) return true;
+    if (permissionKey === 'staff.delete' && (staffPerms.includes('staff.manage') || staffPerms.includes('staff.delete'))) return true;
+    if (permissionKey === 'staff.change_roles' && (staffPerms.includes('staff.manage') || staffPerms.includes('staff.change_roles') || staffPerms.includes('staff.edit'))) return true;
+    if (permissionKey === 'staff.reset_passwords' && (staffPerms.includes('staff.manage') || staffPerms.includes('staff.reset_passwords') || staffPerms.includes('staff.edit'))) return true;
 
     // Semantic aliases: brands
     if (
       (permissionKey === 'brands.add' || permissionKey === 'brands.create') &&
-      (staff.permissions.includes('brands.add') || staff.permissions.includes('brands.create') || staff.permissions.includes('brands.manage'))
+      (staffPerms.includes('brands.add') || staffPerms.includes('brands.create') || staffPerms.includes('brands.manage'))
     ) {
       return true;
     }
     if (
       permissionKey === 'brands.view' &&
-      (staff.permissions.includes('brands.manage') || staff.permissions.includes('brands.add') || staff.permissions.includes('brands.edit') || staff.permissions.includes('brands.view'))
+      (staffPerms.includes('brands.manage') || staffPerms.includes('brands.add') || staffPerms.includes('brands.edit') || staffPerms.includes('brands.view'))
     ) {
       return true;
     }
-    if (permissionKey === 'brands.edit' && staff.permissions.includes('brands.manage')) return true;
-    if (permissionKey === 'brands.delete' && staff.permissions.includes('brands.manage')) return true;
+    if (permissionKey === 'brands.edit' && staffPerms.includes('brands.manage')) return true;
+    if (permissionKey === 'brands.delete' && staffPerms.includes('brands.manage')) return true;
+
+    // Semantic aliases: categories
+    if (
+      (permissionKey === 'categories.add' || permissionKey === 'categories.create') &&
+      (staffPerms.includes('categories.add') || staffPerms.includes('categories.create') || staffPerms.includes('categories.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'categories.view' &&
+      (staffPerms.includes('categories.manage') || staffPerms.includes('categories.add') || staffPerms.includes('categories.edit') || staffPerms.includes('categories.view'))
+    ) {
+      return true;
+    }
+    if (permissionKey === 'categories.edit' && (staffPerms.includes('categories.manage') || staffPerms.includes('categories.edit'))) return true;
+    if (permissionKey === 'categories.delete' && (staffPerms.includes('categories.manage') || staffPerms.includes('categories.delete'))) return true;
+
+    // Semantic aliases: products (strictly isolated from inventory stock adjust!)
+    if (
+      (permissionKey === 'products.add' || permissionKey === 'products.create') &&
+      (staffPerms.includes('products.add') || staffPerms.includes('products.create') || staffPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'products.view' &&
+      (staffPerms.includes('products.view') || staffPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'products.edit' &&
+      (staffPerms.includes('products.edit') || staffPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (permissionKey === 'products.delete' && (staffPerms.includes('products.delete') || staffPerms.includes('products.manage'))) return true;
+
+    // Semantic aliases: inventory
+    if (
+      permissionKey === 'inventory.view' &&
+      (staffPerms.includes('inventory.view') || staffPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      (permissionKey === 'inventory.adjust_stock' || permissionKey === 'inventory.stock.edit' || permissionKey === 'inventory.stock') &&
+      (staffPerms.includes('inventory.adjust_stock') || staffPerms.includes('inventory.stock.edit') || staffPerms.includes('inventory.stock') || staffPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'inventory.edit_warning' &&
+      (staffPerms.includes('inventory.edit_warning') || staffPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'inventory.shop_bill' &&
+      (staffPerms.includes('inventory.shop_bill') || staffPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+
+    // Semantic aliases: orders
+    if (
+      permissionKey === 'orders.view' &&
+      (staffPerms.includes('orders.view') || staffPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'orders.update_status' &&
+      (staffPerms.includes('orders.update_status') || staffPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
+    if (
+      permissionKey === 'orders.process' &&
+      (staffPerms.includes('orders.process') || staffPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -900,6 +1008,16 @@ export function hasStaffPermission(staff?: StaffUser | null, permissionKey?: str
 export function hasAnyStaffPermission(staff?: StaffUser | null, permissionKeys: string[] = []): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (permissionKeys.length === 0) return true;
-  if (staff.isOwner || staff.id === 'staff-owner-1') return true;
+  const isRoot = Boolean(
+    staff.isOwner ||
+    staff.id === 'staff-owner-1' ||
+    staff.role === 'SUPER_ADMIN' ||
+    staff.role === 'OWNER' ||
+    (staff.email && (
+      staff.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      staff.email.toLowerCase() === 'admin@alhamd.com'
+    ))
+  );
+  if (isRoot) return true;
   return permissionKeys.some((key) => hasStaffPermission(staff, key));
 }

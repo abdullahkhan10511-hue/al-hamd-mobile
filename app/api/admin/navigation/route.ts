@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 import {
   readPersistentNavigation,
   writePersistentNavigation,
 } from '@/lib/db/navigationStorage';
+import { invalidateClientCache } from '@/lib/db/storage';
 import { NavigationItem } from '@/types/admin';
 
 export const dynamic = 'force-dynamic';
@@ -19,12 +20,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!hasAdminPermission(session, ['content.navigation', 'settings.edit', 'settings.view', 'pages.manage_nav'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view navigation menu.' },
+      { status: 403 }
+    );
+  }
+
   const items = readPersistentNavigation();
   return NextResponse.json(
     { success: true, items, count: items.length },
     {
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
       },
     }
   );
@@ -36,6 +46,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['content.navigation', 'settings.edit', 'pages.manage_nav'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to modify navigation menu.' },
+      { status: 403 }
     );
   }
 
@@ -55,6 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     writePersistentNavigation(items);
+    invalidateClientCache();
 
     try {
       revalidatePath('/', 'layout');

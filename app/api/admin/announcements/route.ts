@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 import {
   readPersistentAnnouncements,
   writePersistentAnnouncements,
@@ -16,6 +16,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['content.banners', 'content.homepage', 'settings.edit', 'settings.view'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view announcements.' },
+      { status: 403 }
     );
   }
 
@@ -36,6 +43,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['content.banners', 'content.homepage', 'settings.edit'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to modify announcements.' },
+      { status: 403 }
     );
   }
 

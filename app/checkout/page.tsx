@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -29,6 +30,7 @@ import { formatPrice, getValidImageSrc } from '@/lib/utils';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import { createOrder } from '@/lib/db/orders';
 import { Order, PaymentMethodConfig, PaymentSecuritySettings, PaymentStatus } from '@/types/admin';
+import { CartItem } from '@/types';
 import {
   getEnabledPaymentMethods,
   getPaymentSecuritySettings,
@@ -66,11 +68,34 @@ const POPULAR_CITIES = [
 ];
 
 export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="bg-neutral-50 min-h-screen py-24 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-neutral-900 border-t-transparent animate-spin" />
+            <span className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">
+              Loading Checkout...
+            </span>
+          </div>
+        </div>
+      }
+    >
+      <CheckoutContent />
+    </Suspense>
+  );
+}
+
+function CheckoutContent() {
+  const searchParams = useSearchParams();
+  const isBuyNowParam = searchParams.get('buyNow') === '1' || searchParams.get('buyNow') === 'true';
+
   const {
     cart,
-    subtotal,
-    shipping,
-    discount,
+    buyNowItem,
+    clearBuyNowItem,
+    subtotal: cartSubtotal,
+    shipping: cartShipping,
     clearCart,
     appliedPromo,
     applyPromoCode,
@@ -82,6 +107,60 @@ export default function CheckoutPage() {
   const isWholesale = customer?.customerType === 'WHOLESALE';
   const isWholesaleTier = isWholesale || isSuperWholesale;
   const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
+
+  const [sessionBuyNowItem, setSessionBuyNowItem] = useState<CartItem | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem('al_hamd_buy_now');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (parsed.product || parsed.itemType === 'DEAL')) return parsed;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  const activeBuyNowItem = buyNowItem || sessionBuyNowItem;
+  const isBuyNowMode = Boolean(isBuyNowParam && activeBuyNowItem);
+
+  const checkoutItems = useMemo<CartItem[]>(() => {
+    if (isBuyNowMode && activeBuyNowItem) {
+      return [activeBuyNowItem];
+    }
+    return cart;
+  }, [isBuyNowMode, activeBuyNowItem, cart]);
+
+  const subtotal = useMemo(() => {
+    if (!isBuyNowMode) return cartSubtotal;
+    return checkoutItems.reduce((acc, ci) => {
+      if (ci.itemType === 'DEAL') {
+        const dealUnitPrice = Number(ci.dealPrice ?? ci.selectedPrice ?? ci.product?.price ?? 0);
+        return acc + dealUnitPrice * ci.quantity;
+      }
+      const modelObj =
+        ci.selectedModel && ci.product?.models
+          ? ci.product.models.find(
+              (m) =>
+                m.name.toLowerCase() === ci.selectedModel?.toLowerCase() ||
+                m.id === ci.selectedModel
+            )
+          : null;
+      const effectivePrice = modelObj
+        ? getModelEffectivePrice(ci.product, modelObj, customerTier)
+        : (ci.selectedPrice ?? getProductEffectivePrice(ci.product, customerTier));
+      return acc + effectivePrice * ci.quantity;
+    }, 0);
+  }, [isBuyNowMode, cartSubtotal, checkoutItems, customerTier]);
+
+  const discount = useMemo(() => {
+    if (!appliedPromo) return 0;
+    if (appliedPromo.discountType === 'percentage') {
+      const calculated = Math.round(subtotal * (appliedPromo.discountValue / 100));
+      return Math.min(subtotal, appliedPromo.discountAmount || calculated);
+    }
+    return Math.min(subtotal, appliedPromo.discountAmount);
+  }, [subtotal, appliedPromo]);
 
   // Promo Code State
   const [promoInput, setPromoInput] = useState('');
@@ -182,9 +261,15 @@ export default function CheckoutPage() {
     };
   }, []);
 
-  // In PKR: standard is from CartContext (free over 5000 or 200), express is 450
+  // In PKR: standard is free over 5000 or 200, express is 450
   const expressFee = 450;
-  const shippingCost = deliveryMethod === 'express' ? expressFee : shipping;
+  const standardFee = useMemo(() => {
+    if (!isBuyNowMode) return cartShipping;
+    if (checkoutItems.length === 0) return 0;
+    return subtotal - discount >= 5000 ? 0 : 200;
+  }, [isBuyNowMode, cartShipping, checkoutItems.length, subtotal, discount]);
+
+  const shippingCost = deliveryMethod === 'express' ? expressFee : standardFee;
   const grandTotal = Math.max(0, Math.round(subtotal - discount + shippingCost));
 
   // Selected payment method config
@@ -270,8 +355,8 @@ export default function CheckoutPage() {
       }
     }
 
-    if (cart.length === 0) {
-      setOrderError('Your cart is empty.');
+    if (checkoutItems.length === 0) {
+      setOrderError('Your checkout items list is empty.');
       return;
     }
 
@@ -322,8 +407,8 @@ export default function CheckoutPage() {
       const fullAddress = `${streetAddress}${area ? `, ${area}` : ''}, ${province}`;
       const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
 
-      // Map cart items into OrderItem format using authorized effective pricing
-      const orderItems = cart.map((ci) => {
+      // Map checkout items into OrderItem format using authorized effective pricing
+      const orderItems = checkoutItems.map((ci) => {
         if (ci.itemType === 'DEAL') {
           const dealUnitPrice = Number(ci.dealPrice ?? ci.selectedPrice ?? ci.product?.price ?? 0);
           const lineTotal = dealUnitPrice * ci.quantity;
@@ -452,7 +537,14 @@ export default function CheckoutPage() {
       }
 
       setCreatedOrder(newOrder);
-      clearCart();
+      if (isBuyNowMode) {
+        clearBuyNowItem();
+        try {
+          sessionStorage.removeItem('al_hamd_buy_now');
+        } catch {}
+      } else {
+        clearCart();
+      }
     } catch (err: any) {
       console.error('Order confirmation error:', err);
       setOrderError(
@@ -577,7 +669,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (hasHydrated && cart.length === 0 && !createdOrder) {
+  if (hasHydrated && checkoutItems.length === 0 && !createdOrder) {
     return (
       <div className="bg-neutral-50 min-h-screen py-20 flex items-center justify-center">
         <div className="max-w-md mx-auto text-center p-8 sm:p-10 bg-white rounded-3xl border border-neutral-200/80 shadow-sm">
@@ -1008,10 +1100,10 @@ export default function CheckoutPage() {
                     </div>
                   </div>
                   <span className="text-xs font-mono font-bold text-neutral-900">
-                    {shipping === 0 ? (
+                    {standardFee === 0 ? (
                       <span className="text-emerald-700">FREE</span>
                     ) : (
-                      formatPrice(shipping)
+                      formatPrice(standardFee)
                     )}
                   </span>
                 </label>
@@ -1331,13 +1423,13 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
                 <h3 className="text-base font-bold text-neutral-950">Order Summary</h3>
                 <span className="text-xs font-semibold text-neutral-500 font-mono">
-                  {cart.length} item{cart.length !== 1 ? 's' : ''}
+                  {checkoutItems.length} item{checkoutItems.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
               {/* Cart items preview */}
               <div className="max-h-72 overflow-y-auto space-y-3.5 pr-1 divide-y divide-neutral-100">
-                {cart.map((ci) => {
+                {checkoutItems.map((ci) => {
                   const isDeal = ci.itemType === 'DEAL';
                   let effectivePrice: number;
 
@@ -1511,7 +1603,7 @@ export default function CheckoutPage() {
               <button
                 type="submit"
                 id="checkout-confirm-place-order-btn"
-                disabled={isProcessing || cart.length === 0}
+                disabled={isProcessing || checkoutItems.length === 0}
                 className="w-full py-4 px-6 rounded-full bg-neutral-950 text-white font-bold text-xs tracking-wider uppercase hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isProcessing

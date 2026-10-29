@@ -1,33 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission, forbiddenResponse } from '@/lib/db/adminAuth';
 import {
   getAllInquiriesFromDb,
   getInquiriesStatsFromDb,
 } from '@/lib/db/repositories/inquiries';
 import { InquiryStatus, InquiryPriority, InquiryType } from '@/types/admin';
 
-function canAccessInquiries(session: any): boolean {
-  if (!session || session.status === 'inactive') return false;
-  if (session.isOwner) return true;
-
-  const perms = Array.isArray(session.permissions) ? session.permissions : [];
-  if (perms.includes('*')) return true;
-
-  return (
-    perms.includes('inquiries.view') ||
-    perms.includes('customers.view') ||
-    perms.includes('orders.view')
-  );
-}
-
 export async function GET(request: NextRequest) {
   try {
     const session = getAdminSession(request);
-    if (!session || !canAccessInquiries(session)) {
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized: Admin access required.' },
         { status: 401 }
       );
+    }
+
+    if (!hasAdminPermission(session, ['inquiries.view', 'inquiries.manage', 'customers.view', 'orders.view'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to view customer inquiries.');
     }
 
     const { searchParams } = new URL(request.url);

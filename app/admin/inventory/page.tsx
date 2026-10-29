@@ -33,7 +33,12 @@ import {
 } from 'lucide-react';
 
 export default function AdminInventoryPage() {
-  const { admin } = useAdminAuth();
+  const { admin, hasPermission, isLoading } = useAdminAuth();
+  const canViewInventory = hasPermission('inventory.view');
+  const canViewShopInventory = hasPermission('inventory.view_shop') || hasPermission('inventory.view');
+  const canViewShopBills = hasPermission('inventory.shop_bill') || hasPermission('inventory.view_shop');
+  const canAdjustStock = hasPermission('inventory.stock.edit') || hasPermission('inventory.adjust_stock');
+  const canEditWarning = hasPermission('inventory.edit_warning');
   const [products, setProducts] = useState<Product[]>([]);
   const [logs, setLogs] = useState<InventoryLog[]>([]);
   const [activeTab, setActiveTab] = useState<'stock' | 'history'>('stock');
@@ -312,6 +317,26 @@ export default function AdminInventoryPage() {
     }
   };
 
+  if (!isLoading && admin && !canViewInventory && !admin?.isOwner) {
+    return (
+      <div className="bg-white rounded-3xl p-8 sm:p-12 border border-neutral-200 shadow-sm text-center max-w-lg mx-auto my-12 space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <Boxes className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-bold text-neutral-900">Access Restricted</h2>
+        <p className="text-xs text-neutral-500 leading-relaxed">
+          Your staff account does not have permission to view Warehouse Inventory. Contact your system administrator to assign the Inventory View permission.
+        </p>
+        <Link
+          href="/admin"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neutral-950 text-white text-xs font-bold hover:bg-neutral-800 transition-colors"
+        >
+          Return to Dashboard
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -337,12 +362,16 @@ export default function AdminInventoryPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-violet-600' : 'text-neutral-500'}`} />
             <span>{isRefreshing ? 'Syncing...' : 'Sync Data'}</span>
           </button>
-          <Link href="/admin/shop-inventory" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold hover:bg-violet-200 transition-colors">
-            Shop Inventory
-          </Link>
-          <Link href="/admin/shop-bills" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors">
-            Shop Bills
-          </Link>
+          {canViewShopInventory && (
+            <Link href="/admin/shop-inventory" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold hover:bg-violet-200 transition-colors">
+              Shop Inventory
+            </Link>
+          )}
+          {canViewShopBills && (
+            <Link href="/admin/shop-bills" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors">
+              Shop Bills
+            </Link>
+          )}
         </div>
       </div>
 

@@ -44,7 +44,7 @@ export default function AdminProductsPage() {
   const brands = getBrands();
 
   useEffect(() => {
-    syncProductsFromApi().then((fresh) => {
+    syncProductsFromApi(true).then((fresh) => {
       if (fresh && fresh.length > 0) {
         setProducts(fresh);
       }

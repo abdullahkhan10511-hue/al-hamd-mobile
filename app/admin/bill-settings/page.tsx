@@ -99,6 +99,7 @@ export default function StoreBillSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'a4' | 'thermal'>('a4');
   const [activeSettingsSection, setActiveSettingsSection] = useState<'general' | 'a4' | 'thermal'>('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,11 +176,15 @@ export default function StoreBillSettingsPage() {
     if (e) e.preventDefault();
     setIsSaving(true);
     try {
+      setSaveError(null);
       const updated = await updateBillSettings(settings, admin?.email || 'admin@alhamd.com');
       setSettings(updated);
       setSavedBaseline(JSON.stringify(updated));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3500);
+    } catch (err: any) {
+      setSaveError(err?.message || 'Failed to save bill settings.');
+      setTimeout(() => setSaveError(null), 6000);
     } finally {
       setIsSaving(false);
     }
@@ -295,6 +300,18 @@ export default function StoreBillSettingsPage() {
       </div>
 
       {/* Success Notification Banner */}
+      {saveError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in duration-300 mb-4">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <div>
+              <p className="font-bold">Failed to Save Settings</p>
+              <p className="text-rose-700 font-normal mt-0.5">{saveError}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {saveSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in duration-300">
           <div className="flex items-center gap-2.5">

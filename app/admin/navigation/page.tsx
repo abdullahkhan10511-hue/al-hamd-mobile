@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 import { AnnouncementItem, NavigationItem, StoreSettings } from '@/types/admin';
 import {
   getAnnouncements,
@@ -16,8 +17,9 @@ import {
   createNavigationItem,
   deleteNavigationItem,
   syncNavigationFromApi,
+  fetchAuthoritativeNavigation,
 } from '@/lib/db/navigation';
-import { getStoreSettings, updateStoreSettings, syncStoreSettingsFromApi } from '@/lib/db/settings';
+import { getStoreSettings, updateStoreSettings, syncStoreSettingsFromApi, fetchAuthoritativeAdminSettings } from '@/lib/db/settings';
 import { uploadImage, getMediaItems, MediaItem } from '@/lib/db/media';
 import {
   Compass,
@@ -42,6 +44,7 @@ import {
 
 export default function AdminNavigationPage() {
   const router = useRouter();
+  const { admin } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<'announcements' | 'header' | 'settings'>('announcements');
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [navItems, setNavItems] = useState<NavigationItem[]>([]);
@@ -73,10 +76,10 @@ export default function AdminNavigationPage() {
   useEffect(() => {
     loadData();
 
-    syncNavigationFromApi().then(() => loadData()).catch(() => {});
+    fetchAuthoritativeNavigation().then((items) => { if (Array.isArray(items) && items.length > 0) setNavItems(items); }).catch(() => {});
     syncAnnouncementsFromApi().then(() => loadData()).catch(() => {});
 
-    syncStoreSettingsFromApi().then((fresh) => {
+    fetchAuthoritativeAdminSettings().then((fresh) => {
       if (fresh) {
         setStoreSettings(fresh);
         setInitialStoreSettings(fresh);
@@ -98,25 +101,29 @@ export default function AdminNavigationPage() {
     e.preventDefault();
     if (!editingAnn?.text) return;
 
-    if (editingAnn.id) {
-      const updated = announcements.map((a) =>
-        a.id === editingAnn.id ? ({ ...a, ...editingAnn } as AnnouncementItem) : a
-      );
-      await updateAnnouncements(updated);
-      notify('Announcement updated successfully');
-    } else {
-      await createAnnouncement({
-        text: editingAnn.text,
-        link: editingAnn.link || '',
-        linkText: editingAnn.linkText || 'Shop Now',
-        active: editingAnn.active ?? true,
-        displayOrder: editingAnn.displayOrder || announcements.length + 1,
-      });
-      notify('New announcement created');
-    }
+    try {
+      if (editingAnn.id) {
+        const updated = announcements.map((a) =>
+          a.id === editingAnn.id ? ({ ...a, ...editingAnn } as AnnouncementItem) : a
+        );
+        await updateAnnouncements(updated);
+        notify('Announcement updated successfully');
+      } else {
+        await createAnnouncement({
+          text: editingAnn.text,
+          link: editingAnn.link || '',
+          linkText: editingAnn.linkText || 'Shop Now',
+          active: editingAnn.active ?? true,
+          displayOrder: editingAnn.displayOrder || announcements.length + 1,
+        });
+        notify('New announcement created');
+      }
 
-    setEditingAnn(null);
-    loadData();
+      setEditingAnn(null);
+      loadData();
+    } catch (err: any) {
+      notify(err?.message || 'Failed to save announcement');
+    }
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
@@ -151,37 +158,54 @@ export default function AdminNavigationPage() {
     e.preventDefault();
     if (!editingNav?.label || !editingNav?.href) return;
 
-    if (editingNav.id) {
-      const updated = navItems.map((n) =>
-        n.id === editingNav.id ? ({ ...n, ...editingNav } as NavigationItem) : n
-      );
-      await updateNavigation(updated);
-      notify('Menu item updated');
-    } else {
-      await createNavigationItem({
-        label: editingNav.label,
-        href: editingNav.href,
-        visible: editingNav.visible ?? true,
-        displayOrder: editingNav.displayOrder || navItems.length + 1,
-      });
-      notify('Menu item added');
-    }
+    try {
+      if (editingNav.id) {
+        const updated = navItems.map((n) =>
+          n.id === editingNav.id ? ({ ...n, ...editingNav } as NavigationItem) : n
+        );
+        const saved = await updateNavigation(updated, admin?.email);
+        setNavItems(saved);
+        notify('Menu item updated');
+      } else {
+        const newItem: NavigationItem = {
+          id: `nav-${Date.now()}`,
+          label: editingNav.label,
+          href: editingNav.href,
+          visible: editingNav.visible ?? true,
+          displayOrder: editingNav.displayOrder || navItems.length + 1,
+        };
+        const updated = [...navItems, newItem];
+        const saved = await updateNavigation(updated, admin?.email);
+        setNavItems(saved);
+        notify('Menu item added');
+      }
 
-    setEditingNav(null);
-    loadData();
+      setEditingNav(null);
+    } catch (err: any) {
+      notify(err?.message || 'Failed to save menu item');
+    }
   };
 
   const handleDeleteNav = async (id: string) => {
     if (!confirm('Delete this menu item?')) return;
-    await deleteNavigationItem(id);
-    loadData();
-    notify('Menu item removed');
+    try {
+      const updated = navItems.filter((n) => n.id !== id);
+      const saved = await updateNavigation(updated, admin?.email);
+      setNavItems(saved);
+      notify('Menu item removed');
+    } catch (err: any) {
+      notify(err?.message || 'Failed to remove menu item');
+    }
   };
 
   const handleToggleNavVisible = async (id: string) => {
-    const updated = navItems.map((n) => (n.id === id ? { ...n, visible: !n.visible } : n));
-    await updateNavigation(updated);
-    loadData();
+    try {
+      const updated = navItems.map((n) => (n.id === id ? { ...n, visible: !n.visible } : n));
+      const saved = await updateNavigation(updated, admin?.email);
+      setNavItems(saved);
+    } catch (err: any) {
+      notify(err?.message || 'Failed to update menu item visibility');
+    }
   };
 
   const handleMoveNav = async (index: number, direction: 'up' | 'down') => {
@@ -194,8 +218,12 @@ export default function AdminNavigationPage() {
     copy[targetIdx] = temp;
 
     copy.forEach((item, i) => (item.displayOrder = i + 1));
-    await updateNavigation(copy);
-    loadData();
+    try {
+      const saved = await updateNavigation(copy, admin?.email);
+      setNavItems(saved);
+    } catch (err: any) {
+      notify(err?.message || 'Failed to reorder menu items');
+    }
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

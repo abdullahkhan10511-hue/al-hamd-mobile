@@ -24,7 +24,7 @@ export async function syncBrandsFromApi(force = false): Promise<Brand[]> {
 
   inFlightBrandsPromise = (async () => {
     try {
-      const res = await fetch('/api/brands');
+      const res = await fetch(`/api/brands?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.brands)) {
@@ -231,12 +231,14 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
         headers: getAdminAuthHeaders(adminEmail),
         credentials: 'include',
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
         console.error('API error deleting brand:', json.error);
+        return false;
       }
     } catch (err: any) {
       console.warn('API error deleting brand:', err);
+      return false;
     }
   }
 

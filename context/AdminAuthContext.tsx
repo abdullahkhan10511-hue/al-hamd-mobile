@@ -4,7 +4,10 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useRouter, usePathname } from 'next/navigation';
 import { StaffUser, AdminRole } from '@/types/admin';
 import { getStaffByEmail, getStaffUsers, hasStaffPermission, hasAnyStaffPermission, changeAdminSelfPassword } from '@/lib/db/staff';
-import { persistCollection } from '@/lib/db/storage';
+import { persistCollection, invalidateClientCache } from '@/lib/db/storage';
+import { resetSettingsSyncTimestamp } from '@/lib/db/settings';
+import { resetProductsSyncTimestamp } from '@/lib/db/products';
+import { resetNavigationSyncTimestamp } from '@/lib/db/navigation';
 import { logActivity } from '@/lib/db/activity';
 import { verifyPassword } from '@/lib/crypto';
 import { auth } from '@/lib/firebase';
@@ -19,7 +22,7 @@ interface AdminAuthContextType {
   hasAnyPermission: (permissionKeys: string[]) => boolean;
   refreshAdmin: () => void;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: AdminRole }>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   isLoading: boolean;
   authLoading: boolean;
@@ -75,6 +78,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
             }
             setAdmin(data.user);
             localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+            if (data.token) {
+              try {
+                localStorage.setItem('alhamd_admin_token', data.token);
+                sessionStorage.setItem('alhamd_admin_token', data.token);
+              } catch {}
+            }
             return;
           }
         } else if (res.status === 401 || res.status === 403) {
@@ -133,6 +142,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/admin/login', {
           credentials: 'include',
           headers: { 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
         });
 
         if (res.ok) {
@@ -140,36 +150,39 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           if (data?.authenticated && data?.user && isMounted) {
             setAdmin(data.user);
             localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+            if (data.token) {
+              try {
+                localStorage.setItem('alhamd_admin_token', data.token);
+                sessionStorage.setItem('alhamd_admin_token', data.token);
+              } catch {}
+            }
             setIsLoading(false);
             return;
           }
+        } else if (res.status === 401 || res.status === 403) {
+          // Explicitly unauthenticated or logged out on server
+          localStorage.removeItem(ADMIN_STORAGE_KEY);
+          localStorage.removeItem('alhamd_admin_token');
+          sessionStorage.removeItem('alhamd_admin_token');
+          clearSessionCookies();
+          if (isMounted) {
+            setAdmin(null);
+            setIsLoading(false);
+          }
+          return;
         }
       } catch (err) {
-        // Fallback to local cache if network/offline
+        // Fallback or network error
       }
 
       if (!isMounted) return;
 
-      try {
-        const saved = localStorage.getItem(ADMIN_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.email && parsed.status !== 'inactive') {
-            setAdmin(parsed);
-          } else {
-            localStorage.removeItem(ADMIN_STORAGE_KEY);
-            localStorage.removeItem('alhamd_admin_token');
-            sessionStorage.removeItem('alhamd_admin_token');
-            setAdmin(null);
-          }
-        } else {
-          setAdmin(null);
-        }
-      } catch {
-        setAdmin(null);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
+      // Fail closed: never restore unauthenticated admin sessions from localStorage
+      localStorage.removeItem(ADMIN_STORAGE_KEY);
+      localStorage.removeItem('alhamd_admin_token');
+      sessionStorage.removeItem('alhamd_admin_token');
+      setAdmin(null);
+      setIsLoading(false);
     }
 
     checkServerSession();
@@ -251,6 +264,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {}
 
           setAdmin(sessionUser);
+          invalidateClientCache();
+          resetSettingsSyncTimestamp();
+          resetNavigationSyncTimestamp();
+          resetProductsSyncTimestamp();
           setIsLoading(false);
           setAuthLoading(false);
 
@@ -347,25 +364,37 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     if (admin) {
       logActivity({
         adminEmail: admin.email,
         action: `${admin.role} Logged Out`,
         target: 'Staff Session',
         details: `Staff: ${admin.name}`,
-      });
+      }).catch(() => {});
     }
     setAdmin(null);
     try {
+      invalidateClientCache();
+      resetSettingsSyncTimestamp();
+      resetNavigationSyncTimestamp();
+      resetProductsSyncTimestamp();
       localStorage.removeItem(ADMIN_STORAGE_KEY);
       localStorage.removeItem('alhamd_admin_token');
       sessionStorage.removeItem('alhamd_admin_token');
       clearSessionCookies();
-      fetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
-    } catch (e) {}
-    router.push('/admin/login');
-  }, [admin, router]);
+      await fetch('/api/admin/logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    } catch (e) {
+      console.warn('Admin logout notice:', e);
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/admin/login';
+    }
+  }, [admin]);
 
   const hasPermission = useCallback(
     (permissionKey: string): boolean => {
@@ -400,7 +429,16 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         admin,
         isAuthenticated: !!admin,
-        isSuperAdmin: admin?.role === 'SUPER_ADMIN' || admin?.role === 'ADMIN' || Boolean(admin?.isOwner),
+        isSuperAdmin:
+          admin?.role === 'SUPER_ADMIN' ||
+          admin?.role === 'ADMIN' ||
+          admin?.role === 'OWNER' ||
+          Boolean(admin?.isOwner) ||
+          admin?.id === 'staff-owner-1' ||
+          (Boolean(admin?.email) && (
+            admin!.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+            admin!.email.toLowerCase() === 'admin@alhamd.com'
+          )),
         isManager: admin?.role === 'Manager' || admin?.role === 'MANAGER',
         hasPermission,
         hasAnyPermission,

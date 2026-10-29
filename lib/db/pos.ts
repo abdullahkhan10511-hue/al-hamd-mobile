@@ -9,6 +9,7 @@ import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
+import { getAdminAuthHeaders } from './staff';
 
 export interface PosCartItem {
   productId: string;
@@ -377,7 +378,11 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
     if (typeof window !== 'undefined') {
       fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(params.cashierEmail),
+        },
         body: JSON.stringify(newOrder),
       }).catch(() => {});
     }
@@ -507,7 +512,11 @@ export async function voidPosSale(
     if (typeof window !== 'undefined') {
       fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
         body: JSON.stringify({ status: 'Cancelled', paymentStatus: 'Refunded', voidReason: cleanReason }),
       }).catch(() => {});
     }

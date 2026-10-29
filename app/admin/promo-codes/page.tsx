@@ -5,6 +5,7 @@ import { PromoCode, PromoCodeUsage } from '@/types/admin';
 import { Product, Category } from '@/types';
 import {
   getPromoCodes,
+  syncPromoCodesFromApi,
   getPromoCodeUsages,
   createPromoCode,
   updatePromoCode,
@@ -107,6 +108,7 @@ export default function PromoCodesAdminPage() {
 
   useEffect(() => {
     loadData();
+    syncPromoCodesFromApi().then(() => loadData()).catch(() => {});
     const unsubPromos = subscribeToKey('promo_codes', () => loadData());
     const unsubUsages = subscribeToKey('promo_code_usages', () => loadData());
     return () => {
@@ -233,6 +235,7 @@ export default function PromoCodesAdminPage() {
 
       setIsFormModalOpen(false);
       loadData();
+    syncPromoCodesFromApi().then(() => loadData()).catch(() => {});
     } catch (err: any) {
       setFormError(err?.message || 'Unexpected error.');
     } finally {
@@ -247,6 +250,7 @@ export default function PromoCodesAdminPage() {
       if (res.success && res.promo) {
         showToast(`Promo "${currentCode}" is now ${res.promo.isActive ? 'Active' : 'Inactive'}.`, 'success');
         loadData();
+    syncPromoCodesFromApi().then(() => loadData()).catch(() => {});
       } else {
         showToast(res.error || 'Failed to update status.', 'error');
       }
@@ -263,6 +267,7 @@ export default function PromoCodesAdminPage() {
         showToast('Promo code deleted.', 'success');
         setDeleteConfirmId(null);
         loadData();
+    syncPromoCodesFromApi().then(() => loadData()).catch(() => {});
       } else {
         showToast(res.error || 'Failed to delete promo code.', 'error');
       }

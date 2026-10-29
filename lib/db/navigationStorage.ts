@@ -48,23 +48,22 @@ export function writePersistentNavigation(items: NavigationItem[]): void {
 
 function normalizeNavigationItems(raw: NavigationItem[]): NavigationItem[] {
   const items = (raw || [])
-    .filter((n) => n && n.href !== '/blog' && n.label?.toLowerCase() !== 'blog')
-    .map((n) => {
-      if (n.label?.toLowerCase() === 'new arrivals' && n.href !== '/new-arrivals') return { ...n, href: '/new-arrivals' };
-      if (n.label?.toLowerCase() === 'best sellers' && n.href !== '/best-sellers') return { ...n, href: '/best-sellers' };
-      if ((n.label?.toLowerCase() === 'categories' || n.href === '/#categories') && n.href !== '/categories') return { ...n, href: '/categories' };
-      return n;
-    });
+    .filter((n) => n && typeof n === 'object' && n.label && n.href && n.href !== '/blog' && n.label?.toLowerCase() !== 'blog')
+    .map((n, index) => {
+      let href = (n.href || '').trim();
+      const label = (n.label || '').trim();
+      if (label.toLowerCase() === 'new arrivals' && href !== '/new-arrivals') href = '/new-arrivals';
+      if (label.toLowerCase() === 'best sellers' && href !== '/best-sellers') href = '/best-sellers';
+      if ((label.toLowerCase() === 'categories' || href === '/#categories') && href !== '/categories') href = '/categories';
 
-  if (!items.some((n) => n.href === '/deals' || n.label?.toLowerCase() === 'deals')) {
-    items.push({
-      id: 'nav-deals',
-      label: 'Deals',
-      href: '/deals',
-      displayOrder: 8,
-      visible: true,
+      return {
+        id: n.id || `nav-${Date.now()}-${index}`,
+        label,
+        href,
+        displayOrder: typeof n.displayOrder === 'number' ? n.displayOrder : index + 1,
+        visible: n.visible !== false,
+      };
     });
-  }
 
   return items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }

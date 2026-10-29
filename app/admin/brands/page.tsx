@@ -96,7 +96,7 @@ export default function AdminBrandsPage() {
   };
 
   const loadData = async () => {
-    const fresh = await syncBrandsFromApi().catch(() => getBrands());
+    const fresh = await syncBrandsFromApi(true).catch(() => getBrands());
     if (fresh && fresh.length > 0) {
       setBrands(fresh);
     } else {

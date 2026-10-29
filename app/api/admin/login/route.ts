@@ -4,12 +4,13 @@ import { getStaffByEmail, INITIAL_STAFF_USERS } from '@/lib/db/staff';
 import { getServerStaffByEmail, verifyServerPassword } from '@/lib/db/staff-server';
 import { verifyPassword, hashPassword, generateSalt } from '@/lib/crypto';
 import { StaffUser } from '@/types/admin';
+import { ROLE_DEFAULT_PERMISSIONS } from '@/lib/constants/permissions';
 
 const COOKIE_NAME = 'alhamd_admin_session';
 const FALLBACK_COOKIE_NAME = 'admin_session';
 
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
-import { createSignedSessionToken, getAdminSessionAsync } from '@/lib/db/adminAuth';
+import { createSignedSessionToken, getAdminSessionAsync, extractRawToken } from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -148,9 +149,20 @@ export async function POST(request: NextRequest) {
     const isOwner = Boolean(
       staffUser.isOwner ||
       staffUser.id === 'staff-owner-1' ||
+      role === 'SUPER_ADMIN' ||
+      role === 'OWNER' ||
       normalizedEmail === 'admin@alhamdmobile.com' ||
+      normalizedEmail === 'admin@alhamd.com' ||
       (envAdminEmail && normalizedEmail === envAdminEmail)
     );
+
+    const fallbackPerms = isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'
+      ? ['*']
+      : (ROLE_DEFAULT_PERMISSIONS[role] || ROLE_DEFAULT_PERMISSIONS[role.toUpperCase()] || []);
+
+    const userPermissions = Array.isArray(staffUser.permissions) && staffUser.permissions.length > 0
+      ? staffUser.permissions
+      : fallbackPerms;
 
     const safeUser = {
       id: staffUser.id,
@@ -158,7 +170,7 @@ export async function POST(request: NextRequest) {
       email: staffUser.email,
       role: role,
       isOwner: isOwner,
-      permissions: Array.isArray(staffUser.permissions) ? staffUser.permissions : (isOwner ? ['*'] : []),
+      permissions: userPermissions,
       status: staffUser.status || 'active',
       avatar: staffUser.avatar || '',
       lastLogin: new Date().toISOString(),
@@ -209,6 +221,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const rawToken = extractRawToken(request);
     const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
@@ -216,6 +229,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       authenticated: true,
+      token: rawToken,
       user: {
         id: session.id,
         name: session.name,

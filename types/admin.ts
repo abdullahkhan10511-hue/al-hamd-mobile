@@ -12,17 +12,20 @@ export type StaffPredefinedRole =
 export type AdminRole = StaffPredefinedRole | string;
 
 export type PermissionModule =
+  | 'Dashboard'
   | 'Products'
+  | 'Pricing'
+  | 'Categories'
+  | 'Brands'
   | 'Inventory'
   | 'Orders'
   | 'Shop Counter'
-  | 'Categories'
-  | 'Brands'
-  | 'Promotions'
   | 'Customers'
   | 'Wholesale Account Management'
+  | 'Promotions'
   | 'Website Content'
   | 'Pages & Legal'
+  | 'Finance'
   | 'Settings'
   | 'Staff Management';
 
@@ -32,6 +35,13 @@ export interface PermissionItem {
   name: string;
   module: PermissionModule;
   description: string;
+}
+
+export interface PermissionPreset {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
 }
 
 export interface StaffRole {

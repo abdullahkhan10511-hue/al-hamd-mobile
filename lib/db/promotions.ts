@@ -3,11 +3,33 @@ import { getStoredCollection, persistCollection } from './storage';
 import { getOrders } from './orders';
 import { getProducts } from './products';
 import { logActivity } from './activity';
+import { getAdminAuthHeaders } from './staff';
 
 const PROMO_CODES_KEY = 'promo_codes';
 const PROMO_USAGES_KEY = 'promo_code_usages';
 
 export const seedPromoCodes: PromoCode[] = [];
+
+export async function syncPromoCodesFromApi(): Promise<PromoCode[]> {
+  if (typeof window === 'undefined') return getPromoCodes();
+  try {
+    const res = await fetch(`/api/admin/promotions?t=${Date.now()}`, {
+      credentials: 'include',
+      headers: getAdminAuthHeaders(),
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.promotions)) {
+        await savePromoCodes(data.promotions);
+        return data.promotions;
+      }
+    }
+  } catch (err) {
+    console.warn('API error syncing promo codes:', err);
+  }
+  return getPromoCodes();
+}
 
 export function getPromoCodes(): PromoCode[] {
   const list = getStoredCollection<PromoCode>(PROMO_CODES_KEY, seedPromoCodes);
@@ -65,7 +87,7 @@ export async function createPromoCode(
   }
 
   const nowIso = new Date().toISOString();
-  const newPromo: PromoCode = {
+  let newPromo: PromoCode = {
     id: `promo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     code: cleanCode,
     description: data.description?.trim() || '',
@@ -89,6 +111,26 @@ export async function createPromoCode(
     createdAt: nowIso,
     updatedAt: nowIso,
   };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/admin/promotions', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
+        body: JSON.stringify(newPromo),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok && resData.promo) {
+        newPromo = resData.promo;
+      }
+    } catch (e) {
+      console.warn('API error saving promo code:', e);
+    }
+  }
 
   const updated = [newPromo, ...promos];
   await savePromoCodes(updated);
@@ -127,13 +169,33 @@ export async function updatePromoCode(
     updates.code = cleanCode;
   }
 
-  const updatedPromo: PromoCode = {
+  let updatedPromo: PromoCode = {
     ...current,
     ...updates,
     discountValue: updates.discountValue !== undefined ? Number(updates.discountValue) : current.discountValue,
     minimumOrderAmount: updates.minimumOrderAmount !== undefined ? Math.max(0, Number(updates.minimumOrderAmount)) : current.minimumOrderAmount,
     updatedAt: new Date().toISOString(),
   };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/admin/promotions/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
+        body: JSON.stringify(updates),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok && resData.promo) {
+        updatedPromo = resData.promo;
+      }
+    } catch (e) {
+      console.warn('API error updating promo code:', e);
+    }
+  }
 
   promos[index] = updatedPromo;
   await savePromoCodes(promos);
@@ -170,6 +232,22 @@ export async function togglePromoCodeStatus(
     updatedAt: new Date().toISOString(),
   };
 
+  if (typeof window !== 'undefined') {
+    try {
+      await fetch(`/api/admin/promotions/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(operatorEmail),
+        },
+        body: JSON.stringify({ isActive: newStatus }),
+      });
+    } catch (e) {
+      console.warn('API error toggling promo code status:', e);
+    }
+  }
+
   await savePromoCodes(promos);
 
   await logActivity({
@@ -194,6 +272,20 @@ export async function deletePromoCode(
   }
 
   const remaining = promos.filter((p) => p.id !== id);
+  if (typeof window !== 'undefined') {
+    try {
+      await fetch(`/api/admin/promotions/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          ...getAdminAuthHeaders(operatorEmail),
+        },
+      });
+    } catch (e) {
+      console.warn('API error deleting promo code:', e);
+    }
+  }
+
   await savePromoCodes(remaining);
 
 

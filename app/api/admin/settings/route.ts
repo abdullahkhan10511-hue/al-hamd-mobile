@@ -7,7 +7,10 @@ import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb, invalidateStoreSettingsCache } from '@/lib/db/repositories/settings';
 import { normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
 
@@ -44,11 +47,13 @@ async function readServerSettings(): Promise<StoreSettings> {
 }
 
 async function writeServerSettings(settings: StoreSettings): Promise<void> {
+  let dbError: any = null;
   if (isDbConfigured()) {
     try {
       await updateStoreSettingsInDb(settings);
-    } catch (err) {
-      console.warn('MySQL updateStoreSettingsInDb notice:', err);
+    } catch (err: any) {
+      console.error('MySQL updateStoreSettingsInDb error:', err);
+      dbError = err;
     }
   }
 
@@ -64,6 +69,13 @@ async function writeServerSettings(settings: StoreSettings): Promise<void> {
     fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2), 'utf8');
   } catch (err) {
     console.error('Failed to write store-settings.json:', err);
+    if (!isDbConfigured() || dbError) {
+      throw new Error('Failed to write store settings to persistent server storage.');
+    }
+  }
+
+  if (isDbConfigured() && dbError) {
+    throw new Error(`Database error saving store settings: ${dbError?.message || dbError}`);
   }
 }
 
@@ -73,6 +85,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
       { status: 401 }
+    );
+  }
+
+  if (!hasAdminPermission(session, ['settings.view', 'settings.edit'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view store settings.' },
+      { status: 403 }
     );
   }
 
@@ -95,6 +114,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to update settings.' },
         { status: 401 }
+      );
+    }
+
+    if (!hasAdminPermission(session, ['settings.edit'])) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient permissions to edit store settings.' },
+        { status: 403 }
       );
     }
 

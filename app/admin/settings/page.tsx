@@ -6,6 +6,7 @@ import {
   getStoreSettings,
   updateStoreSettings,
   syncStoreSettingsFromApi,
+  fetchAuthoritativeAdminSettings,
   toggleSocialPlatformStatus,
   updateSocialPlatformUrl,
   STANDARD_SOCIAL_PLATFORMS,
@@ -52,6 +53,7 @@ export default function AdminSettingsPage() {
   >('general');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Security / Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -159,7 +161,7 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     loadData();
-    syncStoreSettingsFromApi().then((fresh) => {
+    fetchAuthoritativeAdminSettings().then((fresh) => {
       if (fresh) setSettings(fresh);
     }).catch(() => {});
 
@@ -173,10 +175,19 @@ export default function AdminSettingsPage() {
     if (!settings) return;
 
     setIsSaving(true);
-    await updateStoreSettings(settings);
-    setIsSaving(false);
-    setMessage('Store settings saved successfully.');
-    setTimeout(() => setMessage(''), 3000);
+    setErrorMessage('');
+    setMessage('');
+    try {
+      const saved = await updateStoreSettings(settings, currentAdmin?.email);
+      setSettings(saved);
+      setMessage('Store settings saved successfully.');
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to save store settings.');
+      setTimeout(() => setErrorMessage(''), 6000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -431,6 +442,12 @@ export default function AdminSettingsPage() {
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-medium flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-emerald-600" />
           {message}
+        </div>
+      )}
+      {errorMessage && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-medium flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600" />
+          {errorMessage}
         </div>
       )}
 

@@ -94,6 +94,7 @@ export default function SuperWholesaleManagementPage() {
       const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
       const res = await fetch('/api/admin/super-wholesale', {
+        credentials: 'include',
         headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
       });
       if (res.ok) {
@@ -205,6 +206,7 @@ export default function SuperWholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch('/api/admin/super-wholesale', {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -300,6 +302,7 @@ export default function SuperWholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(editingAccount.id)}`, {
+        credentials: 'include',
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -352,6 +355,7 @@ export default function SuperWholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(account.id)}`, {
+        credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -389,6 +393,7 @@ export default function SuperWholesaleManagementPage() {
       const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(pendingDelete.id)}`, {
+        credentials: 'include',
         method: 'DELETE',
         headers: {
           ...(authHeader ? { Authorization: authHeader } : {}),

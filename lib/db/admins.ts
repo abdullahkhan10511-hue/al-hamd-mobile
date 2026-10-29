@@ -82,16 +82,33 @@ export function canAccessAdminRoute(
       return true;
     }
     if (
-      key === 'brands.view' &&
+      (key === 'brands.view') &&
       (permissions.includes('brands.manage') || permissions.includes('brands.add') || permissions.includes('brands.edit'))
     ) {
+      return true;
+    }
+    if (
+      (key === 'products.add' || key === 'products.create') &&
+      (permissions.includes('products.add') || permissions.includes('products.create') || permissions.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (key === 'products.view' && (permissions.includes('products.view') || permissions.includes('products.manage'))) {
+      return true;
+    }
+    if (key === 'products.edit' && (permissions.includes('products.edit') || permissions.includes('products.manage'))) {
+      return true;
+    }
+    if (key === 'inventory.view' && permissions.includes('inventory.manage')) {
       return true;
     }
     return false;
   };
 
-  // Dashboard (/admin and /admin/dashboard) is accessible to any active staff member
-  if (cleanPath === '/admin' || cleanPath === '/admin/dashboard') return true;
+  // Dashboard (/admin and /admin/dashboard) strictly requires dashboard.view permission
+  if (cleanPath === '/admin' || cleanPath === '/admin/dashboard') {
+    return has('dashboard.view');
+  }
 
   // Staff Management (/admin/staff)
   if (pathname.startsWith('/admin/staff')) {
@@ -106,8 +123,11 @@ export function canAccessAdminRoute(
   }
 
   // Products
+  if (pathname.startsWith('/admin/products/new')) {
+    return has('products.create') || has('products.add') || has('products.view');
+  }
   if (pathname.startsWith('/admin/products')) {
-    return has('products.view');
+    return has('products.view') || has('products.create') || has('products.add') || has('products.edit');
   }
 
   // Categories & Brands
@@ -129,6 +149,9 @@ export function canAccessAdminRoute(
   }
 
   // Inventory
+  if (pathname.startsWith('/admin/shop-bills')) {
+    return has('inventory.shop_bill') || has('inventory.view_shop') || has('inventory.view');
+  }
   if (pathname.startsWith('/admin/shop-inventory')) {
     return has('inventory.view_shop') || has('inventory.view');
   }
@@ -157,7 +180,7 @@ export function canAccessAdminRoute(
 
   // Wholesale Account Management
   if (pathname.startsWith('/admin/wholesale') || pathname.startsWith('/admin/super-wholesale')) {
-    return has('wholesale.manage');
+    return has('wholesale.view') || has('wholesale.manage');
   }
 
   // Customers
@@ -223,7 +246,7 @@ export function canAccessAdminRoute(
     return has('staff.view') || has('settings.view');
   }
   if (pathname.startsWith('/admin/sales')) {
-    return has('orders.view') || has('products.view');
+    return has('finance.view') || has('orders.view') || has('products.view');
   }
 
   // Default fallback for unspecified admin routes

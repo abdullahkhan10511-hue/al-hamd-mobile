@@ -3,7 +3,7 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getBillSettingsFromDb, updateBillSettingsInDb } from '@/lib/db/repositories/settings';
 import { defaultBillSettings } from '@/lib/db/billSettings';
 import { BillSettings } from '@/types/admin';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
 
 import fs from 'fs';
 import path from 'path';
@@ -65,6 +65,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!hasAdminPermission(session, ['settings.view', 'settings.edit', 'inventory.shop_bill'])) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Insufficient permissions to view bill settings.' },
+      { status: 403 }
+    );
+  }
+
   try {
     let settings: BillSettings;
 
@@ -96,6 +103,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify bill settings.' },
         { status: 401 }
+      );
+    }
+
+    if (!hasAdminPermission(session, ['settings.edit', 'inventory.shop_bill'])) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient permissions to modify bill settings.' },
+        { status: 403 }
       );
     }
 

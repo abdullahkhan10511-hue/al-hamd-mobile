@@ -27,6 +27,41 @@ const ALL_PRODUCTS_CONFIG_KEY = 'homepage_all_products_config';
 
 let inFlightHomepageSettingsPromise: Promise<boolean> | null = null;
 
+export async function fetchAuthoritativeHomepageSettings(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/admin/homepage-settings?t=' + Date.now(), {
+      headers: getAdminAuthHeaders(),
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return syncHomepageSettingsFromApi();
+    const data = await res.json();
+    if (!data.success || !data.settings) return syncHomepageSettingsFromApi();
+
+    const { sections, hero, flashSale, trustBenefits, allProducts } = data.settings;
+    if (Array.isArray(sections)) {
+      await persistCollection(SECTIONS_KEY, sections, true);
+    }
+    if (hero) {
+      setLocal(HERO_KEY, hero, true);
+    }
+    if (flashSale) {
+      setLocal(FLASH_SALE_KEY, flashSale, true);
+    }
+    if (Array.isArray(trustBenefits)) {
+      await persistCollection(TRUST_BENEFITS_KEY, trustBenefits, true);
+    }
+    if (allProducts) {
+      setLocal(ALL_PRODUCTS_CONFIG_KEY, allProducts, true);
+    }
+    window.dispatchEvent(new CustomEvent('alhamd:data-updated', { detail: { key: 'homepage_all' } }));
+    return true;
+  } catch {
+    return syncHomepageSettingsFromApi();
+  }
+}
+
 export async function syncHomepageSettingsFromApi(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   if (inFlightHomepageSettingsPromise) return inFlightHomepageSettingsPromise;

@@ -74,12 +74,15 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
       const isOwner = Boolean(
         dbUser.isOwner ||
         dbUser.id === 'staff-owner-1' ||
+        role === 'SUPER_ADMIN' ||
+        role === 'OWNER' ||
         email === 'admin@alhamdmobile.com' ||
+        email === 'admin@alhamd.com' ||
         (envAdminEmail && email === envAdminEmail)
       );
-      const permissions = Array.isArray(dbUser.permissions)
+      const permissions = Array.isArray(dbUser.permissions) && dbUser.permissions.length > 0
         ? dbUser.permissions
-        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[dbUser.role || ''] || []));
+        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[dbUser.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || []));
 
       // Populate authoritative session strictly from database record
       return {
@@ -126,12 +129,15 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
     const isOwner = Boolean(
       serverUser.isOwner ||
       serverUser.id === 'staff-owner-1' ||
+      role === 'SUPER_ADMIN' ||
+      role === 'OWNER' ||
       email === 'admin@alhamdmobile.com' ||
+      email === 'admin@alhamd.com' ||
       (envAdminEmail && email === envAdminEmail)
     );
-    const permissions = Array.isArray(serverUser.permissions)
+    const permissions = Array.isArray(serverUser.permissions) && serverUser.permissions.length > 0
       ? serverUser.permissions
-      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
+      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || []));
 
     return {
       id: serverUser.id,
@@ -162,8 +168,34 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
       const { getServerStaffUsersSync } = require('./staff-server');
       const staffList = getServerStaffUsersSync();
       const serverUser = staffList.find((u: any) => u.email?.toLowerCase() === payload.email.toLowerCase());
-      if (!serverUser || serverUser.status === 'inactive') {
+      if (serverUser && serverUser.status === 'inactive') {
         return null;
+      }
+      if (!serverUser) {
+        // Fall back to cryptographically verified session payload
+        const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+        const role = ((payload.role || '')).toUpperCase();
+        const isOwner = Boolean(
+          payload.isOwner ||
+          payload.sub === 'staff-owner-1' ||
+          role === 'SUPER_ADMIN' ||
+          role === 'OWNER' ||
+          payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+          payload.email.toLowerCase() === 'admin@alhamd.com' ||
+          (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
+        );
+        return {
+          id: payload.sub || 'staff-session',
+          name: payload.email.split('@')[0],
+          email: payload.email,
+          role: payload.role || 'ADMIN',
+          isOwner,
+          permissions: Array.isArray(payload.permissions) && payload.permissions.length > 0
+            ? payload.permissions
+            : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[payload.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || [])),
+          status: 'active',
+          expiresAt: payload.exp,
+        };
       }
       const role = (serverUser.role || '').toUpperCase();
       if (role === 'CUSTOMER') return null;
@@ -171,12 +203,15 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
       const isOwner = Boolean(
         serverUser.isOwner ||
         serverUser.id === 'staff-owner-1' ||
+        role === 'SUPER_ADMIN' ||
+        role === 'OWNER' ||
         payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        payload.email.toLowerCase() === 'admin@alhamd.com' ||
         (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
       );
-      const permissions = Array.isArray(serverUser.permissions)
+      const permissions = Array.isArray(serverUser.permissions) && serverUser.permissions.length > 0
         ? serverUser.permissions
-        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
+        : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || []));
 
       return {
         id: serverUser.id,
@@ -206,8 +241,34 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
       } as any;
     }
 
-    if (!serverUser || serverUser.status === 'inactive') {
+    if (serverUser && serverUser.status === 'inactive') {
       return null;
+    }
+
+    if (!serverUser) {
+      // Fall back to cryptographically verified session payload
+      const role = ((payload.role || '')).toUpperCase();
+      const isOwner = Boolean(
+        payload.isOwner ||
+        payload.sub === 'staff-owner-1' ||
+        role === 'SUPER_ADMIN' ||
+        role === 'OWNER' ||
+        payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+        payload.email.toLowerCase() === 'admin@alhamd.com' ||
+        (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
+      );
+      return {
+        id: payload.sub || 'staff-session',
+        name: payload.email.split('@')[0],
+        email: payload.email,
+        role: payload.role || 'ADMIN',
+        isOwner,
+        permissions: Array.isArray(payload.permissions) && payload.permissions.length > 0
+          ? payload.permissions
+          : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[payload.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || [])),
+        status: 'active',
+        expiresAt: payload.exp,
+      };
     }
 
     const role = (serverUser.role || '').toUpperCase();
@@ -216,12 +277,15 @@ export function getAdminSession(request: NextRequest): AdminSession | null {
     const isOwner = Boolean(
       serverUser.isOwner ||
       serverUser.id === 'staff-owner-1' ||
+      role === 'SUPER_ADMIN' ||
+      role === 'OWNER' ||
       payload.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      payload.email.toLowerCase() === 'admin@alhamd.com' ||
       (envAdminEmail && payload.email.toLowerCase() === envAdminEmail)
     );
-    const permissions = Array.isArray(serverUser.permissions)
+    const permissions = Array.isArray(serverUser.permissions) && serverUser.permissions.length > 0
       ? serverUser.permissions
-      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || []));
+      : (isOwner ? ['*'] : (ROLE_DEFAULT_PERMISSIONS[serverUser.role || ''] || ROLE_DEFAULT_PERMISSIONS[role] || []));
 
     return {
       id: serverUser.id,

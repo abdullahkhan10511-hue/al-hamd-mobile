@@ -69,33 +69,39 @@ export function getAnnouncements(): AnnouncementItem[] {
 export async function updateAnnouncements(
   announcements: AnnouncementItem[],
   adminEmail = 'admin@alhamd.com'
-): Promise<void> {
+): Promise<AnnouncementItem[]> {
   const normalized = normalizeAnnouncementsList(announcements);
-  await persistCollection(COLLECTION_KEY, normalized);
 
+  let serverItems = normalized;
   if (typeof window !== 'undefined') {
-    try {
-      const res = await fetch('/api/admin/announcements', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAdminAuthHeaders(adminEmail),
-        },
-        body: JSON.stringify({ items: normalized }),
-      });
-      if (!res.ok) {
-        console.warn('Failed to sync announcements to server API, status:', res.status);
-      }
-    } catch (err) {
-      console.warn('Network error saving announcements to server:', err);
+    const res = await fetch('/api/admin/announcements', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(adminEmail),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ items: normalized }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Failed to save announcements (Server status: ${res.status})`);
+    }
+    if (Array.isArray(data.items)) {
+      serverItems = normalizeAnnouncementsList(data.items);
     }
   }
+
+  await persistCollection(COLLECTION_KEY, serverItems);
 
   await logActivity({
     adminEmail,
     action: 'Updated Announcements Bar',
     target: 'Top Bar',
   });
+
+  return serverItems;
 }
 
 export async function createAnnouncement(

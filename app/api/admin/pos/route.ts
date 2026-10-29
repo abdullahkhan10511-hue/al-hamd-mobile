@@ -3,13 +3,17 @@ import { createPosSale, getPosDailySummary, getPosOrders } from '@/lib/db/pos';
 import { createPosSaleInDb, getPosDailySummaryFromDb } from '@/lib/db/repositories/pos';
 import { getAllOrdersFromDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { getAdminSession, unauthorizedResponse } from '@/lib/db/adminAuth';
+import { getAdminSession, unauthorizedResponse, forbiddenResponse, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
     const session = getAdminSession(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized: Staff session required.');
+    }
+
+    if (!hasAdminPermission(session, ['pos.create_sale', 'pos.view'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to process POS sales.');
     }
 
     const body = await request.json();
@@ -36,14 +40,10 @@ export async function POST(request: NextRequest) {
 
     // Check discount permission if a manual discount is specified
     if (discountValue && Number(discountValue) > 0) {
-      const roleStr = (session.role || '').toLowerCase();
-      const isPrivileged = roleStr.includes('admin') || roleStr.includes('owner') || roleStr === 'manager';
-      const hasDiscountPerm = session.permissions?.includes('pos.apply_discount');
-
-      if (!isPrivileged && !hasDiscountPerm) {
+      if (!hasAdminPermission(session, ['pos.apply_discount'])) {
         return NextResponse.json({
           success: false,
-          error: 'Permission Denied: Your staff role is not authorized to grant manual discounts.',
+          error: 'Permission Denied: Your staff account is not authorized to grant manual discounts.',
         }, { status: 403 });
       }
     }
@@ -88,6 +88,10 @@ export async function GET(request: NextRequest) {
     const session = getAdminSession(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized: Staff session required.');
+    }
+
+    if (!hasAdminPermission(session, ['pos.view', 'pos.create_sale', 'pos.view_history', 'pos.close_register'])) {
+      return forbiddenResponse('Forbidden: Insufficient permissions to access POS data.');
     }
 
     const { searchParams } = new URL(request.url);

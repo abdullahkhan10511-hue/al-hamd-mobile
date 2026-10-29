@@ -7,6 +7,9 @@ import {
 } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -111,7 +114,7 @@ export async function GET(request: NextRequest) {
     const isFresh = searchParams.get('fresh') === 'true' || searchParams.has('t');
     const cacheControl = isFresh
       ? 'no-cache, no-store, must-revalidate, max-age=0'
-      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
+      : 'no-cache, no-store, must-revalidate, max-age=0';
 
     return NextResponse.json(
       {

@@ -19,6 +19,7 @@ export interface AppliedPromoInfo {
 
 interface CartContextType {
   cart: CartItem[];
+  buyNowItem: CartItem | null;
   addToCart: (
     product: Product,
     quantity?: number,
@@ -38,6 +39,11 @@ interface CartContextType {
     selectedPrice?: number,
     selectedImage?: string
   ) => void;
+  buyNowDeal: (
+    deal: Deal,
+    quantity?: number
+  ) => { success: boolean; error?: string };
+  clearBuyNowItem: () => void;
   addDealToCart: (
     deal: Deal,
     quantity?: number,
@@ -77,6 +83,18 @@ const DEFAULT_STANDARD_SHIPPING_FEE = 200;
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { customer, isWholesale, isSuperWholesale } = useCustomerAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('al_hamd_buy_now');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && (parsed.product || parsed.itemType === 'DEAL')) return parsed;
+        }
+      } catch {}
+    }
+    return null;
+  });
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<AppliedPromoInfo | null>(null);
@@ -269,6 +287,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const clearBuyNowItem = useCallback(() => {
+    setBuyNowItem(null);
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('al_hamd_buy_now');
+      }
+    } catch {}
+  }, []);
+
   const buyNow = useCallback((
     product: Product,
     quantity = 1,
@@ -278,17 +305,114 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     selectedPrice?: number,
     selectedImage?: string
   ) => {
-    addToCart(
+    if (!product) return;
+
+    const size = selectedSize || (product.variants?.sizes ? product.variants.sizes[0] : undefined);
+    const color =
+      selectedColor ||
+      (product.enableColorSelection && product.colors?.length
+        ? product.colors.find((c) => c.isActive !== false)?.name
+        : product.variants?.colors
+        ? product.variants.colors[0].name
+        : undefined);
+    const model = selectedModel;
+
+    const itemKey = `buynow-${product.id}-${size || 'default'}-${color || 'default'}-${model || 'default'}`;
+
+    const item: CartItem = {
+      id: itemKey,
+      productId: product.id,
       product,
-      quantity,
-      selectedSize,
-      selectedColor,
-      selectedModel,
+      quantity: Math.max(1, quantity),
+      selectedSize: size,
+      selectedColor: color,
+      selectedModel: model,
       selectedPrice,
       selectedImage,
-      { openDrawer: false, showToast: false }
-    );
-  }, [addToCart]);
+    };
+
+    setBuyNowItem(item);
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('al_hamd_buy_now', JSON.stringify(item));
+      }
+    } catch (e) {
+      console.warn('Failed to save buy now item to sessionStorage', e);
+    }
+  }, []);
+
+  const buyNowDeal = useCallback((
+    deal: Deal,
+    quantity = 1
+  ): { success: boolean; error?: string } => {
+    if (!deal) return { success: false, error: 'Deal not found.' };
+
+    if (!isDealCurrentlyActive(deal)) {
+      return { success: false, error: 'This deal is currently not active.' };
+    }
+
+    if (!Array.isArray(deal.products) || deal.products.length === 0) {
+      return { success: false, error: 'This deal contains no products.' };
+    }
+
+    const syntheticProduct: Product = {
+      id: `deal-${deal.id}`,
+      name: deal.name,
+      slug: `deal-${deal.slug || deal.id}`,
+      sku: `DEAL-${deal.id.slice(0, 8)}`,
+      description: deal.description || deal.name,
+      brand: 'Al-Hamd',
+      price: Number(deal.dealPrice || 0),
+      compareAtPrice: deal.originalPrice ? Number(deal.originalPrice) : undefined,
+      stock: 999,
+      shopStock: 999,
+      images: deal.image ? [deal.image] : [],
+      category: 'Deals',
+      categorySlug: 'deals',
+      status: 'active',
+      rating: 5,
+      reviewCount: 1,
+    };
+
+    const itemKey = `buynow-deal-${deal.id}`;
+    const requestedQty = Math.max(1, quantity);
+
+    const dealItem: CartItem = {
+      id: itemKey,
+      productId: `deal-${deal.id}`,
+      product: syntheticProduct,
+      quantity: requestedQty,
+      selectedPrice: Number(deal.dealPrice || 0),
+      selectedImage: deal.image,
+      itemType: 'DEAL',
+      dealId: deal.id,
+      dealName: deal.name,
+      dealPrice: Number(deal.dealPrice || 0),
+      dealOriginalPrice: deal.originalPrice ? Number(deal.originalPrice) : undefined,
+      dealProducts: deal.products.map((p) => ({
+        productId: p.productId,
+        modelId: p.modelId,
+        productName: p.productName,
+        modelName: p.modelName,
+        quantity: 1,
+        shopStock: p.shopStock || 0,
+        price: p.price || 0,
+        image: p.image,
+        sku: p.sku,
+      })),
+    };
+
+    setBuyNowItem(dealItem);
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('al_hamd_buy_now', JSON.stringify(dealItem));
+      }
+    } catch (e) {
+      console.warn('Failed to save buy now deal to sessionStorage', e);
+    }
+
+    return { success: true };
+  }, []);
 
   const addDealToCart = useCallback((
     deal: Deal,
@@ -520,9 +644,34 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: 'Please enter a promo code.' };
     }
 
-    if (cart.length === 0) {
+    const activePromoItems = buyNowItem ? [buyNowItem] : cart;
+    if (activePromoItems.length === 0) {
       return { success: false, message: 'Your shopping bag is empty.' };
     }
+
+    const activeSubtotal = activePromoItems.reduce((acc, item) => {
+      if (!item || !item.product) return acc;
+      if (item.itemType === 'DEAL') {
+        const dealUnitPrice = Number(item.dealPrice ?? item.selectedPrice ?? item.product?.price ?? 0);
+        return acc + dealUnitPrice * item.quantity;
+      }
+      let itemPrice = item.product.price;
+      if (item.selectedModel && item.product.models && Array.isArray(item.product.models)) {
+        const modelObj = item.product.models.find(
+          (m) =>
+            m.name.toLowerCase() === item.selectedModel?.toLowerCase() ||
+            m.id === item.selectedModel
+        );
+        if (modelObj) {
+          itemPrice = getModelEffectivePrice(item.product, modelObj, customer?.customerType);
+        } else {
+          itemPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customer?.customerType);
+        }
+      } else {
+        itemPrice = item.selectedPrice ?? getProductEffectivePrice(item.product, customer?.customerType);
+      }
+      return acc + itemPrice * item.quantity;
+    }, 0);
 
     try {
       const response = await fetch('/api/promotions/validate', {
@@ -530,8 +679,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: clean,
-          subtotal,
-          items: cart.map((i) => ({
+          subtotal: activeSubtotal,
+          items: activePromoItems.map((i) => ({
             productId: i.product.id,
             quantity: i.quantity,
             price: getProductEffectivePrice(i.product, customer?.customerType),
@@ -612,8 +761,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo<CartContextType>(
     () => ({
       cart,
+      buyNowItem,
       addToCart,
       buyNow,
+      buyNowDeal,
+      clearBuyNowItem,
       addDealToCart,
       hasHydrated,
       removeFromCart,
@@ -639,8 +791,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       cart,
+      buyNowItem,
       addToCart,
       buyNow,
+      buyNowDeal,
+      clearBuyNowItem,
       addDealToCart,
       hasHydrated,
       removeFromCart,

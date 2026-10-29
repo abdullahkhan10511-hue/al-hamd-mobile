@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { ROLE_DEFAULT_PERMISSIONS } from '../constants/permissions';
 
 export const COOKIE_NAME = 'alhamd_admin_session';
 export const FALLBACK_COOKIE_NAME = 'admin_session';
@@ -391,36 +392,58 @@ export function hasAdminPermission(
   permission: string | string[]
 ): boolean {
   if (!session) return false;
+  if ('status' in session && session.status === 'inactive') return false;
 
-  // Root owner emergency / recovery bypass
+  const role = (('role' in session && session.role) ? session.role : '').toUpperCase();
+
+  // Root owner and Super Admin emergency / recovery bypass
   const isRootOwner = Boolean(
     ('isOwner' in session && session.isOwner) ||
     ('id' in session && session.id === 'staff-owner-1') ||
     ('sub' in session && session.sub === 'staff-owner-1') ||
-    (session.email && session.email.toLowerCase() === 'admin@alhamdmobile.com') ||
+    role === 'SUPER_ADMIN' ||
+    role === 'OWNER' ||
+    (session.email && (
+      session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
+      session.email.toLowerCase() === 'admin@alhamd.com'
+    )) ||
     (process.env.ADMIN_EMAIL && session.email && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
   );
   if (isRootOwner) return true;
 
-  if ('permissions' in session && Array.isArray(session.permissions)) {
-    if (session.permissions.includes('*')) return true;
-    const userPerms = session.permissions as string[];
-    const permsToCheck = Array.isArray(permission) ? permission : [permission];
+  // Resolve user permissions with fallback to role defaults
+  let userPerms: string[] = [];
+  if ('permissions' in session && Array.isArray(session.permissions) && session.permissions.length > 0) {
+    userPerms = session.permissions as string[];
+  } else if ('role' in session && session.role) {
+    userPerms = ROLE_DEFAULT_PERMISSIONS[session.role] || ROLE_DEFAULT_PERMISSIONS[role] || [];
+  }
 
-    return permsToCheck.some((p) => {
-      if (userPerms.includes(p)) return true;
-      // Semantic aliases: staff management
-      if (
-        (p === 'staff.add' || p === 'staff.create') &&
-        (userPerms.includes('staff.add') || userPerms.includes('staff.create') || userPerms.includes('staff.manage'))
-      ) {
-        return true;
-      }
-      if (p === 'staff.view' && userPerms.includes('staff.manage')) return true;
-      if (p === 'staff.edit' && userPerms.includes('staff.manage')) return true;
-      if (p === 'staff.delete' && userPerms.includes('staff.manage')) return true;
-      if (p === 'staff.change_roles' && userPerms.includes('staff.manage')) return true;
-      if (p === 'staff.reset_passwords' && userPerms.includes('staff.manage')) return true;
+  if (userPerms.includes('*')) return true;
+
+  const permsToCheck = Array.isArray(permission) ? permission : [permission];
+
+  return permsToCheck.some((p) => {
+    if (userPerms.includes(p)) return true;
+
+    // PRICING PERMISSIONS ARE STRICT - DO NOT AUTO-GRANT FROM OTHER DOMAINS!
+    if (p.startsWith('pricing.')) {
+      if (userPerms.includes('pricing.*') || userPerms.includes('*')) return true;
+      return false;
+    }
+
+    // Semantic aliases: staff management
+    if (
+      (p === 'staff.add' || p === 'staff.create') &&
+      (userPerms.includes('staff.add') || userPerms.includes('staff.create') || userPerms.includes('staff.manage'))
+    ) {
+      return true;
+    }
+    if (p === 'staff.view' && (userPerms.includes('staff.manage') || userPerms.includes('staff.view'))) return true;
+    if (p === 'staff.edit' && (userPerms.includes('staff.manage') || userPerms.includes('staff.edit'))) return true;
+    if (p === 'staff.delete' && (userPerms.includes('staff.manage') || userPerms.includes('staff.delete'))) return true;
+    if (p === 'staff.change_roles' && (userPerms.includes('staff.manage') || userPerms.includes('staff.change_roles') || userPerms.includes('staff.edit'))) return true;
+    if (p === 'staff.reset_passwords' && (userPerms.includes('staff.manage') || userPerms.includes('staff.reset_passwords') || userPerms.includes('staff.edit'))) return true;
 
       // Semantic aliases: brands
       if (
@@ -435,12 +458,166 @@ export function hasAdminPermission(
       ) {
         return true;
       }
-      if (p === 'brands.edit' && userPerms.includes('brands.manage')) return true;
-      if (p === 'brands.delete' && userPerms.includes('brands.manage')) return true;
+      if (p === 'brands.edit' && (userPerms.includes('brands.manage') || userPerms.includes('brands.edit'))) return true;
+      if (p === 'brands.delete' && (userPerms.includes('brands.manage') || userPerms.includes('brands.delete'))) return true;
+
+      // Semantic aliases: categories
+      if (
+        (p === 'categories.add' || p === 'categories.create') &&
+        (userPerms.includes('categories.add') || userPerms.includes('categories.create') || userPerms.includes('categories.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'categories.view' &&
+        (userPerms.includes('categories.manage') || userPerms.includes('categories.add') || userPerms.includes('categories.edit') || userPerms.includes('categories.view'))
+      ) {
+        return true;
+      }
+      if (p === 'categories.edit' && (userPerms.includes('categories.manage') || userPerms.includes('categories.edit'))) return true;
+      if (p === 'categories.delete' && (userPerms.includes('categories.manage') || userPerms.includes('categories.delete'))) return true;
+
+      // Semantic aliases: products (strictly isolated from inventory stock adjust!)
+      if (
+        (p === 'products.add' || p === 'products.create') &&
+        (userPerms.includes('products.add') || userPerms.includes('products.create') || userPerms.includes('products.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'products.view' &&
+        (userPerms.includes('products.view') || userPerms.includes('products.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'products.edit' &&
+        (userPerms.includes('products.edit') || userPerms.includes('products.manage'))
+      ) {
+        return true;
+      }
+      if (p === 'products.delete' && (userPerms.includes('products.delete') || userPerms.includes('products.manage'))) return true;
+
+      // Semantic aliases: inventory
+      if (
+        p === 'inventory.view' &&
+        (userPerms.includes('inventory.view') || userPerms.includes('inventory.manage'))
+      ) {
+        return true;
+      }
+      if (
+        (p === 'inventory.adjust_stock' || p === 'inventory.stock.edit' || p === 'inventory.stock') &&
+        (userPerms.includes('inventory.adjust_stock') || userPerms.includes('inventory.stock.edit') || userPerms.includes('inventory.stock') || userPerms.includes('inventory.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'inventory.edit_warning' &&
+        (userPerms.includes('inventory.edit_warning') || userPerms.includes('inventory.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'inventory.shop_bill' &&
+        (userPerms.includes('inventory.shop_bill') || userPerms.includes('inventory.manage'))
+      ) {
+        return true;
+      }
+
+      // Semantic aliases: orders
+      if (
+        p === 'orders.view' &&
+        (userPerms.includes('orders.view') || userPerms.includes('orders.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'orders.update_status' &&
+        (userPerms.includes('orders.update_status') || userPerms.includes('orders.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'orders.process' &&
+        (userPerms.includes('orders.process') || userPerms.includes('orders.manage'))
+      ) {
+        return true;
+      }
+
+      // Semantic aliases: promotions & deals
+      if (
+        (p === 'promotions.add' || p === 'promotions.create') &&
+        (userPerms.includes('promotions.add') || userPerms.includes('promotions.create') || userPerms.includes('promotions.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'promotions.view' &&
+        (userPerms.includes('promotions.view') || userPerms.includes('promotions.manage') || userPerms.includes('deals.view'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'promotions.edit' &&
+        (userPerms.includes('promotions.edit') || userPerms.includes('promotions.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'promotions.delete' &&
+        (userPerms.includes('promotions.delete') || userPerms.includes('promotions.manage'))
+      ) {
+        return true;
+      }
+      if (
+        (p === 'deals.manage' || p === 'deals.edit') &&
+        (userPerms.includes('deals.manage') || userPerms.includes('promotions.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'deals.view' &&
+        (userPerms.includes('deals.view') || userPerms.includes('deals.manage') || userPerms.includes('promotions.view'))
+      ) {
+        return true;
+      }
+
+      // Semantic aliases: settings
+      if (
+        (p === 'settings.edit' || p === 'settings.update' || p === 'settings.manage') &&
+        (userPerms.includes('settings.edit') || userPerms.includes('settings.manage') || userPerms.includes('settings.update'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'settings.view' &&
+        (userPerms.includes('settings.view') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
+      ) {
+        return true;
+      }
+
+      // Semantic aliases: website content & navigation
+      if (
+        p === 'content.homepage' &&
+        (userPerms.includes('content.homepage') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'content.banners' &&
+        (userPerms.includes('content.banners') || userPerms.includes('content.homepage') || userPerms.includes('settings.edit'))
+      ) {
+        return true;
+      }
+      if (
+        p === 'content.navigation' &&
+        (userPerms.includes('content.navigation') || userPerms.includes('pages.manage_nav') || userPerms.includes('settings.edit'))
+      ) {
+        return true;
+      }
 
       return false;
     });
-  }
 
   return false;
 }

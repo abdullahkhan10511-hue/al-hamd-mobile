@@ -25,7 +25,7 @@ interface CustomerAuthContextType {
     lastName?: string;
     dateOfBirth?: string;
   }) => Promise<SanitizedCustomer>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   updateProfile: (data: {
     firstName?: string;
     lastName?: string;
@@ -116,25 +116,32 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
   const restoreSession = useCallback(async () => {
     try {
       if (typeof window === 'undefined') return;
-      let sessionData: any = null;
-      const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
-      if (raw) {
-        try {
-          sessionData = JSON.parse(raw);
-        } catch {}
-      }
 
-      if (!sessionData) {
-        sessionData = getCustomerFromCookie();
-      }
-
-      if (!sessionData || !sessionData.id) {
+      // Authoritative perimeter check: cookie is required for active session
+      const cookieSession = getCustomerFromCookie();
+      if (!cookieSession || !cookieSession.id) {
+        // Logged out or no session cookie present
         localStorage.removeItem(CUSTOMER_SESSION_KEY);
         clearCustomerCookie();
         setCustomer(null);
         setIsLoading(false);
         return;
       }
+
+      // Verify token expiration
+      if (
+        (cookieSession as any).expiresAt &&
+        typeof (cookieSession as any).expiresAt === 'number' &&
+        (cookieSession as any).expiresAt < Date.now()
+      ) {
+        localStorage.removeItem(CUSTOMER_SESSION_KEY);
+        clearCustomerCookie();
+        setCustomer(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const sessionData = cookieSession;
 
       // Re-verify against database
       let live = await getCustomerById(sessionData.id);
@@ -160,7 +167,6 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
         setCustomer(sanitized);
         // Keep session storage & cookies in sync
         localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
-        setCustomerCookie(sanitized);
       }
     } catch (err) {
       console.warn('Customer session recovery error:', err);
@@ -301,16 +307,25 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(async (): Promise<void> => {
     setCustomer(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(CUSTOMER_SESSION_KEY);
       clearCustomerCookie();
     }
     try {
-      fetch('/api/auth/customer/logout', { method: 'POST' }).catch(() => {});
-    } catch {}
-  };
+      await fetch('/api/auth/customer/logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    } catch (e) {
+      console.warn('Customer logout network notice:', e);
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+  }, []);
 
   const updateProfile = async (data: {
     firstName?: string;
