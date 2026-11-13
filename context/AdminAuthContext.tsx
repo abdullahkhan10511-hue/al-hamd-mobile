@@ -17,7 +17,8 @@ interface AdminAuthContextType {
   hasPermission: (permissionKey: string) => boolean;
   hasAnyPermission: (permissionKeys: string[]) => boolean;
   refreshAdmin: () => void;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: AdminRole }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; requires2fa?: boolean; error?: string; role?: AdminRole }>;
+  loginWith2fa: (code: string, isRecoveryCode?: boolean) => Promise<{ success: boolean; error?: string; role?: AdminRole }>;
   logout: () => void | Promise<void>;
   changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   isLoading: boolean;
@@ -155,7 +156,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   }, [admin, isLoading, authLoading, pathname, router]);
 
   const login = useCallback(
-    async (email: string, password: string): Promise<{ success: boolean; error?: string; role?: AdminRole }> => {
+    async (email: string, password: string): Promise<{ success: boolean; requires2fa?: boolean; error?: string; role?: AdminRole }> => {
       setAuthLoading(true);
 
       const normalizedEmail = email.trim().toLowerCase();
@@ -183,6 +184,11 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         const data = contentType.includes('application/json')
           ? await apiRes.json().catch(() => null)
           : null;
+
+        if (apiRes.ok && data?.requires2fa) {
+          setAuthLoading(false);
+          return { success: true, requires2fa: true };
+        }
 
         if (apiRes.ok && data?.success && data?.user) {
           const sessionUser: StaffUser = data.user;
@@ -217,7 +223,45 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const logout = useCallback(async () => {
+    const loginWith2fa = useCallback(
+    async (code: string, isRecoveryCode = false): Promise<{ success: boolean; error?: string; role?: AdminRole }> => {
+      setAuthLoading(true);
+      try {
+        const apiRes = await fetch('/api/admin/login/2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ code: code.trim(), isRecoveryCode }),
+        });
+        const data = await apiRes.json().catch(() => null);
+        if (apiRes.ok && data?.success && data?.user) {
+          const sessionUser: StaffUser = data.user;
+          try {
+            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
+          } catch (e) {}
+
+          setAdmin(sessionUser);
+          invalidateClientCache();
+          resetSettingsSyncTimestamp();
+          resetNavigationSyncTimestamp();
+          resetProductsSyncTimestamp();
+          setIsLoading(false);
+          setAuthLoading(false);
+
+          return { success: true, role: sessionUser.role };
+        } else {
+          setAuthLoading(false);
+          return { success: false, error: data?.error || 'Invalid 2FA code.' };
+        }
+      } catch (err) {
+        setAuthLoading(false);
+        return { success: false, error: 'Network error verifying 2FA.' };
+      }
+    },
+    []
+  );
+
+const logout = useCallback(async () => {
     setAdmin(null);
     try {
       invalidateClientCache();
@@ -298,6 +342,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         hasAnyPermission,
         refreshAdmin,
         login,
+    loginWith2fa,
         logout,
         changePassword,
         isLoading,

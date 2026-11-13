@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const policy = validatePasswordPolicy(password);
+    const policy = validatePasswordPolicy(password, { isStaff: true, email: normalizedEmail, storeName: "al-hamd" });
     if (!policy.valid) {
       return NextResponse.json(
         { success: false, error: policy.error || 'Password does not meet complexity requirements.' },

@@ -60,9 +60,36 @@ function parseValidCustomerSession(raw: string | undefined): boolean {
  * 4. Customer account protection (/account, /account/*) - Requires authenticated customer session.
  * 5. Strict session cookies - Rejects arbitrary, unverified tokens or non-session cookies.
  */
+function getClientIp(req: NextRequest): string {
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+  return '127.0.0.1';
+}
+
+function isIpAllowed(ip: string): boolean {
+  const allowlist = process.env.ADMIN_IP_ALLOWLIST?.trim();
+  if (!allowlist) return true;
+  const ips = allowlist.split(',').map((s) => s.trim()).filter(Boolean);
+  if (ips.length === 0) return true;
+  return ips.includes(ip) || ip === '127.0.0.1' || ip === '::1';
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
+
+  // Step 14 Phase 1: IP Allowlist check for /admin and /api/admin
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+    const clientIp = getClientIp(request);
+    if (!isIpAllowed(clientIp)) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+  }
 
   // =========================================================================
   // 1. GLOBAL CSRF DEFENSE (Task S13)
@@ -76,7 +103,22 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Skip static assets, API routes (after CSRF verification), and internal next requests
+  // Step 14 Phase 1: Reject unauthenticated requests to /api/admin/* BEFORE running API handler
+  if (pathname.startsWith('/api/admin')) {
+    // Exempt public admin routes like /api/admin/login and /api/admin/login/2fa
+    if (!pathname.startsWith('/api/admin/login')) {
+      const adminCookieVal = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
+      if (!parseValidAdminSession(adminCookieVal)) {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized: Admin session required' },
+          { status: 401 }
+        );
+      }
+    }
+    return NextResponse.next();
+  }
+
+  // Skip static assets, other API routes, and internal next requests
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -121,7 +163,9 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return response;
   }
 
   // =========================================================================

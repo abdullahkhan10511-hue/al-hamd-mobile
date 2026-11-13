@@ -39,13 +39,17 @@ const COMMON_PASSWORDS = new Set([
  * - At least 3 of 4 character classes: uppercase, lowercase, numbers, special characters
  * - Not in common passwords denylist
  */
-export function validatePasswordPolicy(password: string): { valid: boolean; error?: string } {
+export function validatePasswordPolicy(
+  password: string,
+  options?: { minLength?: number; email?: string; storeName?: string; isStaff?: boolean }
+): { valid: boolean; error?: string } {
   if (!password || typeof password !== 'string') {
     return { valid: false, error: 'Password is required.' };
   }
 
-  if (password.length < 10) {
-    return { valid: false, error: 'Password must be at least 10 characters long.' };
+  const minLen = options?.isStaff ? 12 : (options?.minLength || 10);
+  if (password.length < minLen) {
+    return { valid: false, error: `Password must be at least ${minLen} characters long.` };
   }
 
   if (password.length > 256) {
@@ -60,6 +64,28 @@ export function validatePasswordPolicy(password: string): { valid: boolean; erro
     };
   }
 
+  // Check store name
+  const storeNames = ['al-hamd', 'alhamd', 'al hamd', options?.storeName?.toLowerCase().trim()].filter(Boolean) as string[];
+  for (const sn of storeNames) {
+    if (sn.length >= 3 && lower.includes(sn)) {
+      return {
+        valid: false,
+        error: 'Password cannot contain the store name.',
+      };
+    }
+  }
+
+  // Check email
+  if (options?.email) {
+    const emailPrefix = options.email.split('@')[0]?.toLowerCase().trim();
+    if (emailPrefix && emailPrefix.length >= 3 && lower.includes(emailPrefix)) {
+      return {
+        valid: false,
+        error: 'Password cannot contain parts of your email address.',
+      };
+    }
+  }
+
   let classesCount = 0;
   if (/[a-z]/.test(password)) classesCount++;
   if (/[A-Z]/.test(password)) classesCount++;
@@ -70,7 +96,7 @@ export function validatePasswordPolicy(password: string): { valid: boolean; erro
     return {
       valid: false,
       error:
-        'Password must contain at least 3 of the following: uppercase letters, lowercase letters, numbers, and special symbols.',
+        'Password must contain at least 3 of the 4 classes: uppercase letters, lowercase letters, numbers, and special symbols.',
     };
   }
 

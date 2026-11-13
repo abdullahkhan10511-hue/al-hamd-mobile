@@ -50,7 +50,7 @@ function AdminLoginContent() {
   const safeDestination = getSafeAdminRedirect(redirectParam);
   const errorParam = searchParams?.get('error');
 
-  const { login, admin, isAuthenticated, isLoading } = useAdminAuth();
+  const { login, loginWith2fa, admin, isAuthenticated, isLoading } = useAdminAuth();
 
   // Appearance and images loaded from storage
   const [settings, setSettings] = useState<AdminLoginSettings>(() => getAdminLoginSettings());
@@ -67,6 +67,9 @@ function AdminLoginContent() {
       ? 'Access Denied: Customer accounts cannot access the Administrator Panel. Please sign in with staff credentials.'
       : ''
   );
+  const [step, setStep] = useState<'credentials' | '2fa'>('credentials');
+  const [totpCode, setTotpCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Forgot Password Modal State

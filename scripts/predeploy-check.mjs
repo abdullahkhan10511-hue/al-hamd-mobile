@@ -165,6 +165,32 @@ const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction) {
   console.log('\n--- Production Runtime Configuration Verification ---');
 
+  // Step 14 Phase 1: TOTP_ENC_KEY check (32+ bytes encryption key required for staff 2FA)
+  const totpEncKey = (process.env.TOTP_ENC_KEY || '').trim();
+  if (!totpEncKey) {
+    console.warn(
+      '  [WARNING] TOTP_ENC_KEY is not configured in production. Staff 2FA secret encryption will fallback to key derivation from SESSION_SECRET.'
+    );
+  } else if (totpEncKey.length < 32) {
+    check(
+      false,
+      'TOTP_ENC_KEY must have at least 32 characters in production',
+      `Current length: ${totpEncKey.length} chars (32+ required)`
+    );
+  } else {
+    console.log('  [PASS] TOTP_ENC_KEY is configured with at least 32 characters in production');
+  }
+
+  // Step 14 Phase 1: ALLOW_ENV_ADMIN_LOGIN warning if enabled in production
+  const allowEnvAdminLogin = (process.env.ALLOW_ENV_ADMIN_LOGIN || '').toLowerCase().trim();
+  if (allowEnvAdminLogin === 'true') {
+    console.warn(
+      '  [WARNING] ALLOW_ENV_ADMIN_LOGIN=true is active in production. Environment-based login should be disabled in production so only audited database staff accounts can log in.'
+    );
+  } else {
+    console.log('  [PASS] ALLOW_ENV_ADMIN_LOGIN is disabled in production (database staff authentication enforced)');
+  }
+
   // 10.1 SESSION_SECRET check
   const sessionSecret = process.env.SESSION_SECRET || '';
   check(

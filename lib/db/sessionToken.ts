@@ -10,6 +10,10 @@ export const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 export const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 export const CUSTOMER_TOKEN_PREFIX = 'c1';
 export const CUSTOMER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (Task S5)
+export const PENDING_2FA_COOKIE_NAME = "alhamd_admin_2fa_pending";
+export const PENDING_2FA_TOKEN_PREFIX = "2fa";
+export const PENDING_2FA_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const ADMIN_SESSION_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours idle timeout
 
 export interface AdminSession {
   id?: string;
@@ -19,6 +23,7 @@ export interface AdminSession {
   isOwner?: boolean;
   permissions?: string[];
   status?: string;
+  sessionVersion?: number;
   expiresAt?: number;
 }
 
@@ -28,6 +33,9 @@ export interface SessionTokenPayload {
   role?: string;
   permissions?: string[];
   isOwner?: boolean;
+  sessionVersion?: number;
+  lastActivity?: number;
+  typ?: string;
   iat: number;
   exp: number;
   nonce: string;
@@ -371,6 +379,7 @@ export function createSignedSessionToken(data: {
   role?: string;
   permissions?: string[];
   isOwner?: boolean;
+  sessionVersion?: number;
   expiresAt?: number;
 }): string {
   const secret = getSessionSigningSecret();
@@ -383,6 +392,8 @@ export function createSignedSessionToken(data: {
     role: data.role || 'ADMIN',
     permissions: Array.isArray(data.permissions) ? data.permissions : undefined,
     isOwner: data.isOwner ? true : undefined,
+    sessionVersion: typeof data.sessionVersion === "number" ? data.sessionVersion : 1,
+    lastActivity: now,
     iat: now,
     exp,
     nonce: generateSecureNonce(16),
@@ -713,4 +724,65 @@ export function hasAdminPermission(
   });
 
   return false;
+}
+
+export interface Pending2faTokenPayload {
+  typ: '2fa_pending';
+  sub: string;
+  email: string;
+  role: string;
+  isOwner?: boolean;
+  sessionVersion?: number;
+  iat: number;
+  exp: number;
+  nonce: string;
+}
+
+export function createPending2faToken(data: {
+  id: string;
+  email: string;
+  role: string;
+  isOwner?: boolean;
+  sessionVersion?: number;
+}): string {
+  const secret = getSessionSigningSecret();
+  const now = Date.now();
+  const payload: Pending2faTokenPayload = {
+    typ: '2fa_pending',
+    sub: data.id,
+    email: data.email.trim().toLowerCase(),
+    role: data.role,
+    isOwner: Boolean(data.isOwner),
+    sessionVersion: data.sessionVersion || 1,
+    iat: now,
+    exp: now + PENDING_2FA_TTL_MS,
+    nonce: generateSecureNonce(16),
+  };
+
+  const payloadEncoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const signatureInput = `${PENDING_2FA_TOKEN_PREFIX}.${payloadEncoded}`;
+  const hmac = hmacSha256Base64Url(secret, signatureInput);
+  return `${signatureInput}.${hmac}`;
+}
+
+export function verifyPending2faToken(token: string | undefined | null): Pending2faTokenPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.trim().split('.');
+  if (parts.length !== 3) return null;
+  const [version, payloadEncoded, providedHmac] = parts;
+  if (version !== PENDING_2FA_TOKEN_PREFIX) return null;
+
+  try {
+    const secret = getSessionSigningSecret();
+    const signatureInput = `${version}.${payloadEncoded}`;
+    const expectedHmac = hmacSha256Base64Url(secret, signatureInput);
+    if (!constantTimeEqual(providedHmac, expectedHmac)) return null;
+
+    const payload = JSON.parse(base64UrlToUtf8(payloadEncoded)) as Pending2faTokenPayload;
+    if (!payload || payload.typ !== '2fa_pending') return null;
+    if (typeof payload.exp !== 'number' || payload.exp <= Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }

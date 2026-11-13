@@ -70,6 +70,14 @@ export interface StaffUser {
   createdAt: string;
   updatedAt?: string;
   lastLogin?: string;
+  // Step 14 Phase 1: 2FA & Session Versioning
+  totpSecretEnc?: string;
+  totpEnabled?: boolean;
+  totpRecoveryHashes?: string[];
+  totpEnrolledAt?: string;
+  sessionVersion?: number;
+  passwordChangedAt?: string;
+  requiresTotpEnrollment?: boolean;
 }
 
 // Backwards-compatible AdminUser alias

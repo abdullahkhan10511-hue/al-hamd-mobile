@@ -55,7 +55,9 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
 
       if (!dbUser) {
         const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-        if (envAdminEmail && email === envAdminEmail) {
+        // Step 14 Phase 1: Env-based admin login disabled in production unless ALLOW_ENV_ADMIN_LOGIN=true
+        const allowEnv = (process.env.NODE_ENV as string) !== 'production' || process.env.ALLOW_ENV_ADMIN_LOGIN === 'true';
+        if (allowEnv && envAdminEmail && email === envAdminEmail) {
           return {
             id: 'admin-env-1',
             name: 'Administrator',
@@ -64,6 +66,7 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
             isOwner: true,
             permissions: ['*'],
             status: 'active',
+            sessionVersion: 1,
             expiresAt: payload.exp,
           };
         }
@@ -73,6 +76,18 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
 
       if (dbUser.status === 'inactive') {
         return null;
+      }
+
+      // Step 14 Phase 1: Session version validation (invalidated immediately on password change, role change, etc.)
+      const dbVersion = typeof dbUser.sessionVersion === 'number' ? dbUser.sessionVersion : 1;
+      const tokenVersion = typeof payload.sessionVersion === 'number' ? payload.sessionVersion : 1;
+      if (tokenVersion !== dbVersion) {
+        return null; // Stale session after credential/role/permission change or deactivation
+      }
+
+      // Step 14 Phase 1: Idle timeout (2 hours)
+      if (payload.lastActivity && Date.now() - payload.lastActivity > 2 * 60 * 60 * 1000) {
+        return null; // Session timed out due to inactivity
       }
 
       const role = (dbUser.role || '').toUpperCase();
@@ -98,6 +113,7 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
         isOwner,
         permissions,
         status: dbUser.status || 'active',
+        sessionVersion: dbVersion,
         expiresAt: payload.exp,
       };
     }
@@ -125,7 +141,8 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
 
     const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 
-    if (!serverUser && envAdminEmail && email === envAdminEmail) {
+    const allowEnv = (process.env.NODE_ENV as string) !== 'production' || process.env.ALLOW_ENV_ADMIN_LOGIN === 'true';
+    if (!serverUser && allowEnv && envAdminEmail && email === envAdminEmail) {
       serverUser = {
         id: 'admin-env-1',
         name: 'Administrator',
@@ -134,10 +151,21 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
         isOwner: true,
         permissions: ['*'],
         status: 'active',
+        sessionVersion: 1,
       } as any;
     }
 
     if (!serverUser || serverUser.status === 'inactive') {
+      return null;
+    }
+
+    const devVersion = typeof serverUser.sessionVersion === 'number' ? serverUser.sessionVersion : 1;
+    const tokenVersion = typeof payload.sessionVersion === 'number' ? payload.sessionVersion : 1;
+    if (tokenVersion !== devVersion) {
+      return null;
+    }
+
+    if (payload.lastActivity && Date.now() - payload.lastActivity > 2 * 60 * 60 * 1000) {
       return null;
     }
 
@@ -162,6 +190,7 @@ export async function getAdminSessionAsync(request: NextRequest): Promise<AdminS
       isOwner,
       permissions,
       status: serverUser.status || 'active',
+      sessionVersion: devVersion,
       expiresAt: payload.exp,
     };
   } catch {

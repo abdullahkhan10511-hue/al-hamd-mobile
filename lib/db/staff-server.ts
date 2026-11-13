@@ -136,6 +136,21 @@ export async function saveServerStaffUsers(users: StaffUser[]): Promise<void> {
 }
 
 /**
+ * Check if 2FA migration table columns are present in MySQL.
+ */
+export async function isStaff2faColumnAvailable(): Promise<boolean> {
+  if (!isDbConfigured()) return true; // Local dev supports mock 2fa
+  try {
+    const { query } = require('./mysql');
+    const cols = await query('SHOW COLUMNS FROM staff_users LIKE "totp_secret_enc"');
+    return Array.isArray(cols) && cols.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+
+/**
  * Async lookup by email.
  * When MySQL is configured, queries MySQL with an async query, never reading data/staff-users.json.
  */

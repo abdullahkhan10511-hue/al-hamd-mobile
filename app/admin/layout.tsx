@@ -468,6 +468,29 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+                {/* Step 14 Phase 1: Two-Factor Authentication Prompt / Migration Banner */}
+        <div className="px-4 sm:px-6 lg:px-8 pt-4">
+          {admin.requiresTotpEnrollment && (
+            <div className="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold">Two-Factor Authentication Required</p>
+                  <p className="text-xs text-amber-800">
+                    Your account role requires two-factor authentication (TOTP) to secure store administrative access.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/admin/staff/2fa"
+                className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors shadow-sm"
+              >
+                Enroll Now
+              </Link>
+            </div>
+          )}
+        </div>
+
         {/* Content Body with Route Guard Check */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto print:p-0 print:overflow-visible">
           {isAuthorized ? (

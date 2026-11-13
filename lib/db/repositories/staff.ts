@@ -19,6 +19,11 @@ interface StaffRow extends RowDataPacket {
   password_hash: string;
   salt: string;
   last_login: string | null;
+  totp_secret_enc?: string | null;
+  totp_enabled?: number | null;
+  totp_recovery_hashes?: string | null;
+  totp_enrolled_at?: string | null;
+  session_version?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -97,6 +102,11 @@ function mapRowToStaff(row: StaffRow): StaffUser {
     passwordHash: row.password_hash,
     salt: row.salt,
     lastLogin: row.last_login || undefined,
+    totpSecretEnc: row.totp_secret_enc || undefined,
+    totpEnabled: Boolean(row.totp_enabled),
+    totpRecoveryHashes: parseJsonField<string[]>(row.totp_recovery_hashes, []),
+    totpEnrolledAt: row.totp_enrolled_at || undefined,
+    sessionVersion: typeof row.session_version === 'number' ? row.session_version : 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -203,6 +213,20 @@ export async function updateStaffInDb(
 
   let salt = existing.salt;
   let passwordHash = existing.passwordHash;
+  let sessionVersion = existing.sessionVersion || 1;
+
+  // Invalidate sessions immediately on password, role, permission, status, or 2FA change
+  const shouldBumpSession =
+    Boolean(updates.newPassword) ||
+    (updates.role !== undefined && updates.role !== existing.role) ||
+    (updates.permissions !== undefined) ||
+    (updates.status !== undefined && updates.status !== existing.status) ||
+    (updates.totpEnabled !== undefined) ||
+    (updates.sessionVersion !== undefined);
+
+  if (shouldBumpSession) {
+    sessionVersion = (existing.sessionVersion || 1) + 1;
+  }
 
   if (updates.newPassword && updates.newPassword.trim().length >= 4) {
     salt = generateStaffSalt(16);
@@ -216,25 +240,61 @@ export async function updateStaffInDb(
   const status = updates.status !== undefined ? updates.status : existing.status;
   const role = updates.role !== undefined ? updates.role : existing.role;
   const permissions = updates.permissions !== undefined ? updates.permissions : existing.permissions;
+  const totpSecretEnc = updates.totpSecretEnc !== undefined ? updates.totpSecretEnc : (existing.totpSecretEnc || null);
+  const totpEnabled = updates.totpEnabled !== undefined ? (updates.totpEnabled ? 1 : 0) : (existing.totpEnabled ? 1 : 0);
+  const totpRecoveryHashes = updates.totpRecoveryHashes !== undefined ? JSON.stringify(updates.totpRecoveryHashes) : (existing.totpRecoveryHashes ? JSON.stringify(existing.totpRecoveryHashes) : null);
+  const totpEnrolledAt = updates.totpEnrolledAt !== undefined ? updates.totpEnrolledAt : (existing.totpEnrolledAt || null);
 
-  await execute(
-    `UPDATE staff_users SET
-      name = ?, email = ?, phone = ?, avatar = ?, status = ?, role = ?,
-      permissions = ?, salt = ?, password_hash = ?
-     WHERE id = ?`,
-    [
-      name,
-      email,
-      phone,
-      avatar,
-      status,
-      role,
-      JSON.stringify(permissions),
-      salt,
-      passwordHash,
-      id,
-    ]
-  );
+  try {
+    await execute(
+      `UPDATE staff_users SET
+        name = ?, email = ?, phone = ?, avatar = ?, status = ?, role = ?,
+        permissions = ?, salt = ?, password_hash = ?, session_version = ?,
+        totp_secret_enc = ?, totp_enabled = ?, totp_recovery_hashes = ?, totp_enrolled_at = ?
+       WHERE id = ?`,
+      [
+        name,
+        email,
+        phone,
+        avatar,
+        status,
+        role,
+        JSON.stringify(permissions),
+        salt,
+        passwordHash,
+        sessionVersion,
+        totpSecretEnc,
+        totpEnabled,
+        totpRecoveryHashes,
+        totpEnrolledAt,
+        id,
+      ]
+    );
+  } catch (err: any) {
+    // If migration add_staff_2fa.sql has not been run yet, gracefully fallback to basic columns
+    if (err?.message?.includes('Unknown column') || err?.code === 'ER_BAD_FIELD_ERROR') {
+      await execute(
+        `UPDATE staff_users SET
+          name = ?, email = ?, phone = ?, avatar = ?, status = ?, role = ?,
+          permissions = ?, salt = ?, password_hash = ?
+         WHERE id = ?`,
+        [
+          name,
+          email,
+          phone,
+          avatar,
+          status,
+          role,
+          JSON.stringify(permissions),
+          salt,
+          passwordHash,
+          id,
+        ]
+      );
+    } else {
+      throw err;
+    }
+  }
 
   return (await getStaffByIdFromDb(id))!;
 }
