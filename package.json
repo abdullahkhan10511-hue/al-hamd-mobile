@@ -21,7 +21,8 @@
     "verify:step8": "node scripts/verify-step8.mjs",
     "verify:animation": "node scripts/verify-animation.mjs",
     "predeploy": "node scripts/predeploy-check.mjs",
-    "audit:image-hosts": "node scripts/list-image-hosts.mjs"
+    "audit:image-hosts": "node scripts/list-image-hosts.mjs",
+    "verify:step14": "node scripts/verify-step14.mjs"
   },
   "dependencies": {
     "framer-motion": "^13.5.1",

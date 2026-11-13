@@ -144,7 +144,9 @@ export function middleware(request: NextRequest) {
       if (isAdminAuthenticated) {
         return NextResponse.redirect(new URL('/admin/dashboard', request.url));
       }
-      return NextResponse.next();
+      const res = NextResponse.next();
+      res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      return res;
     }
 
     // 2B: If user is logged in ONLY as a Customer and attempts to access Admin Panel

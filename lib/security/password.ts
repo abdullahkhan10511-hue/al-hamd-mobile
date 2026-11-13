@@ -373,3 +373,7 @@ export async function verifyUserPasswordUnified(
   return { valid: true, upgraded };
 }
 
+
+export function validateStaffPasswordPolicy(password: string, email?: string) {
+  return validatePasswordPolicy(password, { isStaff: true, email });
+}
