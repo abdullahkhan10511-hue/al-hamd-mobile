@@ -1,3 +1,4 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { query, execute, isDbConfigured } from './mysql';
@@ -9,6 +10,7 @@ import { DEFAULT_LOGIN_PAGE_MEDIA, DEFAULT_LOGIN_PAGE_SETTINGS } from './loginPa
 import { seedHomepageVideos } from './homepageVideos';
 import { RowDataPacket } from 'mysql2/promise';
 import { serializeSpecifications } from './repositories/products';
+import { getDataFilePath } from '@/lib/storage/dataDir';
 
 export interface MigrationEntityStat {
   entity: string;
@@ -395,7 +397,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   const setSkip = 0;
   try {
     let rawSettings = seedStoreSettings;
-    const settingsPath = path.join(process.cwd(), 'data', 'store-settings.json');
+    const settingsPath = getDataFilePath('store-settings.json');
     if (fs.existsSync(settingsPath)) {
       try {
         const raw = fs.readFileSync(settingsPath, 'utf8');
@@ -520,7 +522,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // ---------------------------------------------------------------------------
   let vidImp = 0, vidSkip = 0, vidErr = 0;
   let videosToLoad = seedHomepageVideos;
-  const vidPath = path.join(process.cwd(), 'data', 'homepage-videos.json');
+  const vidPath = getDataFilePath('homepage-videos.json');
   if (fs.existsSync(vidPath)) {
     try {
       const raw = fs.readFileSync(vidPath, 'utf8');
@@ -569,7 +571,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // ---------------------------------------------------------------------------
   let lmedImp = 0, lmedSkip = 0, lmedErr = 0;
   let loginMediaToLoad = DEFAULT_LOGIN_PAGE_MEDIA;
-  const lmedPath = path.join(process.cwd(), 'data', 'login-page-media.json');
+  const lmedPath = getDataFilePath('login-page-media.json');
   if (fs.existsSync(lmedPath)) {
     try {
       const raw = fs.readFileSync(lmedPath, 'utf8');
@@ -625,7 +627,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // Login Page Settings
   try {
     let lsettings = DEFAULT_LOGIN_PAGE_SETTINGS;
-    const lsetPath = path.join(process.cwd(), 'data', 'login-page-settings.json');
+    const lsetPath = getDataFilePath('login-page-settings.json');
     if (fs.existsSync(lsetPath)) {
       try {
         const raw = fs.readFileSync(lsetPath, 'utf8');
@@ -787,7 +789,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
     const existingStaffCount = staffCountRow && staffCountRow.cnt ? Number(staffCountRow.cnt) : 0;
 
     let staffList: any[] = [];
-    const staffPath = path.join(process.cwd(), 'data', 'staff-users.json');
+    const staffPath = getDataFilePath('staff-users.json');
     if (fs.existsSync(staffPath)) {
       try {
         const raw = fs.readFileSync(staffPath, 'utf8');
@@ -851,7 +853,7 @@ export async function runProductionMigration(): Promise<MigrationReport> {
   // 11. CUSTOMER ACCOUNTS (Safe migration of local file if present)
   // ---------------------------------------------------------------------------
   let custImp = 0, custSkip = 0, custErr = 0;
-  const custPath = path.join(process.cwd(), 'data', 'customers.json');
+  const custPath = getDataFilePath('customers.json');
   if (fs.existsSync(custPath)) {
     try {
       const raw = fs.readFileSync(custPath, 'utf8');

@@ -10,12 +10,13 @@ import {
   reorderLoginPageMediaInDb,
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_MEDIA, LoginPageMediaItem } from '@/lib/db/loginPage';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync } from '@/lib/db/adminAuth';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const MEDIA_FILE = path.join(DATA_DIR, 'login-page-media.json');
 
 function ensureDataDir() {
@@ -78,7 +79,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify media.' },

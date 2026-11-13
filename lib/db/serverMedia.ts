@@ -1,3 +1,4 @@
+import 'server-only';
 /**
  * Server-Side Media Persistence Utility
  *

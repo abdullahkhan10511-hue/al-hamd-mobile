@@ -1,26 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured, testConnection } from '@/lib/db/mysql';
 import { runProductionMigration, getDatabaseTableCounts } from '@/lib/db/migration';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import {
+  getAdminSessionAsync,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/db/adminAuth';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
+import { logActivity } from '@/lib/db/repositories/activity';
+
+/**
+ * Task S19: Production Safety Lock
+ * In production (NODE_ENV === 'production'), this endpoint must return HTTP 404
+ * unless ALLOW_DATA_MIGRATION=true is explicitly set in environment variables.
+ */
+function isMigrationEndpointAllowed(): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.ALLOW_DATA_MIGRATION === 'true';
+  }
+  return true;
+}
 
 /**
  * GET /api/admin/migrate-data
  * Strictly protected internal endpoint for checking database status.
+ * In production, returns 404 by default unless ALLOW_DATA_MIGRATION=true.
+ * When enabled, strictly requires valid store owner session.
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    if (!isMigrationEndpointAllowed()) {
+      return NextResponse.json({ success: false, error: 'Not Found' }, { status: 404 });
     }
 
-    const role = (session.role || '').toUpperCase();
-    const isAuthorized = session.isOwner || role === 'SUPER_ADMIN';
-    if (!isAuthorized) {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
+    const session = await getAdminSessionAsync(request);
+    if (!session) {
+      return unauthorizedResponse('Unauthorized: Staff session required.');
+    }
+
+    if (!session.isOwner) {
+      return forbiddenResponse('Forbidden: Only the store owner can access data migration status.');
     }
 
     const configured = isDbConfigured();
@@ -61,36 +81,47 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/admin/migrate-data
  * Strictly protected internal endpoint for running production database migration.
- * Kept only for internal server-side maintenance and CLI deployment tasks.
+ * In production, returns 404 by default unless ALLOW_DATA_MIGRATION=true.
+ * When enabled:
+ * - Requires same-origin CSRF validation
+ * - Strictly requires valid store owner session (401 unauthenticated, 403 non-owner)
+ * - Rate limited to 3 attempts per hour per client IP
+ * - Writes an audit record to the activity log upon execution
  */
 export async function POST(request: NextRequest) {
   try {
-    // Critical Production Safety Lock: Data seeding/importing is permanently disabled in production
-    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Production Safety Lock: Data seeding/importing is permanently disabled in production. Hostinger MySQL is the sole source of truth for persistent business data.',
-        },
-        { status: 403 }
-      );
+    // 1. Production Safety Gate: must return 404 unless ALLOW_DATA_MIGRATION=true
+    if (!isMigrationEndpointAllowed()) {
+      return NextResponse.json({ success: false, error: 'Not Found' }, { status: 404 });
     }
 
-    const session = getAdminSession(request);
+    // 2. CSRF same-origin enforcement for mutating action
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
+    }
+
+    // 3. Strict Store Owner authentication
+    const session = await getAdminSessionAsync(request);
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return unauthorizedResponse('Unauthorized: Staff session required.');
     }
 
-    // Role check: Only Super Admin or Owner can trigger internal database migration
-    const role = (session.role || '').toUpperCase();
-    const isAuthorized = session.isOwner || role === 'SUPER_ADMIN';
-    if (!isAuthorized) {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
+    if (!session.isOwner) {
+      return forbiddenResponse('Forbidden: Only the store owner can execute data migration.');
+    }
+
+    // 4. Rate Limiting: maximum 3 migration executions per hour
+    const clientIp = getClientIp(request);
+    const rateCheck = await checkRateLimit(`admin_migrate_data_${clientIp}`, 3, 3600000);
+    if (!rateCheck.allowed) {
+      return createRateLimitResponse(
+        rateCheck.retryAfterSeconds,
+        'Too many data migration requests. Maximum 3 per hour.'
       );
     }
 
+    // 5. Database connectivity checks
     if (!isDbConfigured()) {
       return NextResponse.json(
         {
@@ -112,13 +143,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 6. Execute data migration
     const report = await runProductionMigration();
     const tableCounts = await getDatabaseTableCounts();
 
-    return NextResponse.json({
-      ...report,
-      tableCounts,
-    }, { status: report.success ? 200 : 207 });
+    // 7. Record entry into the audit activity log
+    await logActivity({
+      adminEmail: session.email,
+      action: 'DATA_MIGRATION_EXECUTED',
+      target: 'production_database_migration',
+      details: JSON.stringify({
+        summary: report.summary,
+        tableCounts,
+        stats: report.stats,
+      }),
+    }).catch((logErr) => {
+      console.warn('Failed to record migration activity log:', logErr);
+    });
+
+    return NextResponse.json(
+      {
+        ...report,
+        tableCounts,
+      },
+      { status: report.success ? 200 : 207 }
+    );
   } catch (err: any) {
     console.error('Error executing database migration:', err);
     return NextResponse.json(

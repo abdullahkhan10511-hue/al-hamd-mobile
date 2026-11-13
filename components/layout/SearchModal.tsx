@@ -18,13 +18,12 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useSearch } from '@/context/SearchContext';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import {
   formatPrice,
   getProductImage,
   DEFAULT_PRODUCT_IMAGE,
-  normalizeSearchText,
 } from '@/lib/utils';
+import { getCategoryPlaceholder } from '@/lib/placeholders';
 import { Product } from '@/types';
 
 const POPULAR_SEARCH_CHIPS = [
@@ -47,46 +46,48 @@ const POPULAR_SEARCH_CHIPS = [
 function SearchProductImage({
   src,
   alt,
+  category,
   sizeClass = 'w-16 h-16 sm:w-20 sm:h-20',
 }: {
   src?: string | null;
   alt: string;
+  category?: string | null;
   sizeClass?: string;
 }) {
-  const initialSrc = useMemo(() => getProductImage(src), [src]);
-  const [imgUrl, setImgUrl] = useState<string>(initialSrc);
-  const [loadFailed, setLoadFailed] = useState<boolean>(false);
+  const placeholderUrl = useMemo(() => getCategoryPlaceholder(category, alt), [category, alt]);
+  const resolvedInitial = useMemo(() => {
+    const raw = getProductImage(src);
+    return raw && raw !== DEFAULT_PRODUCT_IMAGE ? raw : placeholderUrl;
+  }, [src, placeholderUrl]);
+  const [imgUrl, setImgUrl] = useState<string>(resolvedInitial);
 
   useEffect(() => {
-    setImgUrl(getProductImage(src));
-    setLoadFailed(false);
-  }, [src]);
+    const raw = getProductImage(src);
+    setImgUrl(raw && raw !== DEFAULT_PRODUCT_IMAGE ? raw : placeholderUrl);
+  }, [src, placeholderUrl]);
 
   return (
     <div
-      className={`relative ${sizeClass} rounded-2xl overflow-hidden bg-neutral-100 border border-neutral-200/80 shrink-0 shadow-2xs group-hover:border-neutral-300 transition-colors flex items-center justify-center`}
+      className={`relative ${sizeClass} rounded-2xl overflow-hidden bg-[#f5f5f5] border border-neutral-200/80 shrink-0 shadow-2xs group-hover:border-neutral-300 transition-colors flex items-center justify-center`}
     >
-      {loadFailed ? (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 text-neutral-400 p-2 text-center">
-          <Package className="w-6 h-6 stroke-[1.5] text-neutral-400 mb-0.5" />
-          <span className="text-[9px] font-semibold text-neutral-400 tracking-tight">Al Hamd</span>
-        </div>
-      ) : (
-        <Image
-          src={imgUrl}
-          alt={alt || 'Product thumbnail'}
-          fill
-          sizes="(max-width: 640px) 64px, 80px"
-          onError={() => {
-            if (imgUrl !== DEFAULT_PRODUCT_IMAGE) {
-              setImgUrl(DEFAULT_PRODUCT_IMAGE);
-            } else {
-              setLoadFailed(true);
-            }
-          }}
-          className="object-cover group-hover:scale-105 transition-transform duration-300"
-        />
-      )}
+      <Image
+        src={imgUrl}
+        alt={alt || 'Product thumbnail'}
+        fill
+        unoptimized={
+          imgUrl.startsWith('http://') ||
+          imgUrl.startsWith('https://') ||
+          imgUrl.toLowerCase().endsWith('.svg') ||
+          imgUrl.startsWith('data:')
+        }
+        sizes="(max-width: 640px) 64px, 80px"
+        onError={() => {
+          if (imgUrl !== placeholderUrl) {
+            setImgUrl(placeholderUrl);
+          }
+        }}
+        className="object-contain p-1.5 group-hover:scale-105 transition-transform duration-300"
+      />
     </div>
   );
 }
@@ -103,58 +104,71 @@ export function SearchModal() {
     clearRecentSearches,
   } = useSearch();
 
-  const [productsList, setProductsList] = useState<Product[]>([]);
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
   const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load products from live database
-  const loadData = async () => {
-    let prods = getProducts();
-    if (prods.length === 0) {
-      prods = await syncProductsFromApi().catch(() => []);
-    }
-    const filtered = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
-    setProductsList(filtered);
-  };
-
-  useEffect(() => {
-    const handleUpdate = (e: Event) => {
-      const key = (e as CustomEvent)?.detail?.key;
-      if (key && key !== 'products') return;
-      if (!isSearchOpen) return;
-      const prods = getProducts();
-      const filtered = prods.filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false
-      );
-      setProductsList(filtered);
-    };
-    window.addEventListener('alhamd:data-updated', handleUpdate);
-    return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, [isSearchOpen]);
-
-  // Sync debounce & search query
+  // Sync debounce & search query (250ms)
   useEffect(() => {
     setIsSearching(true);
     const handler = setTimeout(() => {
       setDebouncedQuery(searchQuery);
       setIsSearching(false);
-    }, 80);
+    }, 250);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  // Server endpoint search: min 2 characters, max 12 results, minimal fields
+  useEffect(() => {
+    const clean = debouncedQuery.trim();
+    if (clean.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsSearching(true);
+    fetch(`/api/products?search=${encodeURIComponent(clean)}&limit=12&minimal=true`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && Array.isArray(data.products)) {
+          setSearchResults(data.products.slice(0, 12));
+        } else {
+          setSearchResults([]);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setSearchResults([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsSearching(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [debouncedQuery]);
+
+  // Load trending products on modal open
+  useEffect(() => {
+    if (isSearchOpen && trendingProducts.length === 0) {
+      fetch('/api/products?isBestSeller=true&limit=6&minimal=true')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && Array.isArray(data.products)) {
+            setTrendingProducts(data.products.slice(0, 6));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isSearchOpen, trendingProducts.length]);
 
   // Handle modal open, autofocus, body scroll lock
   useEffect(() => {
     if (isSearchOpen) {
-      loadData();
       const timer = setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
@@ -188,61 +202,7 @@ export function SearchModal() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSearchOpen, closeSearch]);
 
-  // Multi-field space-safe and partial matching search
-  const filteredProducts = useMemo(() => {
-    const rawClean = (debouncedQuery || searchQuery).trim();
-    if (!rawClean) return [];
-
-    const normalizedQuery = normalizeSearchText(rawClean);
-    const searchTerms = normalizedQuery.split(' ').filter(Boolean);
-    if (searchTerms.length === 0) return [];
-
-    const matches = productsList.filter((p) => {
-      const nameNorm = normalizeSearchText(p.name);
-      const brandNorm = normalizeSearchText(p.brand);
-      const categoryNorm = normalizeSearchText(p.category);
-      const categorySlugNorm = normalizeSearchText(p.categorySlug);
-      const skuNorm = normalizeSearchText((p as any).sku);
-      const descNorm = normalizeSearchText(p.description);
-      const taglineNorm = normalizeSearchText(p.tagline);
-      const tagsNorm = Array.isArray(p.tags)
-        ? normalizeSearchText(p.tags.join(' '))
-        : normalizeSearchText(p.tags);
-      const featuresNorm = Array.isArray(p.features)
-        ? normalizeSearchText(p.features.join(' '))
-        : '';
-
-      const combined = `${nameNorm} ${brandNorm} ${categoryNorm} ${categorySlugNorm} ${skuNorm} ${descNorm} ${taglineNorm} ${tagsNorm} ${featuresNorm}`;
-
-      // Every term typed by the user must match partially in the combined searchable data
-      return searchTerms.every((term) => combined.includes(term));
-    });
-
-    // Sort exact name match or starts-with name match first
-    return matches.sort((a, b) => {
-      const aName = normalizeSearchText(a.name);
-      const bName = normalizeSearchText(b.name);
-      const aStarts = aName.startsWith(normalizedQuery);
-      const bStarts = bName.startsWith(normalizedQuery);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
-
-      const aContains = aName.includes(normalizedQuery);
-      const bContains = bName.includes(normalizedQuery);
-      if (aContains && !bContains) return -1;
-      if (!aContains && bContains) return 1;
-
-      return (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0);
-    });
-  }, [debouncedQuery, searchQuery, productsList]);
-
-  // Trending products for empty state (up to 6 items)
-  const trendingProducts = useMemo(() => {
-    const list = productsList.filter(
-      (p) => (p as any).trending || (p as any).isBestSeller || p.isNew
-    );
-    return list.slice(0, 6);
-  }, [productsList]);
+  const filteredProducts = searchResults;
 
   const handleEnterKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -386,6 +346,7 @@ export function SearchModal() {
                             <SearchProductImage
                               src={getProductImage(product)}
                               alt={product.name}
+                              category={product.categorySlug || product.category}
                               sizeClass="w-16 h-16 sm:w-20 sm:h-20"
                             />
 
@@ -563,6 +524,7 @@ export function SearchModal() {
                             <SearchProductImage
                               src={getProductImage(product)}
                               alt={product.name}
+                              category={product.categorySlug || product.category}
                               sizeClass="w-14 h-14"
                             />
 

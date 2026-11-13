@@ -1,3 +1,4 @@
+import { validatePasswordPolicy, hashPasswordSecure } from '@/lib/security/password';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getServerStaffUsers,
@@ -13,6 +14,7 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import {
   getAdminSessionAsync,
   hasAdminPermission,
@@ -22,9 +24,9 @@ import {
 } from '@/lib/db/adminAuth';
 
 async function getAuthenticatedStaff(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
-  const session = await getAdminSessionAsync(request);
-  if (!session || !session.email || session.status === 'inactive') return null;
-  return session as any;
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return null;
+  return auth.session as any;
 }
 
 /**
@@ -41,11 +43,8 @@ export async function GET(request: NextRequest) {
       session?.isOwner ||
       session?.role === 'SUPER_ADMIN' ||
       session?.role === 'OWNER' ||
-      session?.id === 'staff-owner-1' ||
       (session?.email && (
-        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-        session.email.toLowerCase() === 'admin@alhamd.com' ||
-        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+        process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase()
       ))
     );
     if (!isSessionSuperAdmin && !hasAdminPermission(session, ['staff.view', 'staff.manage'])) {
@@ -86,11 +85,8 @@ export async function POST(request: NextRequest) {
       session?.isOwner ||
       session?.role === 'SUPER_ADMIN' ||
       session?.role === 'OWNER' ||
-      session?.id === 'staff-owner-1' ||
       (session?.email && (
-        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-        session.email.toLowerCase() === 'admin@alhamd.com' ||
-        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+        process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase()
       ))
     );
     const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
@@ -118,9 +114,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!password || typeof password !== 'string' || password.length < 4) {
+    const policy = validatePasswordPolicy(password);
+    if (!policy.valid) {
       return NextResponse.json(
-        { success: false, error: 'Password must be at least 4 characters long.' },
+        { success: false, error: policy.error || 'Password does not meet complexity requirements.' },
         { status: 400 }
       );
     }
@@ -168,7 +165,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Cryptographic password hashing
     const salt = generateServerSalt(16);
-    const passwordHash = hashServerPassword(password, salt);
+    const passwordHash = await hashPasswordSecure(password);
 
     // 5. Role & Permissions assignment
     const assignedPermissions =
@@ -262,11 +259,8 @@ export async function PATCH(request: NextRequest) {
       session?.isOwner ||
       session?.role === 'SUPER_ADMIN' ||
       session?.role === 'OWNER' ||
-      session?.id === 'staff-owner-1' ||
       (session?.email && (
-        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-        session.email.toLowerCase() === 'admin@alhamd.com' ||
-        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+        process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase()
       ))
     );
     const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
@@ -351,9 +345,7 @@ export async function PATCH(request: NextRequest) {
     const isTargetOwner =
       Boolean(target.isOwner) ||
       target.role === 'OWNER' ||
-      target.id === 'staff-owner-1' ||
-      target.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      target.email.toLowerCase() === 'admin@alhamd.com';
+      (process.env.ADMIN_EMAIL && target.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase());
     const isTargetSuperAdmin = isTargetOwner || target.role === 'SUPER_ADMIN';
     const isTargetAdmin = isTargetSuperAdmin || target.role === 'ADMIN';
 
@@ -511,7 +503,7 @@ export async function PATCH(request: NextRequest) {
       }
       const newSalt = generateServerSalt(16);
       updated.salt = newSalt;
-      updated.passwordHash = hashServerPassword(passwordToSet, newSalt);
+      updated.passwordHash = await hashPasswordSecure(passwordToSet);
     }
 
     // Update in MySQL if configured
@@ -574,11 +566,8 @@ export async function DELETE(request: NextRequest) {
       session?.isOwner ||
       session?.role === 'SUPER_ADMIN' ||
       session?.role === 'OWNER' ||
-      session?.id === 'staff-owner-1' ||
       (session?.email && (
-        session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-        session.email.toLowerCase() === 'admin@alhamd.com' ||
-        (process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+        process.env.ADMIN_EMAIL && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase()
       ))
     );
     const isSessionAdmin = isSessionSuperAdmin || session?.role === 'ADMIN';
@@ -617,9 +606,7 @@ export async function DELETE(request: NextRequest) {
     const isTargetOwner =
       Boolean(target.isOwner) ||
       target.role === 'OWNER' ||
-      target.id === 'staff-owner-1' ||
-      target.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      target.email.toLowerCase() === 'admin@alhamd.com';
+      (process.env.ADMIN_EMAIL && target.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase());
 
     const isTargetSuperAdmin =
       isTargetOwner || target.role === 'SUPER_ADMIN';

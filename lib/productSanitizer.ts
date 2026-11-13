@@ -7,9 +7,8 @@ export function sanitizeProductForSession(product: any, session: AdminSession | 
   // Root owner has access to all pricing & data
   const isOwner = Boolean(
     session.isOwner ||
-    session.id === 'staff-owner-1' ||
-    session.sub === 'staff-owner-1' ||
-    (session.email && session.email.toLowerCase() === 'admin@alhamdmobile.com') ||
+    session.role === 'SUPER_ADMIN' ||
+    session.role === 'OWNER' ||
     (process.env.ADMIN_EMAIL && session.email && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
   );
   if (isOwner) return product;
@@ -92,9 +91,8 @@ export function validateProductWritePermissions(
   // Owner bypass
   const isOwner = Boolean(
     session.isOwner ||
-    session.id === 'staff-owner-1' ||
-    session.sub === 'staff-owner-1' ||
-    (session.email && session.email.toLowerCase() === 'admin@alhamdmobile.com') ||
+    session.role === 'SUPER_ADMIN' ||
+    session.role === 'OWNER' ||
     (process.env.ADMIN_EMAIL && session.email && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
   );
   if (isOwner) return null;

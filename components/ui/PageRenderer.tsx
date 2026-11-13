@@ -54,11 +54,11 @@ function BlockItem({ block }: { block: PageBlock }) {
 
       if (block.headingLevel === 'h1') {
         return (
-          <h1
+          <h2
             className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-neutral-950 pt-2 ${alignClass}`}
           >
             {block.headingText}
-          </h1>
+          </h2>
         );
       }
       if (block.headingLevel === 'h3') {

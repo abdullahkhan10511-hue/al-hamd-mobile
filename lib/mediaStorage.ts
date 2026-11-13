@@ -1,3 +1,9 @@
+import 'server-only';
+import dns from 'dns';
+import net from 'net';
+import http from 'http';
+import https from 'https';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -22,10 +28,83 @@ const ALLOWED_FOLDERS = new Set<string>([
   'general',
 ]);
 
+let uploadsWarnedOnce = false;
+
+export function _resetUploadsWarnedForTest(): void {
+  uploadsWarnedOnce = false;
+}
+
+/**
+ * Returns whether a target directory is strictly outside the application root directory.
+ */
+export function isPathOutsideAppRoot(targetPath: string): boolean {
+  if (!targetPath) return false;
+  const appRoot = path.resolve(process.cwd());
+  const resolved = path.resolve(targetPath);
+  const rel = path.relative(appRoot, resolved);
+  return rel.startsWith('..') || path.isAbsolute(rel);
+}
+
+/**
+ * Converts a path to a safe short path displaying only the last two folder names.
+ * Ensures zero server directories, drive names, or internal paths are leaked.
+ */
+export function toShortFolderPath(fullPath: string): string {
+  if (!fullPath) return '';
+  const normalized = path.normalize(fullPath).replace(/\\/g, '/').replace(/\/+$/, '');
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length <= 2) {
+    return segments.join('/');
+  }
+  return segments.slice(-2).join('/');
+}
+
+/**
+ * Checks if a directory is writable by attempting a probe write.
+ */
+export function isDirectoryWritable(dirPath: string): boolean {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.accessSync(dirPath, fs.constants.W_OK);
+    const probe = path.join(dirPath, `.probe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    fs.writeFileSync(probe, 'ok', 'utf8');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Recursively counts regular files in a directory.
+ */
+export function countFilesInDirectory(dirPath: string): number {
+  if (!fs.existsSync(dirPath)) return 0;
+  let count = 0;
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile()) {
+        count++;
+      } else if (entry.isDirectory()) {
+        count += countFilesInDirectory(path.join(dirPath, entry.name));
+      }
+    }
+  } catch {
+    // ignore access error
+  }
+  return count;
+}
+
 /**
  * Returns the primary persistent uploads directory.
  * Configured via PERSISTENT_UPLOADS_DIR / MEDIA_STORAGE_PATH / UPLOADS_DIR environment variable.
  * Defaults to `<app_root>/public/uploads` when running locally or if not configured.
+ *
+ * In production, console.warns once at startup if the uploads directory is inside the app root:
+ * "Uploads are stored inside the app folder and may be lost on redeploy."
  */
 export function getUploadsRootDir(): string {
   const customPath =
@@ -33,15 +112,26 @@ export function getUploadsRootDir(): string {
     process.env.MEDIA_STORAGE_PATH ||
     process.env.UPLOADS_DIR;
 
+  let resolved: string;
   if (customPath && customPath.trim().length > 0) {
     const trimmed = customPath.trim();
     if (path.isAbsolute(trimmed)) {
-      return path.normalize(trimmed);
+      resolved = path.normalize(trimmed);
+    } else {
+      resolved = path.normalize(path.join(process.cwd(), trimmed));
     }
-    return path.normalize(path.join(process.cwd(), trimmed));
+  } else {
+    resolved = path.normalize(path.join(process.cwd(), 'public', 'uploads'));
   }
 
-  return path.normalize(path.join(process.cwd(), 'public', 'uploads'));
+  if (process.env.NODE_ENV === 'production' && !uploadsWarnedOnce) {
+    if (!isPathOutsideAppRoot(resolved)) {
+      uploadsWarnedOnce = true;
+      console.warn('Uploads are stored inside the app folder and may be lost on redeploy.');
+    }
+  }
+
+  return resolved;
 }
 
 /**
@@ -94,46 +184,61 @@ export async function resolveMediaFilePath(
     return null;
   }
 
-  // Security checks: ban directory traversal tokens and backslashes in segments
-  for (const seg of segments) {
+  // Safely decode segments once (e.g. %20 -> space, non-ASCII/Urdu/Unicode characters)
+  const decodedSegments: string[] = [];
+  for (const rawSeg of segments) {
+    if (!rawSeg || typeof rawSeg !== 'string') return null;
+    let decoded = rawSeg;
+    try {
+      decoded = decodeURIComponent(rawSeg);
+    } catch {
+      // If malformed URI encoding, keep raw
+    }
+
+    // Reject ONLY directory traversal tricks, slashes, and null bytes (Item 3)
+    // Legitimate filenames with spaces, parentheses, dashes, underscores, dots, or non-ASCII characters are strictly preserved.
     if (
-      !seg ||
-      seg.includes('..') ||
-      seg.includes('/') ||
-      seg.includes('\\') ||
-      seg.includes('\0')
+      decoded === '.' ||
+      decoded === '..' ||
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      decoded.includes('\0')
     ) {
       return null;
     }
+    decodedSegments.push(decoded);
   }
 
-  const primaryRoot = getUploadsRootDir();
-  const fallbackRoot = getFallbackUploadsDir();
+  const primaryRoot = path.resolve(getUploadsRootDir());
+  const fallbackRoot = path.resolve(getFallbackUploadsDir());
 
-  const primaryPath = path.normalize(path.join(primaryRoot, ...segments));
-  // Verify path containment
-  if (primaryPath.startsWith(primaryRoot) && fs.existsSync(primaryPath)) {
-    try {
-      const stat = await fs.promises.stat(primaryPath);
-      if (stat.isFile()) {
-        return { absolutePath: primaryPath, isFallback: false, size: stat.size };
-      }
-    } catch {
-      // Continue to fallback check
+  const primaryPath = path.resolve(primaryRoot, ...decodedSegments);
+  // Verify path containment strictly within primaryRoot
+  if (primaryPath.startsWith(primaryRoot + path.sep) || primaryPath === primaryRoot) {
+    if (fs.existsSync(primaryPath)) {
+      try {
+        const stat = await fs.promises.stat(primaryPath);
+        if (stat.isFile()) {
+          return { absolutePath: primaryPath, isFallback: false, size: stat.size };
+        }
+      } catch {}
     }
   }
 
   // Check fallback repository directory if different from primary
   if (fallbackRoot !== primaryRoot) {
-    const fallbackPath = path.normalize(path.join(fallbackRoot, ...segments));
-    if (fallbackPath.startsWith(fallbackRoot) && fs.existsSync(fallbackPath)) {
-      try {
-        const stat = await fs.promises.stat(fallbackPath);
-        if (stat.isFile()) {
-          return { absolutePath: fallbackPath, isFallback: true, size: stat.size };
+    const fallbackPath = path.resolve(fallbackRoot, ...decodedSegments);
+    if (fallbackPath.startsWith(fallbackRoot + path.sep) || fallbackPath === fallbackRoot) {
+      if (fs.existsSync(fallbackPath)) {
+        try {
+          const stat = await fs.promises.stat(fallbackPath);
+          if (stat.isFile()) {
+            return { absolutePath: fallbackPath, isFallback: true, size: stat.size };
+          }
+        } catch {
+          return null;
         }
-      } catch {
-        return null;
       }
     }
   }
@@ -269,73 +374,152 @@ export async function syncFallbackMediaToPersistent(): Promise<{
 /**
  * Validates whether a hostname or IP is a local loopback, link-local, or private network address (SSRF Protection).
  */
-export function isPrivateOrLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().trim();
-  if (
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host === '[::1]' ||
-    host.endsWith('.localhost') ||
-    host.endsWith('.local') ||
-    host.endsWith('.internal')
-  ) {
-    return true;
-  }
+
+/**
+ * Strict SSRF IP Validator (Task S4):
+ * Rejects private, loopback, link-local, carrier-grade NAT, multicast, reserved, and IPv4-mapped IPv6 ranges.
+ */
+export function isPrivateOrReservedIp(ip: string): boolean {
+  if (!ip || typeof ip !== 'string') return true;
+  const cleanIp = ip.trim().toLowerCase();
 
   // IPv4 check
-  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4Match) {
-    const oct1 = parseInt(ipv4Match[1], 10);
-    const oct2 = parseInt(ipv4Match[2], 10);
-    const oct3 = parseInt(ipv4Match[3], 10);
-    const oct4 = parseInt(ipv4Match[4], 10);
+  if (net.isIPv4(cleanIp)) {
+    const parts = cleanIp.split('.').map((p) => parseInt(p, 10));
+    if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) return true;
+    const [a, b, c, d] = parts;
 
-    if (oct1 > 255 || oct2 > 255 || oct3 > 255 || oct4 > 255) return true;
+    // 0.0.0.0/8 (Current network)
+    if (a === 0) return true;
+    // 10.0.0.0/8 (Private network)
+    if (a === 10) return true;
+    // 100.64.0.0/10 (Carrier-Grade NAT)
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    // 127.0.0.0/8 (Loopback)
+    if (a === 127) return true;
+    // 169.254.0.0/16 (Link-local / Cloud metadata)
+    if (a === 169 && b === 254) return true;
+    // 172.16.0.0/12 (Private network)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.0.0.0/24 (IETF assignments)
+    if (a === 192 && b === 0 && c === 0) return true;
+    // 192.0.2.0/24 (TEST-NET-1)
+    if (a === 192 && b === 0 && c === 2) return true;
+    // 192.88.99.0/24 (6to4 Relay)
+    if (a === 192 && b === 88 && c === 99) return true;
+    // 192.168.0.0/16 (Private network)
+    if (a === 192 && b === 168) return true;
+    // 198.18.0.0/15 (Benchmarking)
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    // 198.51.100.0/24 (TEST-NET-2)
+    if (a === 198 && b === 51 && c === 100) return true;
+    // 203.0.113.0/24 (TEST-NET-3)
+    if (a === 203 && b === 0 && c === 113) return true;
+    // 224.0.0.0/4 (Multicast)
+    if (a >= 224 && a <= 239) return true;
+    // 240.0.0.0/4 (Reserved / Future)
+    if (a >= 240) return true;
+    // 255.255.255.255 (Broadcast)
+    if (a === 255 && b === 255 && c === 255 && d === 255) return true;
 
-    // 0.0.0.0/8
-    if (oct1 === 0) return true;
-    // 10.0.0.0/8
-    if (oct1 === 10) return true;
-    // 127.0.0.0/8
-    if (oct1 === 127) return true;
-    // 169.254.0.0/16 (Link-local, cloud metadata service like AWS/Hostinger)
-    if (oct1 === 169 && oct2 === 254) return true;
-    // 172.16.0.0/12
-    if (oct1 === 172 && oct2 >= 16 && oct2 <= 31) return true;
-    // 192.168.0.0/16
-    if (oct1 === 192 && oct2 === 168) return true;
-    // 100.64.0.0/10 (Carrier-grade NAT)
-    if (oct1 === 100 && oct2 >= 64 && oct2 <= 127) return true;
-    // 192.0.0.0/24
-    if (oct1 === 192 && oct2 === 0 && oct3 === 0) return true;
-    // 198.18.0.0/15
-    if (oct1 === 198 && (oct2 === 18 || oct2 === 19)) return true;
-    // 224.0.0.0+ (Multicast / Reserved)
-    if (oct1 >= 224) return true;
+    return false;
   }
 
   // IPv6 check
-  if (host.startsWith('[') && host.endsWith(']')) {
-    const rawIpv6 = host.slice(1, -1).toLowerCase();
-    if (
-      rawIpv6 === '::1' ||
-      rawIpv6 === '::' ||
-      rawIpv6.startsWith('fe80:') ||
-      rawIpv6.startsWith('fc') ||
-      rawIpv6.startsWith('fd') ||
-      rawIpv6.startsWith('::ffff:127.') ||
-      rawIpv6.startsWith('::ffff:10.') ||
-      rawIpv6.startsWith('::ffff:192.168.') ||
-      rawIpv6.startsWith('::ffff:169.254.')
-    ) {
+  if (net.isIPv6(cleanIp)) {
+    // Loopback ::1
+    if (cleanIp === '::1' || cleanIp === '0:0:0:0:0:0:0:1' || cleanIp === '0000:0000:0000:0000:0000:0000:0000:0001') return true;
+    // Unspecified ::
+    if (cleanIp === '::' || cleanIp === '0:0:0:0:0:0:0:0') return true;
+    // IPv4-mapped IPv6 (::ffff:x.x.x.x)
+    if (cleanIp.includes('::ffff:')) {
+      const parts = cleanIp.split('::ffff:');
+      const v4Part = parts[1];
+      if (v4Part && net.isIPv4(v4Part)) {
+        return isPrivateOrReservedIp(v4Part);
+      }
       return true;
+    }
+    // Unique local address (fc00::/7)
+    if (cleanIp.startsWith('fc') || cleanIp.startsWith('fd')) return true;
+    // Link-local address (fe80::/10)
+    if (cleanIp.startsWith('fe8') || cleanIp.startsWith('fe9') || cleanIp.startsWith('fea') || cleanIp.startsWith('feb')) return true;
+    // Multicast (ff00::/8)
+    if (cleanIp.startsWith('ff')) return true;
+
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Validates a target hostname against SSRF, resolving DNS and verifying every IP.
+ */
+export async function validateHostSSRF(hostname: string): Promise<{ resolvedIp: string; isIpv6: boolean }> {
+  const host = hostname.toLowerCase().trim();
+  if (!host) throw new Error('Missing hostname.');
+
+  // Block local domains
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.lan') ||
+    host.endsWith('.home') ||
+    host.endsWith('.corp')
+  ) {
+    throw new Error(`Access to local hostname "${host}" is forbidden.`);
+  }
+
+  // Block octal (leading zero), hex (0x...), integer/dword, and shorthand IP representations
+  if (/^0x/i.test(host) || /^0\d+/.test(host) || /^\d+$/.test(host)) {
+    throw new Error(`Forbidden numeric or hex host representation: "${host}".`);
+  }
+  if (/^(\d+|0x[0-9a-f]+)(\.(\d+|0x[0-9a-f]+)){1,3}$/i.test(host)) {
+    if (!/^([1-9]\d{0,2}|0)\.([1-9]\d{0,2}|0)\.([1-9]\d{0,2}|0)\.([1-9]\d{0,2}|0)$/.test(host)) {
+      throw new Error(`Non-canonical IP format is forbidden: "${host}".`);
     }
   }
 
-  return false;
+  // Direct IP format check
+  if (net.isIP(host)) {
+    if (isPrivateOrReservedIp(host)) {
+      throw new Error(`Direct access to private or reserved IP "${host}" is forbidden.`);
+    }
+    return { resolvedIp: host, isIpv6: net.isIPv6(host) };
+  }
+
+  // DNS lookup: resolve ALL addresses
+  let addresses: dns.LookupAddress[] = [];
+  try {
+    addresses = await dns.promises.lookup(host, { all: true });
+  } catch (lookupErr: any) {
+    throw new Error(`DNS resolution failed for hostname "${host}": ${lookupErr?.message || lookupErr}`);
+  }
+
+  if (!addresses || addresses.length === 0) {
+    throw new Error(`Hostname "${host}" could not be resolved.`);
+  }
+
+  // Verify EVERY resolved IP address is strictly public
+  for (const addr of addresses) {
+    if (isPrivateOrReservedIp(addr.address)) {
+      throw new Error(`Hostname "${host}" resolved to forbidden/private IP "${addr.address}".`);
+    }
+  }
+
+  const primary = addresses[0];
+  return {
+    resolvedIp: primary.address,
+    isIpv6: primary.family === 6 || net.isIPv6(primary.address),
+  };
 }
+
 
 export interface MediaFormatDetection {
   type: 'image' | 'video';
@@ -351,6 +535,22 @@ export function detectMediaFormat(
   contentTypeHeader = ''
 ): MediaFormatDetection | null {
   if (!buffer || buffer.length < 4) return null;
+
+  // Reject SVG and HTML strictly (Task S4 & S10)
+  if (isSvgOrHtmlContent(buffer)) {
+    return null;
+  }
+
+  // ICO: 00 00 01 00
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x00 &&
+    buffer[1] === 0x00 &&
+    buffer[2] === 0x01 &&
+    buffer[3] === 0x00
+  ) {
+    return { type: 'image', ext: '.ico', mime: 'image/x-icon' };
+  }
 
   // JPEG: FF D8 FF
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
@@ -427,41 +627,133 @@ export function detectMediaFormat(
     return { type: 'video', ext: '.webm', mime: 'video/webm' };
   }
 
-  // SVG: text check
-  const headerStr = buffer.slice(0, Math.min(buffer.length, 1024)).toString('utf8').trim().toLowerCase();
-  if (
-    headerStr.startsWith('<?xml') ||
-    headerStr.startsWith('<svg') ||
-    headerStr.includes('<svg')
-  ) {
-    if (headerStr.includes('<script') || headerStr.includes('javascript:') || headerStr.includes('onerror=')) {
-      return null;
-    }
-    return { type: 'image', ext: '.svg', mime: 'image/svg+xml' };
-  }
-
-  // MIME header fallback check
-  const cleanHeader = contentTypeHeader.toLowerCase().split(';')[0].trim();
-  if (cleanHeader === 'image/jpeg' || cleanHeader === 'image/jpg') {
-    return { type: 'image', ext: '.jpg', mime: 'image/jpeg' };
-  }
-  if (cleanHeader === 'image/png') {
-    return { type: 'image', ext: '.png', mime: 'image/png' };
-  }
-  if (cleanHeader === 'image/webp') {
-    return { type: 'image', ext: '.webp', mime: 'image/webp' };
-  }
-  if (cleanHeader === 'image/gif') {
-    return { type: 'image', ext: '.gif', mime: 'image/gif' };
-  }
-  if (cleanHeader === 'video/mp4') {
-    return { type: 'video', ext: '.mp4', mime: 'video/mp4' };
-  }
-  if (cleanHeader === 'video/webm') {
-    return { type: 'video', ext: '.webm', mime: 'video/webm' };
-  }
-
   return null;
+}
+
+/**
+ * Scans a buffer to detect SVG, XML, HTML, or script content.
+ * SVG and HTML uploads are strictly rejected to prevent Stored XSS attacks (Task S10).
+ */
+export function isSvgOrHtmlContent(buffer: Buffer): boolean {
+  if (!buffer || buffer.length === 0) return false;
+  const checkLen = Math.min(buffer.length, 4096);
+  const sample = buffer.slice(0, checkLen).toString('utf8').toLowerCase();
+
+  return (
+    sample.includes('<svg') ||
+    sample.includes('<?xml') ||
+    sample.includes('xmlns="http://www.w3.org/2000/svg"') ||
+    sample.includes('xmlns:svg') ||
+    sample.includes('<!doctype') ||
+    sample.includes('<html') ||
+    sample.includes('<head') ||
+    sample.includes('<body') ||
+    sample.includes('<script') ||
+    sample.includes('<iframe') ||
+    sample.includes('onload=') ||
+    sample.includes('onerror=')
+  );
+}
+
+export const DANGEROUS_UPLOAD_EXTENSIONS = new Set([
+  '.exe', '.sh', '.bat', '.cmd', '.php', '.phtml', '.js', '.jsx', '.ts', '.tsx',
+  '.pl', '.py', '.rb', '.cgi', '.jar', '.vbs', '.scr', '.msi', '.com',
+  '.svg', '.html', '.htm', '.xhtml', '.shtml', '.xml'
+]);
+
+export interface UploadValidationOptions {
+  allowVideo?: boolean;
+  allowIco?: boolean;
+  maxSizeBytes?: number;
+}
+
+export interface UploadValidationResult {
+  ok: boolean;
+  error?: string;
+  format?: MediaFormatDetection;
+}
+
+/**
+ * Validates an uploaded file buffer against:
+ * - Forbidden dangerous extensions (.exe, .php, .svg, .html, etc.)
+ * - SVG and HTML content rejection (Stored XSS prevention)
+ * - Binary magic byte verification (detectMediaFormat)
+ * - File size constraints
+ */
+export function validateUploadedFileBuffer(
+  buffer: Buffer,
+  originalFileName: string,
+  declaredMimeType: string = '',
+  options: UploadValidationOptions = {}
+): UploadValidationResult {
+  const ext = path.extname(originalFileName || '').toLowerCase();
+  const mime = (declaredMimeType || '').toLowerCase();
+
+  // 1. Explicitly reject SVG by extension or MIME type (Task S10)
+  if (ext === '.svg' || mime.includes('svg')) {
+    return {
+      ok: false,
+      error: 'SVG uploads are strictly prohibited for security reasons. Please upload JPG, PNG, or WebP.',
+    };
+  }
+
+  // 2. Reject dangerous executable, script, and markup extensions
+  if (DANGEROUS_UPLOAD_EXTENSIONS.has(ext)) {
+    return {
+      ok: false,
+      error: `Upload rejected: file type "${ext}" is strictly prohibited.`,
+    };
+  }
+
+  // 3. Inspect buffer contents for SVG, HTML, or script payload (even if disguised as .jpg or .png)
+  if (isSvgOrHtmlContent(buffer)) {
+    return {
+      ok: false,
+      error: 'Upload rejected: disguised SVG, XML, or HTML markup detected.',
+    };
+  }
+
+  // 4. Validate binary magic bytes
+  const format = detectMediaFormat(buffer, declaredMimeType);
+  if (!format) {
+    return {
+      ok: false,
+      error: 'Unsupported file format or invalid binary signature. Only approved images and videos are permitted.',
+    };
+  }
+
+  // 5. Video permission check
+  if (format.type === 'video' && !options.allowVideo) {
+    return {
+      ok: false,
+      error: 'Video files are not permitted for this upload endpoint.',
+    };
+  }
+
+  // 6. ICO permission check
+  if (format.ext === '.ico' && !options.allowIco) {
+    return {
+      ok: false,
+      error: 'ICO files are only permitted for site favicon uploads.',
+    };
+  }
+
+  // 7. Size constraint check
+  const defaultMaxSize = format.type === 'video' ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
+  const maxSizeBytes = options.maxSizeBytes || defaultMaxSize;
+  if (buffer.length > maxSizeBytes) {
+    const sizeMb = (buffer.length / (1024 * 1024)).toFixed(1);
+    const maxMb = (maxSizeBytes / (1024 * 1024)).toFixed(0);
+    return {
+      ok: false,
+      error: `File is too large (${sizeMb}MB). Maximum allowed size is ${maxMb}MB.`,
+    };
+  }
+
+  return {
+    ok: true,
+    format,
+  };
 }
 
 export interface PersistedMediaResult {
@@ -495,149 +787,166 @@ export async function downloadAndPersistRemoteMedia(
   const opts: DownloadRemoteMediaOptions =
     typeof options === 'string' ? { url: options } : options;
 
-  const rawUrl = (opts.url || '').trim();
-  if (!rawUrl) {
+  let currentUrl = (opts.url || '').trim();
+  if (!currentUrl) {
     throw new Error('Remote media URL is required.');
   }
 
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`Invalid URL format: "${rawUrl}"`);
-  }
-
-  // 1. Protocol Validation: only http and https allowed
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`Unsupported protocol: ${parsed.protocol}. Only HTTP and HTTPS URLs are allowed.`);
-  }
-
-  // 2. SSRF Protection: block private IPs, link-local, loopbacks, internal network
-  if (isPrivateOrLoopbackHost(parsed.hostname)) {
-    throw new Error(`Access to local or private network address "${parsed.hostname}" is forbidden for security.`);
-  }
-
-  // 3. User info forbidden
-  if (parsed.username || parsed.password) {
-    throw new Error('URLs containing embedded credentials are not permitted.');
-  }
-
   const timeoutMs = opts.timeoutMs || DEFAULT_DOWNLOAD_TIMEOUT;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const maxRedirects = 3;
 
-  let response: Response;
-  try {
-    response = await fetch(rawUrl, {
-      signal: controller.signal,
+  let responseBuffer: Buffer | null = null;
+  let responseContentType = '';
+  let finalUrl = currentUrl;
+
+  for (let redirectHop = 0; redirectHop <= maxRedirects; redirectHop++) {
+    // 1. URL Length Constraint
+    if (currentUrl.length > 2048) {
+      throw new Error('URL exceeds maximum permitted length of 2048 characters.');
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(currentUrl);
+    } catch {
+      throw new Error(`Invalid URL format: "${currentUrl}"`);
+    }
+
+    // 2. Protocol Validation: strictly http and https
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`Unsupported protocol: "${parsed.protocol}". Only HTTP and HTTPS are permitted.`);
+    }
+
+    // 3. Port Validation: strictly 80 and 443
+    const port = parsed.port;
+    if (port && port !== '80' && port !== '443') {
+      throw new Error(`Non-standard port "${port}" is forbidden. Only ports 80 and 443 are permitted.`);
+    }
+
+    // 4. Embedded credentials forbidden
+    if (parsed.username || parsed.password) {
+      throw new Error('URLs containing embedded credentials are forbidden.');
+    }
+
+    // 5. SSRF & DNS Validation
+    const { resolvedIp } = await validateHostSSRF(parsed.hostname);
+
+    // 6. Execute request pinned to resolved IP to prevent DNS rebinding
+    const isHttps = parsed.protocol === 'https:';
+    const httpModule = isHttps ? https : http;
+
+    const requestOptions: (http.RequestOptions & https.RequestOptions) = {
+      host: resolvedIp,
+      hostname: resolvedIp,
+      port: port ? parseInt(port, 10) : (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AlHamd-Media-Persistence/1.0',
-        Accept: 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml,video/mp4,video/webm,*/*;q=0.8',
+        Host: parsed.host,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AlHamd-Media/1.0',
+        Accept: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,*/*;q=0.8',
       },
-      redirect: 'follow',
-    });
-  } catch (fetchErr: any) {
-    clearTimeout(timer);
-    if (fetchErr?.name === 'AbortError') {
-      throw new Error(`Download timed out after ${timeoutMs / 1000}s while fetching "${rawUrl}".`);
-    }
-    throw new Error(`Failed to connect to remote server: ${fetchErr?.message || fetchErr}`);
-  } finally {
-    clearTimeout(timer);
-  }
+      servername: isHttps ? parsed.hostname : undefined,
+      timeout: timeoutMs,
+    };
 
-  if (!response.ok) {
-    throw new Error(`Remote server returned HTTP status ${response.status} (${response.statusText}) for "${rawUrl}".`);
-  }
+    const fetchResult = await new Promise<{
+      statusCode: number;
+      location?: string;
+      contentType: string;
+      buffer: Buffer;
+    }>((resolve, reject) => {
+      let isTimedOut = false;
+      const req = httpModule.request(requestOptions, (res) => {
+        const statusCode = res.statusCode || 500;
+        const location = res.headers.location;
+        const contentType = String(res.headers['content-type'] || '');
 
-  const contentTypeHeader = response.headers.get('content-type') || '';
-  const contentLengthHeader = response.headers.get('content-length');
-
-  const isInitialVideo =
-    contentTypeHeader.includes('video/') ||
-    rawUrl.toLowerCase().endsWith('.mp4') ||
-    rawUrl.toLowerCase().endsWith('.webm');
-
-  const maxAllowedBytes =
-    opts.maxSizeBytes || (isInitialVideo ? DEFAULT_MAX_VIDEO_SIZE : DEFAULT_MAX_IMAGE_SIZE);
-
-  if (contentLengthHeader) {
-    const declaredSize = parseInt(contentLengthHeader, 10);
-    if (!isNaN(declaredSize) && declaredSize > maxAllowedBytes) {
-      throw new Error(
-        `Remote media size (${(declaredSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (${(
-          maxAllowedBytes /
-          (1024 * 1024)
-        ).toFixed(1)}MB).`
-      );
-    }
-  }
-
-  // Read response with strict stream size bounding
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('Unable to read stream from remote media server.');
-  }
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        totalBytes += value.length;
-        if (totalBytes > maxAllowedBytes) {
-          throw new Error(
-            `Download aborted: media exceeds maximum size limit of ${(maxAllowedBytes / (1024 * 1024)).toFixed(1)}MB.`
-          );
+        if (statusCode >= 300 && statusCode < 400 && location) {
+          res.resume();
+          return resolve({ statusCode, location, contentType, buffer: Buffer.alloc(0) });
         }
-        chunks.push(value);
+
+        if (statusCode < 200 || statusCode >= 300) {
+          res.resume();
+          return reject(new Error(`Remote server responded with HTTP status ${statusCode}`));
+        }
+
+        const isVideo = contentType.includes('video/') || currentUrl.endsWith('.mp4') || currentUrl.endsWith('.webm');
+        const maxAllowed = opts.maxSizeBytes || (isVideo ? DEFAULT_MAX_VIDEO_SIZE : DEFAULT_MAX_IMAGE_SIZE);
+
+        const chunks: Buffer[] = [];
+        let bytesRead = 0;
+
+        res.on('data', (chunk: Buffer) => {
+          bytesRead += chunk.length;
+          if (bytesRead > maxAllowed) {
+            req.destroy(new Error(`Media stream exceeds maximum limit of ${(maxAllowed / (1024 * 1024)).toFixed(1)}MB`));
+          } else {
+            chunks.push(chunk);
+          }
+        });
+
+        res.on('end', () => {
+          resolve({
+            statusCode,
+            contentType,
+            buffer: Buffer.concat(chunks, bytesRead),
+          });
+        });
+      });
+
+      req.on('timeout', () => {
+        isTimedOut = true;
+        req.destroy(new Error(`Download timed out after ${timeoutMs / 1000} seconds.`));
+      });
+
+      req.on('error', (err) => {
+        if (!isTimedOut) reject(err);
+      });
+
+      req.end();
+    });
+
+    if (fetchResult.statusCode >= 300 && fetchResult.statusCode < 400 && fetchResult.location) {
+      if (redirectHop === maxRedirects) {
+        throw new Error(`Exceeded maximum permitted redirect limit (${maxRedirects}).`);
       }
+      currentUrl = new URL(fetchResult.location, currentUrl).toString();
+      continue;
     }
-  } finally {
-    reader.releaseLock();
+
+    responseBuffer = fetchResult.buffer;
+    responseContentType = fetchResult.contentType;
+    finalUrl = currentUrl;
+    break;
   }
 
-  const buffer = Buffer.concat(chunks, totalBytes);
-  if (buffer.length === 0) {
+  if (!responseBuffer || responseBuffer.length === 0) {
     throw new Error('Downloaded file is empty (0 bytes).');
   }
 
-  // 4. Format & Magic Bytes Validation
-  const format = detectMediaFormat(buffer, contentTypeHeader);
+  // 7. Format & Magic Bytes Validation
+  const format = detectMediaFormat(responseBuffer, responseContentType);
   if (!format) {
-    throw new Error(
-      `Remote file is not a valid or supported image or video format (Received Content-Type: "${contentTypeHeader}").`
-    );
+    throw new Error('Remote file is not a supported image or video format (SVG and HTML rejected).');
   }
 
-  // 5. Determine destination folder and safe filename
+  // 8. Secure stored filename using randomUUID
   const targetFolder: UploadFolder =
     opts.folder || (format.type === 'video' ? 'videos' : 'products');
 
-  const urlPath = parsed.pathname;
-  const rawBaseName = path.basename(urlPath, path.extname(urlPath)) || 'imported';
-  const cleanBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 40);
-  const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const uniqueFileName = `import_${uniqueSuffix}_${cleanBaseName}${format.ext}`;
+  const uniqueFileName = `${crypto.randomUUID()}${format.ext}`;
 
-  // 6. Save directly into persistent storage
-  const saved = await saveMediaBuffer(targetFolder, uniqueFileName, buffer);
-
-  // 7. Verify file was successfully written and stat matches
-  const verifyStat = await fs.promises.stat(saved.filePath);
-  if (verifyStat.size !== buffer.length) {
-    throw new Error('Storage verification failed: size on disk does not match downloaded buffer.');
-  }
+  // 9. Save buffer to persistent storage
+  const saved = await saveMediaBuffer(targetFolder, uniqueFileName, responseBuffer);
 
   return {
     publicUrl: saved.publicUrl,
     filePath: saved.filePath,
     size: saved.size,
     type: format.type,
-    originalUrl: rawUrl,
+    originalUrl: finalUrl,
     fileName: uniqueFileName,
   };
 }

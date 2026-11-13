@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync } from '@/lib/db/adminAuth';
 import { getAllResetRequests } from '@/lib/db/repositories/passwordReset';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

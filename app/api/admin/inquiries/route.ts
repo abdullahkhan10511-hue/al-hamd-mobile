@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession, hasAdminPermission, forbiddenResponse } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import {
   getAllInquiriesFromDb,
   getInquiriesStatsFromDb,
@@ -8,17 +8,9 @@ import { InquiryStatus, InquiryPriority, InquiryType } from '@/types/admin';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin access required.' },
-        { status: 401 }
-      );
-    }
-
-    if (!hasAdminPermission(session, ['inquiries.view', 'inquiries.manage', 'customers.view', 'orders.view'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to view customer inquiries.');
-    }
+    const auth = await requireAdmin(request, ['inquiries.view', 'inquiries.manage', 'customers.view', 'orders.view']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || undefined;

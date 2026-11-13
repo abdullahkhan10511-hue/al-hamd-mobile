@@ -157,7 +157,7 @@ export default function StoreBillSettingsPage() {
     if (!file) return;
 
     setIsUploading(true);
-    const res = await uploadMediaFile(file, admin?.email || 'admin@alhamd.com');
+    const res = await uploadMediaFile(file, admin?.email || 'system');
     setIsUploading(false);
 
     if (res.success && res.item) {
@@ -177,7 +177,7 @@ export default function StoreBillSettingsPage() {
     setIsSaving(true);
     try {
       setSaveError(null);
-      const updated = await updateBillSettings(settings, admin?.email || 'admin@alhamd.com');
+      const updated = await updateBillSettings(settings, admin?.email || 'system');
       setSettings(updated);
       setSavedBaseline(JSON.stringify(updated));
       setSaveSuccess(true);

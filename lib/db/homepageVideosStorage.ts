@@ -1,7 +1,9 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { HomepageVideo } from '@/types/admin';
 import { seedHomepageVideos } from './homepageVideos';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 /**
  * Server Disk Storage & Fallback Cache for Homepage Videos.
@@ -9,7 +11,7 @@ import { seedHomepageVideos } from './homepageVideos';
  * PRIMARY / PRODUCTION STORE: MySQL `homepage_videos` table via `lib/db/repositories/homepageVideos.ts`.
  * SECONDARY / FALLBACK STORE: `data/homepage-videos.json` for offline resilience and local dev caching.
  */
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const VIDEOS_FILE = path.join(DATA_DIR, 'homepage-videos.json');
 
 function ensureDataDir() {

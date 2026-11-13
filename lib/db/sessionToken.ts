@@ -1,10 +1,15 @@
-import { NextRequest } from 'next/server';
+import 'server-only';
+import type { NextRequest } from 'next/server';
 import { ROLE_DEFAULT_PERMISSIONS } from '../constants/permissions';
+import { assertSameOrigin } from '../security/csrf';
 
 export const COOKIE_NAME = 'alhamd_admin_session';
-export const FALLBACK_COOKIE_NAME = 'admin_session';
 export const SESSION_TOKEN_PREFIX = 'v1';
-export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+export const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours (Task X1)
+export const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+export const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
+export const CUSTOMER_TOKEN_PREFIX = 'c1';
+export const CUSTOMER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (Task S5)
 
 export interface AdminSession {
   id?: string;
@@ -216,24 +221,144 @@ function generateSecureNonce(byteLength = 16): string {
  * Reads from environment variables, or derives a deterministic server-side entropy seed.
  * Never hardcoded and never exposed to the client.
  */
-export function getSessionSigningSecret(): string {
-  const envSecret =
-    process.env.SESSION_SECRET ||
-    process.env.ADMIN_JWT_SECRET ||
-    process.env.AUTH_SECRET;
+let devGeneratedSecret: string | null = null;
+let devSecretWarned = false;
 
-  if (envSecret && envSecret.trim().length >= 16) {
-    return envSecret.trim();
+export function getSessionSigningSecret(): string {
+  const envSecret = process.env.SESSION_SECRET?.trim();
+
+  if (envSecret && envSecret.length >= 32) {
+    return envSecret;
   }
 
-  // Consistent server-side salt derived from server environment variables
-  const seed =
-    process.env.MYSQL_PASSWORD ||
-    process.env.ADMIN_PASSWORD ||
-    process.env.DB_PASSWORD ||
-    'alhamd_shop_prod_secret_seed_2026';
+  // S2.1: Fail closed in production when SESSION_SECRET is missing or < 32 characters
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET must be set (min 32 chars) in production');
+  }
 
-  return sha256Hex(`alhamd_secure_signing_key:${seed}`);
+  // S2.1: Development only fallback: generate random per-process secret (Edge and Node safe)
+  if (!devGeneratedSecret) {
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      const bytes = new Uint8Array(32);
+      globalThis.crypto.getRandomValues(bytes);
+      devGeneratedSecret = Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    } else {
+      devGeneratedSecret = `dev_random_${Math.random().toString(36).substring(2)}${Date.now()}${Math.random().toString(36).substring(2)}`;
+      while (devGeneratedSecret.length < 32) {
+        devGeneratedSecret += Math.random().toString(36).substring(2);
+      }
+    }
+  }
+
+  if (!devSecretWarned) {
+    devSecretWarned = true;
+    console.warn(
+      '[WARN] Using ephemeral SESSION_SECRET. Set SESSION_SECRET in .env.local for persistent sessions.'
+    );
+  }
+
+  return devGeneratedSecret;
+}
+
+/**
+ * Derives a dedicated signing key for customer sessions from SESSION_SECRET.
+ * Uses HMAC-SHA256(SESSION_SECRET, "customer-session") to ensure mathematical
+ * key separation: customer tokens can NEVER be verified as admin tokens and vice-versa.
+ */
+export function getCustomerSigningSecret(): string {
+  const masterSecret = getSessionSigningSecret();
+  return hmacSha256Base64Url(masterSecret, 'customer-session');
+}
+
+export interface CustomerTokenPayload {
+  typ: 'customer';
+  sub: string; // customer id
+  email: string;
+  shopName?: string;
+  customerType?: string; // 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE'
+  iat: number;
+  exp: number;
+  nonce: string;
+}
+
+/**
+ * Creates a cryptographically signed, tamper-resistant customer session token.
+ * Output format: c1.<base64url(payload)>.<base64url(hmac)>
+ */
+export function createSignedCustomerToken(data: {
+  id: string;
+  email: string;
+  shopName?: string;
+  customerType?: string;
+  expiresAt?: number;
+}): string {
+  const secret = getCustomerSigningSecret();
+  const now = Date.now();
+  const exp = typeof data.expiresAt === 'number' ? data.expiresAt : now + CUSTOMER_SESSION_TTL_MS;
+
+  const payload: CustomerTokenPayload = {
+    typ: 'customer',
+    sub: data.id,
+    email: data.email.trim().toLowerCase(),
+    shopName: data.shopName?.trim() || undefined,
+    customerType: data.customerType || 'RETAIL',
+    iat: now,
+    exp,
+    nonce: generateSecureNonce(16),
+  };
+
+  const payloadEncoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const signatureInput = `${CUSTOMER_TOKEN_PREFIX}.${payloadEncoded}`;
+  const hmac = hmacSha256Base64Url(secret, signatureInput);
+
+  return `${signatureInput}.${hmac}`;
+}
+
+/**
+ * Verifies the cryptographic HMAC signature and expiration timestamp of a customer session token.
+ * Uses constant-time comparison to prevent timing side-channel attacks.
+ * Rejects unsigned JSON cookies, admin tokens, tampered signatures, and expired tokens.
+ */
+export function verifySignedCustomerToken(token: string | undefined | null): CustomerTokenPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const trimmed = token.trim();
+
+  // Fast check: must be a 3-part dot-separated string starting with c1
+  const parts = trimmed.split('.');
+  if (parts.length !== 3) return null;
+
+  const [version, payloadEncoded, providedHmac] = parts;
+  if (version !== CUSTOMER_TOKEN_PREFIX) return null;
+  if (!payloadEncoded || !providedHmac) return null;
+
+  try {
+    const secret = getCustomerSigningSecret();
+    const signatureInput = `${version}.${payloadEncoded}`;
+    const expectedHmac = hmacSha256Base64Url(secret, signatureInput);
+
+    if (!constantTimeEqual(providedHmac, expectedHmac)) {
+      return null; // Tampered or invalid cryptographic signature
+    }
+
+    const payloadJson = base64UrlToUtf8(payloadEncoded);
+    const payload = JSON.parse(payloadJson) as CustomerTokenPayload;
+
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.typ !== 'customer') return null; // Reject non-customer tokens
+    if (!payload.sub || !payload.email || typeof payload.email !== 'string') return null;
+    if (typeof payload.exp !== 'number' || payload.exp <= Date.now()) {
+      return null; // Expired session
+    }
+
+    return payload;
+  } catch (err: any) {
+    if (process.env.NODE_ENV === 'production' && err?.message?.includes('SESSION_SECRET')) {
+      console.error('[SECURITY ERROR] Customer token verification failed:', err.message);
+    }
+    return null;
+  }
 }
 
 /**
@@ -306,18 +431,20 @@ export function verifySignedSessionToken(token: string): SessionTokenPayload | n
     }
 
     return payload;
-  } catch {
+  } catch (err: any) {
+    if (process.env.NODE_ENV === 'production' && err?.message?.includes('SESSION_SECRET')) {
+      console.error('[SECURITY ERROR] Token verification failed:', err.message);
+    }
     return null;
   }
 }
 
 /**
- * Extracts candidate token string from cookies or Authorization Bearer header.
+ * Extracts candidate admin token string exclusively from the authoritative httpOnly session cookie.
+ * (Bearer header parsing removed per Task S9.3 to minimize attack surface).
  */
 export function extractRawToken(request: NextRequest): string | null {
-  const cookieVal =
-    request.cookies.get(COOKIE_NAME)?.value ||
-    request.cookies.get(FALLBACK_COOKIE_NAME)?.value;
+  const cookieVal = request.cookies.get(COOKIE_NAME)?.value;
 
   if (cookieVal) {
     let clean = cookieVal.trim();
@@ -327,26 +454,9 @@ export function extractRawToken(request: NextRequest): string | null {
     if (clean.includes('%')) {
       try {
         clean = decodeURIComponent(clean);
-      } catch {}
+      } catch { }
     }
     return clean;
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    if (token) {
-      let clean = token;
-      if (clean.startsWith('"') && clean.endsWith('"') && clean.length > 2) {
-        clean = clean.slice(1, -1);
-      }
-      if (clean.includes('%')) {
-        try {
-          clean = decodeURIComponent(clean);
-        } catch {}
-      }
-      return clean;
-    }
   }
 
   return null;
@@ -367,19 +477,7 @@ export function extractVerifiedSessionPayload(request: NextRequest): SessionToke
  * Protects cookie-authenticated requests against Cross-Site Request Forgery (CSRF).
  */
 export function verifyCsrfOrigin(request: NextRequest): boolean {
-  const origin = request.headers.get('origin');
-  if (!origin) return true; // Non-browser / curl requests
-
-  const host = request.headers.get('host');
-  if (!host) return false;
-
-  try {
-    const originUrl = new URL(origin);
-    const originHost = originUrl.host;
-    return originHost === host;
-  } catch {
-    return false;
-  }
+  return assertSameOrigin(request).ok;
 }
 
 /**
@@ -397,17 +495,12 @@ export function hasAdminPermission(
   const role = (('role' in session && session.role) ? session.role : '').toUpperCase();
 
   // Root owner and Super Admin emergency / recovery bypass
+  const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const isRootOwner = Boolean(
     ('isOwner' in session && session.isOwner) ||
-    ('id' in session && session.id === 'staff-owner-1') ||
-    ('sub' in session && session.sub === 'staff-owner-1') ||
     role === 'SUPER_ADMIN' ||
     role === 'OWNER' ||
-    (session.email && (
-      session.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      session.email.toLowerCase() === 'admin@alhamd.com'
-    )) ||
-    (process.env.ADMIN_EMAIL && session.email && session.email.toLowerCase() === process.env.ADMIN_EMAIL.trim().toLowerCase())
+    (envAdminEmail && session.email && session.email.toLowerCase() === envAdminEmail)
   );
   if (isRootOwner) return true;
 
@@ -445,179 +538,179 @@ export function hasAdminPermission(
     if (p === 'staff.change_roles' && (userPerms.includes('staff.manage') || userPerms.includes('staff.change_roles') || userPerms.includes('staff.edit'))) return true;
     if (p === 'staff.reset_passwords' && (userPerms.includes('staff.manage') || userPerms.includes('staff.reset_passwords') || userPerms.includes('staff.edit'))) return true;
 
-      // Semantic aliases: brands
-      if (
-        (p === 'brands.add' || p === 'brands.create') &&
-        (userPerms.includes('brands.add') || userPerms.includes('brands.create') || userPerms.includes('brands.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'brands.view' &&
-        (userPerms.includes('brands.manage') || userPerms.includes('brands.add') || userPerms.includes('brands.edit') || userPerms.includes('brands.view'))
-      ) {
-        return true;
-      }
-      if (p === 'brands.edit' && (userPerms.includes('brands.manage') || userPerms.includes('brands.edit'))) return true;
-      if (p === 'brands.delete' && (userPerms.includes('brands.manage') || userPerms.includes('brands.delete'))) return true;
+    // Semantic aliases: brands
+    if (
+      (p === 'brands.add' || p === 'brands.create') &&
+      (userPerms.includes('brands.add') || userPerms.includes('brands.create') || userPerms.includes('brands.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'brands.view' &&
+      (userPerms.includes('brands.manage') || userPerms.includes('brands.add') || userPerms.includes('brands.edit') || userPerms.includes('brands.view'))
+    ) {
+      return true;
+    }
+    if (p === 'brands.edit' && (userPerms.includes('brands.manage') || userPerms.includes('brands.edit'))) return true;
+    if (p === 'brands.delete' && (userPerms.includes('brands.manage') || userPerms.includes('brands.delete'))) return true;
 
-      // Semantic aliases: categories
-      if (
-        (p === 'categories.add' || p === 'categories.create') &&
-        (userPerms.includes('categories.add') || userPerms.includes('categories.create') || userPerms.includes('categories.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'categories.view' &&
-        (userPerms.includes('categories.manage') || userPerms.includes('categories.add') || userPerms.includes('categories.edit') || userPerms.includes('categories.view'))
-      ) {
-        return true;
-      }
-      if (p === 'categories.edit' && (userPerms.includes('categories.manage') || userPerms.includes('categories.edit'))) return true;
-      if (p === 'categories.delete' && (userPerms.includes('categories.manage') || userPerms.includes('categories.delete'))) return true;
+    // Semantic aliases: categories
+    if (
+      (p === 'categories.add' || p === 'categories.create') &&
+      (userPerms.includes('categories.add') || userPerms.includes('categories.create') || userPerms.includes('categories.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'categories.view' &&
+      (userPerms.includes('categories.manage') || userPerms.includes('categories.add') || userPerms.includes('categories.edit') || userPerms.includes('categories.view'))
+    ) {
+      return true;
+    }
+    if (p === 'categories.edit' && (userPerms.includes('categories.manage') || userPerms.includes('categories.edit'))) return true;
+    if (p === 'categories.delete' && (userPerms.includes('categories.manage') || userPerms.includes('categories.delete'))) return true;
 
-      // Semantic aliases: products (strictly isolated from inventory stock adjust!)
-      if (
-        (p === 'products.add' || p === 'products.create') &&
-        (userPerms.includes('products.add') || userPerms.includes('products.create') || userPerms.includes('products.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'products.view' &&
-        (userPerms.includes('products.view') || userPerms.includes('products.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'products.edit' &&
-        (userPerms.includes('products.edit') || userPerms.includes('products.manage'))
-      ) {
-        return true;
-      }
-      if (p === 'products.delete' && (userPerms.includes('products.delete') || userPerms.includes('products.manage'))) return true;
+    // Semantic aliases: products (strictly isolated from inventory stock adjust!)
+    if (
+      (p === 'products.add' || p === 'products.create') &&
+      (userPerms.includes('products.add') || userPerms.includes('products.create') || userPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'products.view' &&
+      (userPerms.includes('products.view') || userPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'products.edit' &&
+      (userPerms.includes('products.edit') || userPerms.includes('products.manage'))
+    ) {
+      return true;
+    }
+    if (p === 'products.delete' && (userPerms.includes('products.delete') || userPerms.includes('products.manage'))) return true;
 
-      // Semantic aliases: inventory
-      if (
-        p === 'inventory.view' &&
-        (userPerms.includes('inventory.view') || userPerms.includes('inventory.manage'))
-      ) {
-        return true;
-      }
-      if (
-        (p === 'inventory.adjust_stock' || p === 'inventory.stock.edit' || p === 'inventory.stock') &&
-        (userPerms.includes('inventory.adjust_stock') || userPerms.includes('inventory.stock.edit') || userPerms.includes('inventory.stock') || userPerms.includes('inventory.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'inventory.edit_warning' &&
-        (userPerms.includes('inventory.edit_warning') || userPerms.includes('inventory.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'inventory.shop_bill' &&
-        (userPerms.includes('inventory.shop_bill') || userPerms.includes('inventory.manage'))
-      ) {
-        return true;
-      }
+    // Semantic aliases: inventory
+    if (
+      p === 'inventory.view' &&
+      (userPerms.includes('inventory.view') || userPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      (p === 'inventory.adjust_stock' || p === 'inventory.stock.edit' || p === 'inventory.stock') &&
+      (userPerms.includes('inventory.adjust_stock') || userPerms.includes('inventory.stock.edit') || userPerms.includes('inventory.stock') || userPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'inventory.edit_warning' &&
+      (userPerms.includes('inventory.edit_warning') || userPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'inventory.shop_bill' &&
+      (userPerms.includes('inventory.shop_bill') || userPerms.includes('inventory.manage'))
+    ) {
+      return true;
+    }
 
-      // Semantic aliases: orders
-      if (
-        p === 'orders.view' &&
-        (userPerms.includes('orders.view') || userPerms.includes('orders.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'orders.update_status' &&
-        (userPerms.includes('orders.update_status') || userPerms.includes('orders.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'orders.process' &&
-        (userPerms.includes('orders.process') || userPerms.includes('orders.manage'))
-      ) {
-        return true;
-      }
+    // Semantic aliases: orders
+    if (
+      p === 'orders.view' &&
+      (userPerms.includes('orders.view') || userPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'orders.update_status' &&
+      (userPerms.includes('orders.update_status') || userPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'orders.process' &&
+      (userPerms.includes('orders.process') || userPerms.includes('orders.manage'))
+    ) {
+      return true;
+    }
 
-      // Semantic aliases: promotions & deals
-      if (
-        (p === 'promotions.add' || p === 'promotions.create') &&
-        (userPerms.includes('promotions.add') || userPerms.includes('promotions.create') || userPerms.includes('promotions.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'promotions.view' &&
-        (userPerms.includes('promotions.view') || userPerms.includes('promotions.manage') || userPerms.includes('deals.view'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'promotions.edit' &&
-        (userPerms.includes('promotions.edit') || userPerms.includes('promotions.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'promotions.delete' &&
-        (userPerms.includes('promotions.delete') || userPerms.includes('promotions.manage'))
-      ) {
-        return true;
-      }
-      if (
-        (p === 'deals.manage' || p === 'deals.edit') &&
-        (userPerms.includes('deals.manage') || userPerms.includes('promotions.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'deals.view' &&
-        (userPerms.includes('deals.view') || userPerms.includes('deals.manage') || userPerms.includes('promotions.view'))
-      ) {
-        return true;
-      }
+    // Semantic aliases: promotions & deals
+    if (
+      (p === 'promotions.add' || p === 'promotions.create') &&
+      (userPerms.includes('promotions.add') || userPerms.includes('promotions.create') || userPerms.includes('promotions.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'promotions.view' &&
+      (userPerms.includes('promotions.view') || userPerms.includes('promotions.manage') || userPerms.includes('deals.view'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'promotions.edit' &&
+      (userPerms.includes('promotions.edit') || userPerms.includes('promotions.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'promotions.delete' &&
+      (userPerms.includes('promotions.delete') || userPerms.includes('promotions.manage'))
+    ) {
+      return true;
+    }
+    if (
+      (p === 'deals.manage' || p === 'deals.edit') &&
+      (userPerms.includes('deals.manage') || userPerms.includes('promotions.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'deals.view' &&
+      (userPerms.includes('deals.view') || userPerms.includes('deals.manage') || userPerms.includes('promotions.view'))
+    ) {
+      return true;
+    }
 
-      // Semantic aliases: settings
-      if (
-        (p === 'settings.edit' || p === 'settings.update' || p === 'settings.manage') &&
-        (userPerms.includes('settings.edit') || userPerms.includes('settings.manage') || userPerms.includes('settings.update'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'settings.view' &&
-        (userPerms.includes('settings.view') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
-      ) {
-        return true;
-      }
+    // Semantic aliases: settings
+    if (
+      (p === 'settings.edit' || p === 'settings.update' || p === 'settings.manage') &&
+      (userPerms.includes('settings.edit') || userPerms.includes('settings.manage') || userPerms.includes('settings.update'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'settings.view' &&
+      (userPerms.includes('settings.view') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
+    ) {
+      return true;
+    }
 
-      // Semantic aliases: website content & navigation
-      if (
-        p === 'content.homepage' &&
-        (userPerms.includes('content.homepage') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'content.banners' &&
-        (userPerms.includes('content.banners') || userPerms.includes('content.homepage') || userPerms.includes('settings.edit'))
-      ) {
-        return true;
-      }
-      if (
-        p === 'content.navigation' &&
-        (userPerms.includes('content.navigation') || userPerms.includes('pages.manage_nav') || userPerms.includes('settings.edit'))
-      ) {
-        return true;
-      }
+    // Semantic aliases: website content & navigation
+    if (
+      p === 'content.homepage' &&
+      (userPerms.includes('content.homepage') || userPerms.includes('settings.edit') || userPerms.includes('settings.manage'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'content.banners' &&
+      (userPerms.includes('content.banners') || userPerms.includes('content.homepage') || userPerms.includes('settings.edit'))
+    ) {
+      return true;
+    }
+    if (
+      p === 'content.navigation' &&
+      (userPerms.includes('content.navigation') || userPerms.includes('pages.manage_nav') || userPerms.includes('settings.edit'))
+    ) {
+      return true;
+    }
 
-      return false;
-    });
+    return false;
+  });
 
   return false;
 }

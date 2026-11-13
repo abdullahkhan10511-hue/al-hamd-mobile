@@ -1,6 +1,6 @@
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export interface MediaItem {
   id: string;
@@ -115,7 +115,7 @@ export async function uploadMediaFile(
   }
 }
 
-export async function deleteMediaItem(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteMediaItem(id: string, adminEmail = 'system'): Promise<boolean> {
   const current = getMediaItems();
   const target = current.find((m) => m.id === id);
   if (!target) return false;

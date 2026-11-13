@@ -6,6 +6,7 @@ import {
   saveHomepageVideoInDb,
   deleteHomepageVideoInDb,
   reorderHomepageVideosInDb,
+  hasHeroMobileColumns,
 } from '@/lib/db/repositories/homepageVideos';
 import {
   readPersistentHomepageVideos,
@@ -16,13 +17,13 @@ import {
 } from '@/lib/db/homepageVideosStorage';
 import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
-  const session = getAdminSession(request);
+  const session = await getAdminSessionAsync(request);
   if (!session) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
@@ -58,8 +59,10 @@ export async function GET(request: NextRequest) {
       return a.id.localeCompare(b.id);
     });
 
+    const mobileColumnsSupported = isDbConfigured() ? await hasHeroMobileColumns() : true;
+
     return NextResponse.json(
-      { success: true, items, videos: items },
+      { success: true, items, videos: items, mobileColumnsSupported },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -76,7 +79,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify homepage videos.' },

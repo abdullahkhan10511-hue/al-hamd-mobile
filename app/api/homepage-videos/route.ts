@@ -3,6 +3,8 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getActiveHomepageVideosFromDb } from '@/lib/db/repositories/homepageVideos';
 import { readPersistentHomepageVideos } from '@/lib/db/homepageVideosStorage';
 import { HomepageVideo } from '@/types/admin';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
+import { getHeroMediaType } from '@/lib/db/homepageVideos';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -44,6 +46,12 @@ export async function GET(request: NextRequest) {
       return (a.id || '').localeCompare(b.id || '');
     });
 
+    activePlayable.forEach((v) => {
+      if (!v.mediaType) {
+        v.mediaType = getHeroMediaType(v.url, v.mimeType);
+      }
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -52,9 +60,7 @@ export async function GET(request: NextRequest) {
         activeVideos: activePlayable,
       },
       {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err: any) {
@@ -68,9 +74,7 @@ export async function GET(request: NextRequest) {
       },
       {
         status: 500,
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   }

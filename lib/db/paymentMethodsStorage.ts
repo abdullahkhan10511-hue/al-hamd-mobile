@@ -1,14 +1,17 @@
+import 'server-only';
 import fs from 'fs';
-import path from 'path';
 import { PaymentMethodConfig, PaymentSecuritySettings } from '@/types/admin';
 import { seedPaymentMethods, seedPaymentSecuritySettings } from './paymentMethods';
+import { getDataDir, getDataFilePath } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const PAYMENT_METHODS_FILE = path.join(DATA_DIR, 'payment-methods.json');
+function getPaymentMethodsFile(): string {
+  return getDataFilePath('payment-methods.json');
+}
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+function ensureDataDir(): void {
+  const dir = getDataDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -17,25 +20,45 @@ export interface PersistentPaymentConfig {
   security: PaymentSecuritySettings;
 }
 
+/**
+ * Computes default allowedCustomerTypes based on payment method type for backward compatibility:
+ * - type === 'cod' -> ['RETAIL']
+ * - every other type -> ['WHOLESALE', 'SUPER_WHOLESALE']
+ */
+export function computeAllowedCustomerTypes(method: Pick<PaymentMethodConfig, 'type' | 'allowedCustomerTypes'>): ('RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE')[] {
+  if (Array.isArray(method.allowedCustomerTypes) && method.allowedCustomerTypes.length > 0) {
+    const valid = method.allowedCustomerTypes.filter((t) => t === 'RETAIL' || t === 'WHOLESALE' || t === 'SUPER_WHOLESALE');
+    if (valid.length > 0) return valid;
+  }
+  return method.type === 'cod' ? ['RETAIL'] : ['WHOLESALE', 'SUPER_WHOLESALE'];
+}
+
 export function readPersistentPaymentConfig(): PersistentPaymentConfig {
+  const filePath = getPaymentMethodsFile();
   try {
     ensureDataDir();
-    if (fs.existsSync(PAYMENT_METHODS_FILE)) {
-      const content = fs.readFileSync(PAYMENT_METHODS_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (parsed && typeof parsed === 'object') {
-        const methods = Array.isArray(parsed.methods) && parsed.methods.length > 0
+        const rawMethods: PaymentMethodConfig[] = Array.isArray(parsed.methods) && parsed.methods.length > 0
           ? parsed.methods.map((pm: PaymentMethodConfig) => {
               const seed = seedPaymentMethods.find((s) => s.id === pm.id);
-              return seed ? { ...seed, ...pm } : pm;
+              const merged = seed ? { ...seed, ...pm } : pm;
+              merged.allowedCustomerTypes = computeAllowedCustomerTypes(merged);
+              return merged;
             })
-          : seedPaymentMethods;
+          : seedPaymentMethods.map((m) => ({
+              ...m,
+              allowedCustomerTypes: computeAllowedCustomerTypes(m),
+            }));
+
         const security = parsed.security && typeof parsed.security === 'object'
           ? { ...seedPaymentSecuritySettings, ...parsed.security }
           : seedPaymentSecuritySettings;
 
         return {
-          methods: methods.sort((a: PaymentMethodConfig, b: PaymentMethodConfig) => (a.displayOrder || 0) - (b.displayOrder || 0)),
+          methods: rawMethods.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)),
           security,
         };
       }
@@ -44,28 +67,41 @@ export function readPersistentPaymentConfig(): PersistentPaymentConfig {
     console.warn('Error reading payment-methods.json:', err);
   }
 
+  const defaultMethods = seedPaymentMethods.map((m) => ({
+    ...m,
+    allowedCustomerTypes: computeAllowedCustomerTypes(m),
+  }));
+
   const defaults: PersistentPaymentConfig = {
-    methods: seedPaymentMethods,
+    methods: defaultMethods,
     security: seedPaymentSecuritySettings,
   };
 
   try {
     ensureDataDir();
-    fs.writeFileSync(PAYMENT_METHODS_FILE, JSON.stringify(defaults, null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(defaults, null, 2), 'utf8');
   } catch {}
 
   return defaults;
 }
 
 export function writePersistentPaymentConfig(data: Partial<PersistentPaymentConfig>): void {
+  const filePath = getPaymentMethodsFile();
   try {
     ensureDataDir();
     const current = readPersistentPaymentConfig();
+    const updatedMethods = data.methods
+      ? data.methods.map((m) => ({
+          ...m,
+          allowedCustomerTypes: computeAllowedCustomerTypes(m),
+        })).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+      : current.methods;
+
     const updated: PersistentPaymentConfig = {
-      methods: data.methods ? data.methods.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)) : current.methods,
+      methods: updatedMethods,
       security: data.security ? { ...current.security, ...data.security } : current.security,
     };
-    fs.writeFileSync(PAYMENT_METHODS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf8');
   } catch (err) {
     console.error('Failed to write payment-methods.json:', err);
     throw new Error('Failed to write payment methods configuration to persistent server storage.');

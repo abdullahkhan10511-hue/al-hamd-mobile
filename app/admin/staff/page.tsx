@@ -5,18 +5,17 @@ import { PermissionManager } from '@/components/admin/PermissionManager';
 import { StaffUser, StaffRole, AdminRole, PermissionModule } from '@/types/admin';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import {
-  getStaffUsers,
-  getStaffRoles,
-  createStaffUser,
-  updateStaffUser,
-  deleteStaffUser,
-  toggleStaffStatus,
-  resetStaffPassword,
-  createStaffRole,
-  updateStaffRole,
-  deleteStaffRole,
-  getAdminAuthHeaders,
-} from '@/lib/db/staff';
+  fetchStaffUsersApi as getStaffUsers,
+  getStaffRolesLocal as getStaffRoles,
+  createStaffUserApi as createStaffUser,
+  updateStaffUserApi as updateStaffUser,
+  deleteStaffUserApi as deleteStaffUser,
+  resetStaffPasswordApi as resetStaffPassword,
+  createStaffRoleLocal as createStaffRole,
+  updateStaffRoleLocal as updateStaffRole,
+  deleteStaffRoleLocal as deleteStaffRole,
+} from '@/lib/client/staffApi';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import {
   ALL_PERMISSIONS,
   PERMISSION_MODULES,
@@ -105,34 +104,13 @@ export default function StaffManagementPage() {
   const [deleteRoleTarget, setDeleteRoleTarget] = useState<StaffRole | null>(null);
 
   // Load & listen
-  const loadAllData = () => {
-    setStaffList(getStaffUsers());
+  const loadAllData = async () => {
     setRoleList(getStaffRoles());
     if (typeof window !== 'undefined') {
-      fetch('/api/admin/staff', {
-        headers: getAdminAuthHeaders(currentAdmin?.email),
-        credentials: 'include',
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && data.success && Array.isArray(data.staff)) {
-            const localUsers = getStaffUsers();
-            const merged: StaffUser[] = data.staff.map((s: StaffUser) => {
-              const local = localUsers.find((l) => l.email.toLowerCase() === s.email.toLowerCase());
-              return {
-                ...s,
-                salt: s.salt || local?.salt,
-                passwordHash: s.passwordHash || local?.passwordHash,
-              };
-            });
-            setStaffList(merged);
-            try {
-              localStorage.setItem('admin_users', JSON.stringify(merged));
-              localStorage.setItem('alhamd_store_admin_users', JSON.stringify(merged));
-            } catch {}
-          }
-        })
-        .catch(() => {});
+      try {
+        const staff = await getStaffUsers();
+        setStaffList(staff);
+      } catch {}
     }
   };
 

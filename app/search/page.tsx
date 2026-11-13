@@ -16,7 +16,7 @@ import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
-import { formatPrice, getProductImage, DEFAULT_PRODUCT_IMAGE, normalizeSearchText } from '@/lib/utils';
+import { formatPrice, getProductImage, DEFAULT_PRODUCT_IMAGE, normalizeSearchText, isStorefrontVisibleProduct } from '@/lib/utils';
 import { Product, Category } from '@/types';
 import {
   getSavedListingState,
@@ -68,29 +68,9 @@ function SearchContent() {
   }, [currentUrl]);
 
   const [inputQuery, setInputQuery] = useState(rawQuery);
-  const [productsList, setProductsList] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      return getProducts().filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false
-      );
-    }
-    return [];
-  });
-  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
-    if (typeof window !== 'undefined') {
-      return deduplicateCategoriesById(getActiveCategories());
-    }
-    return [];
-  });
-  const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>(() => {
-    if (typeof window !== 'undefined') {
-      return getBrands().filter((b) => b.status === 'active');
-    }
-    return [];
-  });
+  const [productsList, setProductsList] = useState<Product[]>([]);
+  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const [brandsList, setBrandsList] = useState<{ id: string; name: string }[]>([]);
 
   // Filter & Sort States
   const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
@@ -139,12 +119,7 @@ function SearchContent() {
     if (prods.length === 0) {
       prods = await syncProductsFromApi().catch(() => []);
     }
-    const all = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
+    const all = prods.filter(isStorefrontVisibleProduct);
     setProductsList(all);
 
     const cats = deduplicateCategoriesById(getActiveCategories());
@@ -159,12 +134,7 @@ function SearchContent() {
 
   const refreshFromCache = () => {
     const prods = getProducts();
-    const all = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
+    const all = prods.filter(isStorefrontVisibleProduct);
     setProductsList(all);
     setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
     setBrandsList(getBrands().filter((b) => b.status === 'active'));
@@ -521,7 +491,7 @@ function SearchContent() {
                   <h4 className="text-xs font-semibold text-neutral-900 line-clamp-1 group-hover:text-neutral-700">
                     {prod.name}
                   </h4>
-                  <p className="text-xs font-mono font-bold text-neutral-950 mt-1">
+                  <p className="text-xs font-bold tabular-nums text-neutral-950 mt-1">
                     {formatPrice(prod.price)}
                   </p>
                 </Link>
@@ -566,7 +536,7 @@ function SearchContent() {
                 Showing {matchingProducts.length} product{matchingProducts.length !== 1 ? 's' : ''} for &ldquo;{rawQuery}&rdquo;
               </span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
               {matchingProducts.slice(0, visibleCount).map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}

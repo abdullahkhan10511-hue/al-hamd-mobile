@@ -1,3 +1,4 @@
+import 'server-only';
 import { StaffUser, StaffRole, AdminRole } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
@@ -12,39 +13,12 @@ const STAFF_COLLECTION = 'admin_users';
 const ROLES_COLLECTION = 'staff_roles';
 
 export function getAdminAuthHeaders(operatorEmail?: string): HeadersInit {
-  const headers: Record<string, string> = {
+  return {
     'Content-Type': 'application/json',
   };
-
-  if (typeof window !== 'undefined') {
-    // 1. Check for stored cryptographic session token
-    try {
-      const storedToken =
-        sessionStorage.getItem('alhamd_admin_token') ||
-        localStorage.getItem('alhamd_admin_token');
-      if (storedToken && storedToken.startsWith('v1.')) {
-        headers['Authorization'] = `Bearer ${storedToken.trim()}`;
-        return headers;
-      }
-    } catch {}
-
-    // 2. Check for signed session cookie if readable by document.cookie
-    try {
-      const match = document.cookie.match(/(?:^|;\s*)(?:alhamd_admin_session|admin_session)=([^;]*)/);
-      if (match && match[1] && match[1].startsWith('v1.')) {
-        headers['Authorization'] = `Bearer ${match[1].trim()}`;
-        return headers;
-      }
-    } catch {}
-  }
-
-  return headers;
 }
 
-// Initial pre-hashed fallback constants for instant synchronous boot
-const SEED_SALT = 'fd9205ff2f83d43d1744b872fc962cfe';
-// Salted SHA-256 Web Crypto hash for AlHamd@Admin2026!
-const SEED_HASH = 'e540ebe0a9c6ce8109025d4436d1867a15d8ec213af7a0fa9bd470d3aa64a2d6';
+// Initial seed constants: accounts have no default passwords (must be configured via setup-admin or ADMIN_PASSWORD)
 
 export const INITIAL_SYSTEM_ROLES: StaffRole[] = [
   {
@@ -71,15 +45,13 @@ export const INITIAL_STAFF_USERS: StaffUser[] = [
   {
     id: 'staff-owner-1',
     name: 'Chief Administrator',
-    email: 'admin@alhamdmobile.com',
+    email: 'owner@example.com',
     phone: '+92 300 1234567',
     role: 'ADMIN',
     permissions: [...ALL_PERMISSION_KEYS],
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
+    avatar: '',
     status: 'active',
     isOwner: true,
-    salt: SEED_SALT,
-    passwordHash: SEED_HASH,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastLogin: '2026-03-01T12:00:00.000Z',
   },
@@ -115,7 +87,7 @@ export function getStaffRoles(): StaffRole[] {
 
 export async function createStaffRole(
   data: { name: string; description: string; permissions: string[] },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; role?: StaffRole; error?: string }> {
   const roles = getStaffRoles();
   const trimmedName = data.name.trim();
@@ -154,7 +126,7 @@ export async function createStaffRole(
 export async function updateStaffRole(
   id: string,
   updates: Partial<Pick<StaffRole, 'name' | 'description' | 'permissions'>>,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const roles = getStaffRoles();
   const index = roles.findIndex((r) => r.id === id);
@@ -187,7 +159,7 @@ export async function updateStaffRole(
 
 export async function deleteStaffRole(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const roles = getStaffRoles();
   const targetRole = roles.find((r) => r.id === id);
@@ -236,12 +208,6 @@ export function getStaffUsers(): StaffUser[] {
   const migrated = users.map((u) => {
     const userCopy = { ...u };
 
-    // Standardize default seed owner account without overwriting other admin accounts
-    if (userCopy.id === 'staff-owner-1' && userCopy.email.toLowerCase() === 'admin@alhamd.com') {
-      userCopy.email = 'admin@alhamdmobile.com';
-      modified = true;
-    }
-
     // Ensure permissions array exists and is hydrated for admin/super-admin/owner
     if (
       !Array.isArray(userCopy.permissions) ||
@@ -251,13 +217,6 @@ export function getStaffUsers(): StaffUser[] {
         userCopy.isOwner || userCopy.role === 'SUPER_ADMIN' || userCopy.role === 'OWNER'
           ? [...ALL_PERMISSION_KEYS]
           : (ROLE_DEFAULT_PERMISSIONS[userCopy.role] || []);
-      modified = true;
-    }
-
-    // Ensure salt & passwordHash exist
-    if (!userCopy.passwordHash || !userCopy.salt) {
-      userCopy.salt = SEED_SALT;
-      userCopy.passwordHash = SEED_HASH;
       modified = true;
     }
 
@@ -294,16 +253,7 @@ export function getStaffByEmail(email: string): StaffUser | undefined {
   if (!email) return undefined;
   const normalized = email.toLowerCase().trim();
   const users = getStaffUsers();
-  const directMatch = users.find((s) => s.email.toLowerCase() === normalized);
-  if (directMatch) return directMatch;
-
-  if (normalized === 'admin@alhamd.com' || normalized === 'admin@alhamdmobile.com') {
-    return users.find(
-      (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
-    );
-  }
-
-  return undefined;
+  return users.find((s) => s.email.toLowerCase() === normalized);
 }
 
 export async function createStaffUser(
@@ -317,7 +267,7 @@ export async function createStaffUser(
     status?: 'active' | 'inactive';
     permissions?: string[];
   },
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; staff?: StaffUser; error?: string }> {
   const users = getStaffUsers();
   const normalizedEmail = (data.email || '').trim().toLowerCase();
@@ -434,7 +384,7 @@ export async function createStaffUser(
 export async function updateStaffUser(
   id: string,
   updates: Partial<Pick<StaffUser, 'name' | 'email' | 'phone' | 'role' | 'avatar' | 'status' | 'permissions'>>,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; staff?: StaffUser; error?: string }> {
   // If in browser, make network request to /api/admin/staff so backend server & persistent database update
   if (typeof window !== 'undefined') {
@@ -559,7 +509,7 @@ export async function updateStaffUser(
 export async function resetStaffPassword(
   id: string,
   newPassword: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   if (!newPassword || newPassword.length < 4) {
     return { success: false, error: 'Password must be at least 4 characters.' };
@@ -700,7 +650,7 @@ export async function changeAdminSelfPassword(
 
 export async function toggleStaffStatus(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; newStatus?: 'active' | 'inactive'; error?: string }> {
   const users = getStaffUsers();
   const target = users.find((u) => u.id === id || u.email.toLowerCase() === id.toLowerCase());
@@ -749,7 +699,7 @@ export async function toggleStaffStatus(
 
 export async function deleteStaffUser(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   // If in browser, make network request to DELETE /api/admin/staff?id=...
   if (typeof window !== 'undefined') {
@@ -864,15 +814,12 @@ export async function deleteStaffUser(
 export function hasStaffPermission(staff?: StaffUser | null, permissionKey?: string): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (!permissionKey) return true;
+  const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const isRoot = Boolean(
     staff.isOwner ||
-    staff.id === 'staff-owner-1' ||
     staff.role === 'SUPER_ADMIN' ||
     staff.role === 'OWNER' ||
-    (staff.email && (
-      staff.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      staff.email.toLowerCase() === 'admin@alhamd.com'
-    ))
+    (envAdminEmail && staff.email && staff.email.toLowerCase() === envAdminEmail)
   );
   if (isRoot) return true;
 
@@ -1008,15 +955,12 @@ export function hasStaffPermission(staff?: StaffUser | null, permissionKey?: str
 export function hasAnyStaffPermission(staff?: StaffUser | null, permissionKeys: string[] = []): boolean {
   if (!staff || staff.status === 'inactive') return false;
   if (permissionKeys.length === 0) return true;
+  const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const isRoot = Boolean(
     staff.isOwner ||
-    staff.id === 'staff-owner-1' ||
     staff.role === 'SUPER_ADMIN' ||
     staff.role === 'OWNER' ||
-    (staff.email && (
-      staff.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-      staff.email.toLowerCase() === 'admin@alhamd.com'
-    ))
+    (envAdminEmail && staff.email && staff.email.toLowerCase() === envAdminEmail)
   );
   if (isRoot) return true;
   return permissionKeys.some((key) => hasStaffPermission(staff, key));

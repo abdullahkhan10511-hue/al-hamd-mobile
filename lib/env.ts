@@ -14,14 +14,23 @@ export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
+export function isDbConfigured(): boolean {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql')) {
+    return true;
+  }
+  return Boolean(
+    (process.env.DB_HOST || process.env.MYSQL_HOST || process.env.MYSQLHOST) &&
+    (process.env.DB_USER || process.env.MYSQL_USER || process.env.MYSQLUSER) &&
+    (process.env.DB_NAME || process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE)
+  );
+}
+
 export function allowDevMockFallback(): boolean {
   if (process.env.NODE_ENV === 'production') {
     return false;
   }
   // If running on server with DB configured, do not use mock fallback
   if (typeof window === 'undefined') {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { isDbConfigured } = require('./db/mysql');
     if (isDbConfigured()) return false;
   }
   return true;

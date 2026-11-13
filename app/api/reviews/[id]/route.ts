@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { deleteReviewInDb } from '@/lib/db/repositories/reviews';
 import { isDbConfigured } from '@/lib/db/mysql';
 import {
-  getAdminSession,
+  getAdminSessionAsync,
   hasAdminPermission,
   unauthorizedResponse,
   forbiddenResponse,
@@ -16,7 +16,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }

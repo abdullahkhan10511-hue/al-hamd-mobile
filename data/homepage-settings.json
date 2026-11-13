@@ -64,8 +64,8 @@
     "primaryButtonLink": "/shop",
     "secondaryButtonText": "Explore Categories",
     "secondaryButtonLink": "#categories",
-    "desktopImage": "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=1200&auto=format&fit=crop",
-    "mobileImage": "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=600&auto=format&fit=crop",
+    "desktopImage": "/placeholders/general.svg",
+    "mobileImage": "/placeholders/general.svg",
     "floatingProducts": [
       {
         "id": "fp-1",
@@ -100,7 +100,7 @@
     "enabled": true,
     "title": "Up To 50% Off",
     "subtitle": "Power & Audio Flash Sale",
-    "bannerImage": "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop",
+    "bannerImage": "/placeholders/general.svg",
     "buttonText": "Shop Flash Deals",
     "buttonLink": "/shop?filter=sale",
     "startDate": "2026-10-19T07:22:46.293Z",

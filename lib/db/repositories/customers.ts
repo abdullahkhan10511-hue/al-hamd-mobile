@@ -1,7 +1,9 @@
+import 'server-only';
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Customer, CustomerType } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
 import crypto from 'crypto';
+import { verifyUserPasswordUnified, hashPasswordSecure, validatePasswordPolicy } from '@/lib/security/password';
 
 interface CustomerRow extends RowDataPacket {
   id: string;
@@ -166,7 +168,7 @@ export async function createWholesaleAccountInDb(data: {
   }
 
   const salt = generateCustomerSalt(16);
-  const passwordHash = hashCustomerPassword(rawPassword, salt);
+  const passwordHash = await hashPasswordSecure(rawPassword);
   const cleanSlug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const id = `cust-wh-${Date.now()}-${cleanSlug.slice(0, 15) || 'shop'}`;
 
@@ -337,7 +339,7 @@ export async function registerCustomerInDb(params: {
   const lastName = params.lastName !== undefined ? params.lastName.trim() : (parts.slice(1).join(' ') || '');
 
   const salt = generateCustomerSalt(16);
-  const passwordHash = hashCustomerPassword(params.password, salt);
+  const passwordHash = await hashPasswordSecure(params.password);
 
   let customerId = '';
 
@@ -428,13 +430,16 @@ export async function authenticateCustomerInDb(
       throw new Error('This wholesale account has no password set. Please contact administration.');
     }
 
-    const isValid = verifyCustomerPassword(
-      rawPassword,
-      wholesaleMatch.passwordSalt,
-      wholesaleMatch.passwordHash
-    );
+    const verifyRes = await verifyUserPasswordUnified({
+      password: rawPassword,
+      storedHash: wholesaleMatch.passwordHash,
+      salt: wholesaleMatch.passwordSalt,
+      userType: 'wholesale',
+      userId: wholesaleMatch.id,
+      email: wholesaleMatch.email || undefined,
+    });
 
-    if (!isValid) {
+    if (!verifyRes.valid) {
       throw new Error('Invalid shop name or password.');
     }
 
@@ -454,19 +459,16 @@ export async function authenticateCustomerInDb(
       );
     }
 
-    const isValid =
-      verifyCustomerPassword(
-        rawPassword,
-        retailMatch.passwordSalt,
-        retailMatch.passwordHash
-      ) ||
-      verifyCustomerPassword(
-        password,
-        retailMatch.passwordSalt,
-        retailMatch.passwordHash
-      );
+    const verifyRes = await verifyUserPasswordUnified({
+      password: rawPassword,
+      storedHash: retailMatch.passwordHash,
+      salt: retailMatch.passwordSalt,
+      userType: 'customer',
+      userId: retailMatch.id,
+      email: retailMatch.email || undefined,
+    });
 
-    if (!isValid) {
+    if (!verifyRes.valid) {
       throw new Error('Invalid email address or password.');
     }
 

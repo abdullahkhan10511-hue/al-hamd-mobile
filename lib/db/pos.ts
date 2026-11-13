@@ -5,11 +5,9 @@ import { getProducts } from './products';
 import { getOrders, generateNextOrderId, generateNextInvoiceNumber } from './orders';
 import { recordInventoryLog } from './inventory';
 import { logActivity } from './activity';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export interface PosCartItem {
   productId: string;
@@ -274,18 +272,7 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
     // Save updated products collection
     await persistCollection('products', products);
 
-    // Direct Firestore sync for products
-    if (db && typeof (db as any).type === 'string') {
-      try {
-        for (const item of validatedItems) {
-          const prod = products.find((p) => p.id === item.productId);
-          if (prod) {
-            const docRef = doc(db, 'products', prod.id);
-            setDoc(docRef, { stock: prod.stock, models: prod.models }, { merge: true }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
+
 
     // Format Customer Details
     const custFirstName = (params.customer?.firstName || '').trim() || 'Walk-in';
@@ -387,13 +374,7 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
       }).catch(() => {});
     }
 
-    // Direct Firestore sync for order
-    if (db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'orders', newOrder.id);
-        setDoc(docRef, newOrder, { merge: true }).catch(() => {});
-      } catch {}
-    }
+
 
     // Trigger real-time cross-tab & component reactivity
     if (typeof window !== 'undefined') {
@@ -521,13 +502,7 @@ export async function voidPosSale(
       }).catch(() => {});
     }
 
-    // Direct Firestore sync
-    if (db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'orders', orderId);
-        setDoc(docRef, updatedOrder, { merge: true }).catch(() => {});
-      } catch {}
-    }
+
 
     // Trigger reactivity
     if (typeof window !== 'undefined') {

@@ -1,8 +1,3 @@
-import { db } from '../firebase';
-import {
-  doc,
-  setDoc,
-} from 'firebase/firestore';
 
 import { allowDevMockFallback } from '../env';
 
@@ -21,9 +16,7 @@ function isStaleMockData(key: string, data: any): boolean {
       (p: any) =>
         p &&
         (p.slug === 'essential-hoodie' ||
-          p.slug === 'air-max-270' ||
-          (p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && p.sku === 'AP-APP2-015') ||
-          (p.id === 'prod-16' && p.slug === 'anker-20000mah-power-bank'))
+          p.slug === 'air-max-270')
     );
   }
   if (key === 'categories') {
@@ -103,31 +96,14 @@ export function setLocal<T>(key: string, value: T, silent = false): void {
 }
 
 /**
- * Saves a document or full collection to Firestore with local fallback
+ * Saves a document or full collection to database with local fallback
  */
 export async function persistCollection<T>(collectionName: string, items: T[], silent = false): Promise<void> {
   setLocal(collectionName, items, silent);
-
-  // Attempt Firestore sync only if real Firebase credentials are provided
-  const hasRealFirebase =
-    Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-  if (hasRealFirebase && db && typeof db.type === 'string') {
-    try {
-      const docRef = doc(db, 'system_data', collectionName);
-      await Promise.race([
-        setDoc(docRef, { items, updatedAt: new Date().toISOString() }, { merge: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 1500)),
-      ]);
-    } catch {
-      // Offline or permission restriction; local persistence is already guaranteed
-    }
-  }
 }
 
 /**
- * Loads a collection, prioritizing memory/local cache with background Firestore revalidation
+ * Loads a collection, prioritizing memory/local cache with background database revalidation
  */
 export function getStoredCollection<T>(collectionName: string, fallback: T[]): T[] {
   return getLocal<T[]>(collectionName, fallback);

@@ -3,10 +3,11 @@ import { createInquiryInDb } from '@/lib/db/repositories/inquiries';
 import { addNotification } from '@/lib/db/notifications';
 import { sendInquiryEmails } from '@/lib/email';
 import { InquiryType } from '@/types/admin';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
 
 // In-memory rate limiting map for basic spam / double-click protection:
 // Tracks client IP or phone + timestamp
-const submissionWindow = new Map<string, number>();
+// Submission rate limiting now managed centrally via lib/rateLimit
 
 const VALID_INQUIRY_TYPES: InquiryType[] = [
   'General Question',
@@ -43,26 +44,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Rate Limiting / Abuse Protection:
-    // Extract client identifier (forwarded IP or phone number)
-    const clientIp =
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      request.headers.get('x-real-ip') ||
-      'unknown-client';
-    const rawPhone = String(body.phone || '').trim();
-    const rateLimitKey = `${clientIp}_${rawPhone}`;
-    const now = Date.now();
-    const lastSubmission = submissionWindow.get(rateLimitKey);
+    // Honeypot check: reject bots silently if honeypot fields are populated
+    if (body.website || body.company || body.hp || body.url) {
+      return NextResponse.json({
+        success: true,
+        referenceNumber: 'INQ-ACKNOWLEDGED',
+        message: 'Thank you for reaching out. Your inquiry has been received.',
+      });
+    }
 
-    // Limit to 1 submission every 5 seconds per client
-    if (lastSubmission && now - lastSubmission < 5000) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Please wait a few moments before submitting another inquiry.',
-        },
-        { status: 429 }
-      );
+    // Rate Limiting: 5 per hour per IP, 3 per hour per phone/email
+    const clientIp = getClientIp(request);
+    const ipCheck = await checkRateLimit(`contact_ip_${clientIp}`, 5, 3600000);
+    if (!ipCheck.allowed) {
+      return createRateLimitResponse(ipCheck.retryAfterSeconds, 'Too many inquiries from this network.');
+    }
+
+    const contactId = (body.email || body.phone || '').trim().toLowerCase();
+    if (contactId) {
+      const idCheck = await checkRateLimit(`contact_id_${contactId}`, 3, 3600000);
+      if (!idCheck.allowed) {
+        return createRateLimitResponse(idCheck.retryAfterSeconds, 'Too many inquiries submitted for this contact.');
+      }
     }
 
     // Input Sanitization & Validation
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Email validation (Optional, but if provided must be valid)
     if (email) {
-      if (email.length > 255 || !isValidEmail(email)) {
+      if (email.length > 200 || !isValidEmail(email)) {
         return NextResponse.json(
           { success: false, error: 'Please enter a valid email address.' },
           { status: 400 }
@@ -153,9 +156,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (message.length > 3000) {
+    if (message.length > 2000) {
       return NextResponse.json(
-        { success: false, error: 'Message cannot exceed 3,000 characters.' },
+        { success: false, error: 'Message cannot exceed 2,000 characters.' },
         { status: 400 }
       );
     }
@@ -179,17 +182,7 @@ export async function POST(request: NextRequest) {
       priority,
     });
 
-    // Mark successful submission for rate-limiting
-    submissionWindow.set(rateLimitKey, now);
 
-    // Clean up old entries from rate limit map
-    if (submissionWindow.size > 2000) {
-      for (const [key, time] of submissionWindow.entries()) {
-        if (now - time > 60000) {
-          submissionWindow.delete(key);
-        }
-      }
-    }
 
     // Step 2: Push Admin Notification (Non-blocking)
     try {

@@ -35,6 +35,7 @@ import {
   EyeOff,
   AlertTriangle,
   Shield,
+  HardDrive,
   Palette,
   Upload,
   Image as ImageIcon,
@@ -46,7 +47,53 @@ import { useAdminAuth } from '@/context/AdminAuthContext';
 import Link from 'next/link';
 
 export default function AdminSettingsPage() {
-  const { admin: currentAdmin, changePassword: authChangePassword } = useAdminAuth();
+  const { admin: currentAdmin, isSuperAdmin, changePassword: authChangePassword } = useAdminAuth();
+  const isOwner = Boolean(currentAdmin?.isOwner || currentAdmin?.role === 'SUPER_ADMIN' || currentAdmin?.role === 'OWNER' || isSuperAdmin);
+
+  // Server Diagnostics State (Task X4.1)
+  const [diagData, setDiagData] = useState<{
+    clientIp: string;
+    trustProxy: boolean;
+    trustedProxyHops: number;
+    presentHeaders: string[];
+    storage?: {
+      uploads: {
+        shortPath: string;
+        isOutsideApp: boolean;
+        isWritable: boolean;
+        fileCount?: number;
+      };
+      data: {
+        shortPath: string;
+        isOutsideApp: boolean;
+        isWritable: boolean;
+      };
+      uploadsFileCount?: number;
+    };
+  } | null>(null);
+  const [isLoadingDiag, setIsLoadingDiag] = useState(false);
+  const [diagError, setDiagError] = useState('');
+
+  const fetchDiagnostics = async () => {
+    setIsLoadingDiag(true);
+    setDiagError('');
+    try {
+      const res = await fetch('/api/admin/diagnostics/ip');
+      if (res.ok) {
+        const data = await res.json();
+        setDiagData(data);
+      } else if (res.status === 403) {
+        // Not owner
+      } else {
+        setDiagError('Failed to load server diagnostics');
+      }
+    } catch {
+      setDiagError('Failed to load server diagnostics');
+    } finally {
+      setIsLoadingDiag(false);
+    }
+  };
+
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [activeTab, setActiveTab] = useState<
     'general' | 'contact' | 'currency' | 'shipping' | 'social' | 'seo' | 'security'
@@ -54,6 +101,12 @@ export default function AdminSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (isOwner && activeTab === 'security') {
+      fetchDiagnostics();
+    }
+  }, [isOwner, activeTab]);
 
   // Security / Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -1323,7 +1376,7 @@ export default function AdminSettingsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-neutral-500 font-mono mt-0.5">{currentAdmin?.email || 'admin@alhamd.com'}</p>
+                  <p className="text-[11px] text-neutral-500 font-mono mt-0.5">{currentAdmin?.email || ''}</p>
                 </div>
               </div>
 
@@ -1460,6 +1513,170 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Server Diagnostics Card (Task X4.1 - Owner Only) */}
+            {isOwner && (
+              <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+                  <div>
+                    <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-emerald-600" />
+                      Server &amp; Storage Diagnostics (Owner Only)
+                    </h4>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Live reverse proxy, IP resolution, and persistent storage health status.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchDiagnostics}
+                    disabled={isLoadingDiag}
+                    className="self-start sm:self-auto px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDiag ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                {diagError && (
+                  <div className="p-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs">
+                    {diagError}
+                  </div>
+                )}
+
+                {diagData ? (
+                  <div className="space-y-4">
+                    {/* Reverse Proxy Diagnostics Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                        <div className="text-neutral-500 font-medium">Detected Client IP</div>
+                        <div className="text-sm font-bold font-mono text-neutral-900 mt-1">
+                          {diagData.clientIp}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">Masked (last 2 octets)</div>
+                      </div>
+
+                      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                        <div className="text-neutral-500 font-medium">TRUST_PROXY</div>
+                        <div className="text-sm font-bold mt-1 flex items-center gap-1.5">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              diagData.trustProxy ? 'bg-emerald-500' : 'bg-amber-500'
+                            }`}
+                          />
+                          <span className={diagData.trustProxy ? 'text-emerald-700' : 'text-amber-700'}>
+                            {diagData.trustProxy ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">
+                          {diagData.trustProxy ? 'Reverse proxy trusted' : 'Socket IP fallback'}
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                        <div className="text-neutral-500 font-medium">TRUSTED_PROXY_HOPS</div>
+                        <div className="text-sm font-bold font-mono text-neutral-900 mt-1">
+                          {diagData.trustedProxyHops}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">Hops from right</div>
+                      </div>
+
+                      <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                        <div className="text-neutral-500 font-medium">Detected Proxy Headers</div>
+                        <div className="text-xs font-mono text-neutral-800 mt-1">
+                          {diagData.presentHeaders && diagData.presentHeaders.length > 0
+                            ? diagData.presentHeaders.join(', ')
+                            : 'None'}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">Present in request</div>
+                      </div>
+                    </div>
+
+                    {/* Storage Health Visibility (Task D2) */}
+                    {diagData.storage && (
+                      <div className="pt-3 border-t border-neutral-100">
+                        <div className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                          <HardDrive className="w-3.5 h-3.5 text-neutral-500" />
+                          Storage Health &amp; Persistence
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                          {/* Uploads Directory */}
+                          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                            <div className="text-neutral-500 font-medium">Uploads Folder</div>
+                            <div className="text-xs font-bold font-mono text-neutral-900 mt-1 truncate" title={diagData.storage.uploads.shortPath}>
+                              {diagData.storage.uploads.shortPath || 'Not set'}
+                            </div>
+                            <div className="text-[10px] text-neutral-400 mt-0.5">Last 2 folder names</div>
+                          </div>
+
+                          {/* Uploads Location Status */}
+                          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                            <div className="text-neutral-500 font-medium">Uploads Location</div>
+                            <div className="text-xs font-bold mt-1 flex items-center gap-1.5">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  diagData.storage.uploads.isOutsideApp ? 'bg-emerald-500' : 'bg-amber-500'
+                                }`}
+                              />
+                              <span className={diagData.storage.uploads.isOutsideApp ? 'text-emerald-700' : 'text-amber-700'}>
+                                {diagData.storage.uploads.isOutsideApp ? 'Outside App Root' : 'Inside App Root'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-neutral-400 mt-0.5">
+                              {diagData.storage.uploads.isOutsideApp
+                                ? 'Safe across redeploys'
+                                : 'May reset on redeploy'}
+                            </div>
+                          </div>
+
+                          {/* Uploads Files & Permissions */}
+                          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                            <div className="text-neutral-500 font-medium">Uploads Files &amp; Write</div>
+                            <div className="text-xs font-bold text-neutral-900 mt-1 flex items-center gap-2">
+                              <span>{diagData.storage.uploads.fileCount ?? diagData.storage.uploadsFileCount ?? 0} files</span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  diagData.storage.uploads.isWritable
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {diagData.storage.uploads.isWritable ? 'Writable' : 'Locked'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-neutral-400 mt-0.5">Total stored uploads</div>
+                          </div>
+
+                          {/* Data Directory (Settings) */}
+                          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                            <div className="text-neutral-500 font-medium">Data Folder (Settings)</div>
+                            <div className="text-xs font-bold font-mono text-neutral-900 mt-1 truncate" title={diagData.storage.data.shortPath}>
+                              {diagData.storage.data.shortPath || 'Not set'}
+                            </div>
+                            <div className="text-[10px] mt-0.5 flex items-center gap-1">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  diagData.storage.data.isOutsideApp ? 'bg-emerald-500' : 'bg-amber-500'
+                                }`}
+                              />
+                              <span className={diagData.storage.data.isOutsideApp ? 'text-emerald-600' : 'text-amber-600'}>
+                                {diagData.storage.data.isOutsideApp ? 'Outside app' : 'Inside app'}
+                              </span>
+                              <span className="text-neutral-300">•</span>
+                              <span className={diagData.storage.data.isWritable ? 'text-emerald-600' : 'text-rose-600'}>
+                                {diagData.storage.data.isWritable ? 'Writable' : 'Locked'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-400 py-1">Loading server diagnostics...</div>
+                )}
+              </div>
+            )}
 
             {/* Quick Links Card */}
             <div className="p-5 bg-gradient-to-r from-neutral-900 to-neutral-800 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">

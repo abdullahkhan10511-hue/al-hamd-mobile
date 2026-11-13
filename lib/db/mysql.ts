@@ -1,3 +1,4 @@
+import 'server-only';
 import mysql, { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 
 let pool: Pool | null = null;
@@ -142,6 +143,17 @@ export async function testConnection(): Promise<{ connected: boolean; error?: st
 /**
  * Gracefully close the connection pool (useful during test teardown or shutdown).
  */
+/**
+ * Sets or overrides the connection pool (strictly for testing).
+ * Forbidden in production unless ALLOW_TEST_POOL=1 is explicitly enabled.
+ */
+export function setPool(newPool: any): void {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_POOL !== '1') {
+    throw new Error('setPool() is forbidden in production unless ALLOW_TEST_POOL=1 is explicitly set.');
+  }
+  pool = newPool;
+}
+
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end();

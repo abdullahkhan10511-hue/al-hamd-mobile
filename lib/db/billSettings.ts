@@ -2,7 +2,7 @@ import { BillSettings, BillFieldToggles } from '@/types/admin';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
 import { DEFAULT_THERMAL_WIDTH, DEFAULT_CUSTOM_WIDTH } from '@/lib/utils/thermalWidth';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const BILL_SETTINGS_KEY = 'bill_settings';
 
@@ -95,22 +95,7 @@ export async function syncBillSettingsFromApi(): Promise<boolean> {
 }
 
 export function getBillSettings(): BillSettings {
-  let fallback = defaultBillSettings;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const devFile = path.join(process.cwd(), 'data', 'dev-bill-settings.json');
-      if (fs.existsSync(devFile)) {
-        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
-        if (parsed && typeof parsed === 'object') {
-          fallback = { ...defaultBillSettings, ...parsed };
-        }
-      }
-    } catch {}
-  }
+  const fallback = defaultBillSettings;
   const current = getLocal<BillSettings>(BILL_SETTINGS_KEY, fallback);
 
   // Preserve existing saved thermal width, fallback to default '80mm' only if unset
@@ -164,7 +149,7 @@ export function getBillSettings(): BillSettings {
 
 export async function updateBillSettings(
   settings: Partial<BillSettings>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<BillSettings> {
   const current = getBillSettings();
   const width =

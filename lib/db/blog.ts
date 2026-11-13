@@ -36,7 +36,7 @@ export async function getBlogPostById(id: string): Promise<BlogPost | null> {
 
 export async function saveBlogPost(
   post: Omit<BlogPost, 'id'> & { id?: string },
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<BlogPost> {
   const posts = await getBlogPosts();
   const id = post.id || `post-${Date.now()}`;
@@ -71,7 +71,7 @@ export async function saveBlogPost(
   return newPost;
 }
 
-export async function deleteBlogPost(id: string, adminEmail: string = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteBlogPost(id: string, adminEmail: string = 'system'): Promise<boolean> {
   const posts = await getBlogPosts();
   const target = posts.find((p) => p.id === id);
   if (!target) return false;

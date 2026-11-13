@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Order, OrderStatus, PaymentStatus, getOrderType } from '@/types/admin';
 import { getOrders, filterAndSortOrders } from '@/lib/db/orders';
 import { persistCollection } from '@/lib/db/storage';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import InvoiceModal from '@/components/admin/InvoiceModal';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';
 import { useAdminAuth } from '@/context/AdminAuthContext';

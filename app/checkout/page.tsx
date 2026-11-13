@@ -51,6 +51,7 @@ const PAKISTAN_PROVINCES = [
 ];
 
 const POPULAR_CITIES = [
+  'Mandi Bahauddin',
   'Lahore',
   'Karachi',
   'Islamabad',
@@ -69,7 +70,9 @@ const POPULAR_CITIES = [
 
 export default function CheckoutPage() {
   return (
-    <Suspense
+    <>
+      <h1 className="sr-only">AL-HAMD SHOP — Secure Checkout</h1>
+      <Suspense
       fallback={
         <div className="bg-neutral-50 min-h-screen py-24 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
@@ -83,6 +86,7 @@ export default function CheckoutPage() {
     >
       <CheckoutContent />
     </Suspense>
+    </>
   );
 }
 
@@ -217,15 +221,8 @@ function CheckoutContent() {
   const [deliveryMethod, setDeliveryMethod] = useState<'standard' | 'express'>('standard');
 
   // Dynamic Payment Methods from Database
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>(() => {
-    try {
-      const enabled = getEnabledPaymentMethods();
-      return enabled.length > 0 ? enabled : seedPaymentMethods.filter((m) => m.enabled);
-    } catch {
-      return seedPaymentMethods.filter((m) => m.enabled);
-    }
-  });
-  const [selectedMethodId, setSelectedMethodId] = useState<string>('cod');
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState('');
   const [securitySettings, setSecuritySettings] = useState<PaymentSecuritySettings>(seedPaymentSecuritySettings);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -235,29 +232,39 @@ function CheckoutContent() {
   const [orderError, setOrderError] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
 
-  // Load & subscribe to payment configuration
+  // Load payment methods dynamically from endpoint
   useEffect(() => {
-    const syncPaymentData = () => {
-      const enabled = getEnabledPaymentMethods();
-      setPaymentMethods(enabled);
-      if (enabled.length > 0) {
-        setSelectedMethodId((prev) => {
-          const match = enabled.find((m) => m.id === prev);
-          return match ? prev : enabled[0].id;
+    let isMounted = true;
+    const fetchMethods = async () => {
+      try {
+        const res = await fetch(`/api/payment-methods?t=${Date.now()}`, {
+          cache: 'no-store',
+          credentials: 'include',
         });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.methods) && isMounted) {
+            const list: PaymentMethodConfig[] = data.methods;
+            setPaymentMethods(list);
+            if (list.length > 0) {
+              setSelectedMethodId((prev) => {
+                const match = list.find((m) => m.id === prev);
+                return match ? prev : list[0].id;
+              });
+            } else {
+              setSelectedMethodId('');
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch payment methods from API:', err);
       }
-      setSecuritySettings(getPaymentSecuritySettings());
     };
 
-    syncPaymentData();
-    syncPaymentMethodsFromApi().then(() => syncPaymentData()).catch(() => {});
-
-    const unsubMethods = subscribeToKey('payment_methods', syncPaymentData);
-    const unsubSec = subscribeToKey('payment_security_settings', syncPaymentData);
+    fetchMethods();
 
     return () => {
-      unsubMethods();
-      unsubSec();
+      isMounted = false;
     };
   }, []);
 
@@ -351,6 +358,11 @@ function CheckoutContent() {
     } else {
       if (!firstName.trim() || !lastName.trim() || !streetAddress.trim() || !city.trim() || !phone.trim()) {
         setOrderError('Please fill in all required delivery and contact fields.');
+        return;
+      }
+      const cleanPhoneDigits = phone.replace(/[\s\-\(\)]/g, '');
+      if (!/^(\+92|0)?3[0-9]{9}$/.test(cleanPhoneDigits)) {
+        setOrderError('Please enter a valid Pakistani mobile number (e.g. 0300 1234567 or +92 300 1234567).');
         return;
       }
     }
@@ -640,11 +652,21 @@ function CheckoutContent() {
               </p>
             )}
 
-            {/* Single Primary Action: Continue Shopping */}
-            <div className="max-w-sm mx-auto">
+            {/* Order Actions: WhatsApp Confirmation + Continue Shopping */}
+            <div className="max-w-sm mx-auto space-y-3">
+              <a
+                href={`https://wa.me/923432200995?text=${encodeURIComponent(
+                  `Salam, I have placed Order #${createdOrder.id} on AL-HAMD SHOP for Rs. ${createdOrder.total}. Please confirm my order.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3.5 px-6 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Confirm on WhatsApp</span>
+              </a>
               <Link
                 href="/shop"
-                className="w-full py-4 px-8 rounded-full bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 px-6 rounded-full bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Continue Shopping</span>
                 <ArrowRight className="w-4 h-4" />
@@ -694,6 +716,10 @@ function CheckoutContent() {
   return (
     <div className="bg-neutral-50 min-h-screen py-10 sm:py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight">Secure Checkout</h1>
+          <p className="text-xs text-neutral-500 mt-1">Direct dispatch nationwide across Pakistan</p>
+        </div>
         <div className="mb-8 flex items-center justify-between">
           <Link
             href="/cart"
@@ -1165,54 +1191,82 @@ function CheckoutContent() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Selectable Radio Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {paymentMethods.map((m) => {
-                      const isSelected = selectedMethodId === m.id;
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedMethodId(m.id);
-                            setPaymentReference('');
-                          }}
-                          className={`p-4 text-left rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3.5 relative ${
-                            isSelected
-                              ? 'border-neutral-950 bg-neutral-50/70 shadow-xs'
-                              : 'border-neutral-200 hover:border-neutral-300 bg-white'
-                          }`}
-                        >
-                          <div className="mt-0.5">
-                            <div
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                isSelected ? 'border-neutral-950' : 'border-neutral-300'
-                              }`}
-                            >
-                              {isSelected && <div className="w-2 h-2 rounded-full bg-neutral-950" />}
-                            </div>
-                          </div>
+                  {paymentMethods.length === 1 ? (
+                    // Fixed single method option without choice list, identical styling
+                    <div className="p-4 rounded-2xl border-2 border-neutral-950 bg-neutral-50/70 shadow-xs flex items-start gap-3.5 relative">
+                      <div className="mt-0.5">
+                        <div className="w-4 h-4 rounded-full border-2 border-neutral-950 flex items-center justify-center">
+                          <div className="w-2 h-2 rounded-full bg-neutral-950" />
+                        </div>
+                      </div>
 
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1.5 mb-1">
-                              <div className="flex items-center gap-2 min-w-0">
-                                {renderMethodIcon(m.id)}
-                                <span className="text-xs font-bold text-neutral-950 truncate">{m.name}</span>
-                              </div>
-                              {m.badgeText && (
-                                <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-200/80 text-neutral-700 shrink-0 uppercase font-mono">
-                                  {m.badgeText}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">
-                              {m.description}
-                            </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {renderMethodIcon(paymentMethods[0].id)}
+                            <span className="text-xs font-bold text-neutral-950 truncate">{paymentMethods[0].name}</span>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {paymentMethods[0].badgeText && (
+                            <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-200/80 text-neutral-700 shrink-0 uppercase font-mono">
+                              {paymentMethods[0].badgeText}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">
+                          {paymentMethods[0].description}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Selectable Radio Cards Grid */
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {paymentMethods.map((m) => {
+                        const isSelected = selectedMethodId === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMethodId(m.id);
+                              setPaymentReference('');
+                            }}
+                            className={`p-4 text-left rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3.5 relative ${
+                              isSelected
+                                ? 'border-neutral-950 bg-neutral-50/70 shadow-xs'
+                                : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                            }`}
+                          >
+                            <div className="mt-0.5">
+                              <div
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                  isSelected ? 'border-neutral-950' : 'border-neutral-300'
+                                }`}
+                              >
+                                {isSelected && <div className="w-2 h-2 rounded-full bg-neutral-950" />}
+                              </div>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1.5 mb-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {renderMethodIcon(m.id)}
+                                  <span className="text-xs font-bold text-neutral-950 truncate">{m.name}</span>
+                                </div>
+                                {m.badgeText && (
+                                  <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-200/80 text-neutral-700 shrink-0 uppercase font-mono">
+                                    {m.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">
+                                {m.description}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Expandable Payment Information Panel */}
                   <AnimatePresence mode="wait">

@@ -28,8 +28,6 @@ const seedCustomers: Customer[] = [
     totalSpent: 11998,
     createdAt: '2026-03-01T14:32:00.000Z',
     status: 'active',
-    passwordHash: '03eb5dccd47c06ff75998f5dfbd03859808725fd5e03da842896a1a0a26d45a7',
-    passwordSalt: 'salt_hamza_demo_01',
     address: 'House 42, Street 8, Sector F-7/2',
     city: 'Islamabad',
     province: 'Federal Capital',
@@ -48,8 +46,6 @@ const seedCustomers: Customer[] = [
     totalSpent: 28999,
     createdAt: '2026-02-18T10:15:00.000Z',
     status: 'active',
-    passwordHash: 'a36b62ed71b7dd14e11e30aa605da39ca5602bb609609fecb5b4b858222d847a',
-    passwordSalt: 'salt_hamza_demo_01',
     address: 'Apartment 4B, Gulberg Heights',
     city: 'Lahore',
     province: 'Punjab',
@@ -248,7 +244,7 @@ export async function getCustomerOrders(emailOrShopName: string): Promise<Order[
 export async function updateCustomerStatus(
   idOrEmail: string,
   status: 'active' | 'suspended' | 'deactivated' | 'inactive',
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<boolean> {
   const customers = await getCustomers();
   const normalized = idOrEmail.toLowerCase();
@@ -279,7 +275,7 @@ export async function updateCustomerStatus(
 
 export async function saveCustomer(
   customerData: Partial<Customer>,
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<Customer> {
   const customers = await getCustomers();
   const email = customerData.email ? customerData.email.trim().toLowerCase() : '';
@@ -437,7 +433,7 @@ export async function createWholesaleAccount(
     phone?: string;
     address?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<SanitizedCustomer> {
   const shopName = (data.shopName || '').trim();
   if (!shopName) {
@@ -505,7 +501,7 @@ export async function updateWholesaleAccount(
     status?: 'active' | 'suspended' | 'deactivated' | 'inactive';
     password?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<SanitizedCustomer> {
   const customers = await getCustomers();
   const target = customers.find(
@@ -573,7 +569,7 @@ export async function updateWholesaleAccount(
 export async function updateWholesaleAccountStatus(
   id: string,
   status: 'active' | 'inactive' | 'deactivated',
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<boolean> {
   const customers = await getCustomers();
   const target = customers.find(
@@ -606,7 +602,7 @@ export async function updateWholesaleAccountStatus(
  */
 export async function deleteWholesaleAccount(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const customers = await getCustomers();
   const targetIndex = customers.findIndex(
@@ -644,7 +640,7 @@ export async function createSuperWholesaleAccount(
     address?: string;
     status?: 'active' | 'inactive';
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<SanitizedCustomer> {
   const shopName = (data.shopName || '').trim();
   if (!shopName) {
@@ -709,7 +705,7 @@ export async function updateSuperWholesaleAccount(
     status?: 'active' | 'suspended' | 'deactivated' | 'inactive';
     password?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<SanitizedCustomer> {
   const customers = await getCustomers();
   const targetIndex = customers.findIndex(
@@ -776,7 +772,7 @@ export async function updateSuperWholesaleAccount(
 export async function updateSuperWholesaleAccountStatus(
   id: string,
   status: 'active' | 'suspended' | 'deactivated' | 'inactive',
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<boolean> {
   const customers = await getCustomers();
   const target = customers.find(
@@ -804,7 +800,7 @@ export async function updateSuperWholesaleAccountStatus(
 
 export async function deleteSuperWholesaleAccount(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const customers = await getCustomers();
   const targetIndex = customers.findIndex(

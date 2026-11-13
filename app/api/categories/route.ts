@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllCategoriesFromDb, insertCategoryToDb } from '@/lib/db/repositories/categories';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 import { deduplicateCategoriesById } from '@/lib/utils';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -36,9 +37,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: true, count: uniqueCategories.length, categories: uniqueCategories },
       {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err: any) {
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
     }

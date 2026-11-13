@@ -4,12 +4,11 @@ import { seedProducts, seedOrders } from './seed';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
 import { recordInventoryLog } from './inventory';
-import { db } from '../firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getFlashSaleConfig, getHeroConfig } from './homepage';
 import { getMediaItems } from './media';
 import { allowDevMockFallback } from '../env';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 
 const COLLECTION_KEY = 'products';
 const DELETED_PRODUCT_IDS_KEY = 'deleted_product_ids';
@@ -52,9 +51,7 @@ export function sanitizeProducts(
       (p) =>
         p &&
         p.slug !== 'essential-hoodie' &&
-        p.slug !== 'air-max-270' &&
-        !(p.id === 'prod-15' && p.slug === 'apple-airpods-pro-2' && (p as any).sku === 'AP-APP2-015') &&
-        !(p.id === 'prod-16' && p.slug === 'anker-20000mah-power-bank')
+        p.slug !== 'air-max-270'
     );
   } else {
     const deletedIds = getDeletedProductIds();
@@ -83,40 +80,21 @@ export function sanitizeProducts(
 
 // Pure canonical products snapshot for SSR and initial client hydration
 export function getCanonicalProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
-  return sanitizeProducts(seedProducts).filter((p) => {
-    const item = p as Product & { status?: string; isActive?: boolean };
-    return item.status !== 'archived' && item.status !== 'inactive' && item.isActive !== false;
-  });
+  return sanitizeProducts(seedProducts).filter(isStorefrontVisibleProduct);
+}
+
+export function getStorefrontProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
+  return getProducts().filter(isStorefrontVisibleProduct);
 }
 
 export function getProducts(): (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[] {
-  let fallback = allowDevMockFallback() ? seedProducts : [];
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const devFile = path.join(process.cwd(), 'data', 'dev-products.json');
-      if (fs.existsSync(devFile)) {
-        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          fallback = parsed;
-        }
-      }
-    } catch {}
-  }
+  const fallback = allowDevMockFallback() ? seedProducts : [];
   const list = getStoredCollection(COLLECTION_KEY, fallback);
   const sanitized = sanitizeProducts(list);
 
   // If sanitization changed items, update memory cache & localStorage silently (silent = true, NO event dispatch)
   if (sanitized.length !== list.length || JSON.stringify(sanitized) !== JSON.stringify(list)) {
     setLocal(COLLECTION_KEY, sanitized, true);
-  }
-
-  if (typeof window !== 'undefined' && !hasSyncedProductsFromApi) {
-    hasSyncedProductsFromApi = true;
-    syncProductsFromApi().catch(() => {});
   }
 
   return sanitized;
@@ -131,6 +109,24 @@ export function resetProductsSyncTimestamp(): void {
   lastProductsSyncTimestamp = 0;
   hasSyncedProductsFromApi = false;
   inFlightProductsPromise = null;
+}
+
+export async function fetchProductsByIds(ids: string[]): Promise<
+  (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[]
+> {
+  if (!ids || ids.length === 0) return [];
+  const cleanIds = ids.slice(0, 50).map((i) => i.trim()).filter(Boolean);
+  if (cleanIds.length === 0) return [];
+  try {
+    const res = await fetch(`/api/products?ids=${encodeURIComponent(cleanIds.join(','))}&limit=50`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.products)) {
+        return sanitizeProducts(data.products);
+      }
+    }
+  } catch { }
+  return [];
 }
 
 export async function fetchAuthoritativeProducts(): Promise<
@@ -153,7 +149,9 @@ export async function syncProductsFromApi(forceFresh = false): Promise<
 
   inFlightProductsPromise = (async () => {
     try {
-      const url = forceFresh ? `/api/products?t=${Date.now()}&fresh=true` : `/api/products`;
+      const isAdminPath = window.location.pathname.startsWith('/admin');
+      const baseEndpoint = isAdminPath ? '/api/admin/products' : '/api/products';
+      const url = forceFresh ? `${baseEndpoint}?t=${Date.now()}&fresh=true` : baseEndpoint;
       const res = await fetch(url, forceFresh ? { cache: 'no-store' } : undefined);
       if (res.ok) {
         const data = await res.json();
@@ -230,14 +228,14 @@ export async function fetchProductBySlug(
           return fetched;
         }
       }
-    } catch {}
+    } catch { }
   }
   return null;
 }
 
 export async function createProduct(
   data: Partial<Product> & { sku?: string; lowStockThreshold?: number; trending?: boolean },
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; product?: Product; error?: string }> {
   const products = getProducts();
 
@@ -343,16 +341,16 @@ export async function createProduct(
     compareAtPrice: data.compareAtPrice !== undefined && data.compareAtPrice !== null ? Number(data.compareAtPrice) : undefined,
     wholesalePrice:
       data.wholesalePrice !== undefined &&
-      data.wholesalePrice !== null &&
-      !isNaN(Number(data.wholesalePrice)) &&
-      Number(data.wholesalePrice) > 0
+        data.wholesalePrice !== null &&
+        !isNaN(Number(data.wholesalePrice)) &&
+        Number(data.wholesalePrice) > 0
         ? Number(data.wholesalePrice)
         : undefined,
     superWholesalePrice:
       data.superWholesalePrice !== undefined &&
-      data.superWholesalePrice !== null &&
-      !isNaN(Number(data.superWholesalePrice)) &&
-      Number(data.superWholesalePrice) > 0
+        data.superWholesalePrice !== null &&
+        !isNaN(Number(data.superWholesalePrice)) &&
+        Number(data.superWholesalePrice) > 0
         ? Number(data.superWholesalePrice)
         : undefined,
     stock: finalStock,
@@ -409,16 +407,6 @@ export async function createProduct(
   const updated = [createdProduct, ...products.filter((p) => p.id !== createdProduct.id && p.id !== newProduct.id)];
   await persistCollection(COLLECTION_KEY, updated);
 
-  // Direct Firestore doc sync
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', createdProduct.id);
-      await setDoc(docRef, createdProduct, { merge: true });
-    } catch (err) {
-      console.warn('Firestore create product notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -440,7 +428,7 @@ export async function createProduct(
 export async function updateProduct(
   id: string,
   updates: Partial<Product & { sku?: string; lowStockThreshold?: number; trending?: boolean }>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const products = getProducts();
   const index = products.findIndex((p) => p.id === id);
@@ -573,16 +561,6 @@ export async function updateProduct(
   products[index] = finalUpdatedProduct;
   await persistCollection(COLLECTION_KEY, products);
 
-  // Direct Firestore doc sync
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', id);
-      await setDoc(docRef, finalUpdatedProduct, { merge: true });
-    } catch (err) {
-      console.warn('Firestore update product notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -610,7 +588,7 @@ export interface DeleteProductResponse {
 
 export async function deleteProduct(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<DeleteProductResponse> {
   const products = getProducts();
   const target = products.find((p) => p.id === id);
@@ -658,7 +636,7 @@ export async function deleteProduct(
         productIds: flashConfig.productIds.filter((pId) => pId !== id),
       });
     }
-  } catch {}
+  } catch { }
 
   // 4. Clean up homepage hero floating product cards
   try {
@@ -669,7 +647,7 @@ export async function deleteProduct(
         floatingProducts: heroConfig.floatingProducts.filter((fp) => fp.productId !== id),
       });
     }
-  } catch {}
+  } catch { }
 
   // 5. Clean up active cart & wishlist from browser storage
   if (typeof window !== 'undefined') {
@@ -682,7 +660,7 @@ export async function deleteProduct(
           localStorage.setItem('al_hamd_cart', JSON.stringify(cleanedCart));
         }
       }
-    } catch {}
+    } catch { }
 
     try {
       const savedWish = localStorage.getItem('al_hamd_wishlist');
@@ -693,7 +671,7 @@ export async function deleteProduct(
           localStorage.setItem('al_hamd_wishlist', JSON.stringify(cleanedWish));
         }
       }
-    } catch {}
+    } catch { }
   }
 
   // 6. Clean up media library references if images are not shared by other products
@@ -727,24 +705,7 @@ export async function deleteProduct(
         persistCollection('media_library', filteredMedia);
       }
     }
-  } catch {}
-
-  // 7. Delete Firestore document directly only if real credentials exist
-  const hasRealFirebase =
-    Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-  if (hasRealFirebase && db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', id);
-      await Promise.race([
-        deleteDoc(docRef),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500)),
-      ]);
-    } catch (err) {
-      console.warn('Firestore product deletion notice:', err);
-    }
-  }
+  } catch { }
 
   // 8. Dispatch real-time update event so all listeners update immediately
   if (typeof window !== 'undefined') {
@@ -774,7 +735,7 @@ export async function adjustStock(
   productId: string,
   quantityChange: number,
   reason: string,
-  adminEmail = 'admin@alhamd.com',
+  adminEmail = 'system',
   modelName?: string
 ): Promise<boolean> {
   const products = getProducts();
@@ -822,17 +783,7 @@ export async function adjustStock(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ stock: product.stock, models: product.models }),
-    }).catch(() => {});
-  }
-
-  // Direct Firestore doc sync
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: product.stock, models: product.models }, { merge: true });
-    } catch (err) {
-      console.warn('Firestore stock sync notice:', err);
-    }
+    }).catch(() => { });
   }
 
   if (typeof window !== 'undefined') {
@@ -868,7 +819,7 @@ export async function adjustShopStock(
   productId: string,
   quantityChange: number,
   reason: string,
-  adminEmail = 'admin@alhamd.com',
+  adminEmail = 'system',
   modelIdOrName?: string
 ): Promise<boolean> {
   const products = getProducts();
@@ -917,7 +868,7 @@ export async function adjustShopStock(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ shopStock: product.shopStock, models: product.models }),
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   if (typeof window !== 'undefined') {
@@ -948,7 +899,7 @@ export async function setModelStock(
   modelIdOrName: string,
   newStock: number,
   reason = 'Manual adjustment in Stock Management',
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
@@ -1021,15 +972,6 @@ export async function setModelStock(
     await persistCollection(COLLECTION_KEY, products);
   }
 
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: finalProduct.stock, models: finalProduct.models }, { merge: true });
-    } catch (err) {
-      console.warn('Firestore model stock sync notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -1063,7 +1005,7 @@ export async function setProductModelsStock(
   productId: string,
   modelStockMap: Record<string, number>,
   reason = 'Bulk variant adjustment in Stock Management',
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
@@ -1149,15 +1091,6 @@ export async function setProductModelsStock(
     await persistCollection(COLLECTION_KEY, products);
   }
 
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: finalProduct.stock, models: finalProduct.models }, { merge: true });
-    } catch (err) {
-      console.warn('Firestore model stock sync notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -1193,7 +1126,7 @@ export async function setProductStock(
   productId: string,
   newStock: number,
   reason = 'Manual adjustment in Stock Management',
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
@@ -1245,16 +1178,6 @@ export async function setProductStock(
     await persistCollection(COLLECTION_KEY, products);
   }
 
-  // Direct Firestore doc sync if configured
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { stock: safeStock }, { merge: true });
-    } catch (err) {
-      console.warn('Firestore stock sync notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -1294,7 +1217,7 @@ export function getWarningThreshold(product?: { lowStockThreshold?: number | nul
 export async function setProductLowStockThreshold(
   productId: string,
   newThreshold: number,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
@@ -1345,16 +1268,6 @@ export async function setProductLowStockThreshold(
     await persistCollection(COLLECTION_KEY, products);
   }
 
-  // Direct Firestore doc sync if configured
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'products', productId);
-      await setDoc(docRef, { lowStockThreshold: safeThreshold }, { merge: true });
-    } catch (err) {
-      console.warn('Firestore lowStockThreshold sync notice:', err);
-    }
-  }
-
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
@@ -1393,7 +1306,7 @@ export async function setProductShopStock(
   productId: string,
   newShopStock: number,
   reason = 'Manual shop stock adjustment',
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const products = getProducts();
   const product = products.find((p) => p.id === productId);
@@ -1414,7 +1327,7 @@ export async function setProductShopStock(
         ...getAdminAuthHeaders(adminEmail),
       },
       body: JSON.stringify({ shopStock: safeStock }),
-    }).catch(() => {});
+    }).catch(() => { });
     window.dispatchEvent(
       new CustomEvent('alhamd:data-updated', {
         detail: { key: COLLECTION_KEY, value: products },

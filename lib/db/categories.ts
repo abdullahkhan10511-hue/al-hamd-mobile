@@ -2,11 +2,9 @@ import { Category } from '@/types';
 import { categories as initialCategories } from '@/data/categories';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
-import { db } from '../firebase';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { allowDevMockFallback } from '../env';
 import { deduplicateCategoriesById } from '@/lib/utils';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export { deduplicateCategoriesById };
 
@@ -52,32 +50,22 @@ export function getCanonicalCategories(): Category[] {
 }
 
 export function getCategories(): Category[] {
-  let fallback = allowDevMockFallback() ? initialCategories : [];
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const devFile = path.join(process.cwd(), 'data', 'dev-categories.json');
-      if (fs.existsSync(devFile)) {
-        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          fallback = parsed;
-        }
-      }
-    } catch {}
-  }
+  const fallback = allowDevMockFallback() ? initialCategories : [];
   let list = getStoredCollection(COLLECTION_KEY, fallback);
-  if (!list || list.length === 0) {
+  if ((!list || list.length === 0) && allowDevMockFallback() && !hasSyncedCategoriesFromApi) {
     list = initialCategories;
   }
   let modified = false;
   const deletedSlugs = getDeletedCategorySlugs();
 
-  // Filter out legacy non-mobile categories and permanently deleted categories
+  // Filter out permanently deleted categories (and legacy unrelated seed slugs when using seed fallback)
+  const isUsingSeed = list === initialCategories;
   const filtered = list.filter(
-    (c) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
+    (c) =>
+      c &&
+      c.slug &&
+      (!isUsingSeed || !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase())) &&
+      !deletedSlugs.has(c.slug.toLowerCase())
   );
   if (filtered.length !== list.length) {
     list = filtered;
@@ -104,8 +92,13 @@ export function getCategories(): Category[] {
 }
 
 let hasSyncedCategoriesFromApi = false;
+let hasCompletedApiSyncSuccess = false;
 let inFlightCategoriesPromise: Promise<Category[]> | null = null;
 let lastSyncedCategoriesTimestamp = 0;
+
+export function hasCompletedCategoryApiSync(): boolean {
+  return hasCompletedApiSyncSuccess;
+}
 
 export async function syncCategoriesFromApi(force = false): Promise<Category[]> {
   if (typeof window === 'undefined') return [];
@@ -125,12 +118,13 @@ export async function syncCategoriesFromApi(force = false): Promise<Category[]> 
         if (data.success && Array.isArray(data.categories)) {
           const deletedSlugs = getDeletedCategorySlugs();
           const filtered = data.categories.filter(
-            (c: any) => c && c.slug && !LEGACY_UNRELATED_SLUGS.has(c.slug.toLowerCase()) && !deletedSlugs.has(c.slug.toLowerCase())
+            (c: any) => c && c.slug && !deletedSlugs.has(c.slug.toLowerCase())
           );
           const uniqueCategories = deduplicateCategoriesById<Category>(filtered);
-          await persistCollection(COLLECTION_KEY, uniqueCategories);
           hasSyncedCategoriesFromApi = true;
+          hasCompletedApiSyncSuccess = true;
           lastSyncedCategoriesTimestamp = Date.now();
+          await persistCollection(COLLECTION_KEY, uniqueCategories);
           return uniqueCategories;
         }
       }
@@ -148,7 +142,8 @@ export async function syncCategoriesFromApi(force = false): Promise<Category[]> 
 export function isCategoryActive(c: Category): boolean {
   if (!c) return false;
   if ((c as any).isActive === false) return false;
-  if (c.status === 'archived' || c.status === 'inactive') return false;
+  const normalizedStatus = typeof c.status === 'string' ? c.status.trim().toLowerCase() : 'active';
+  if (normalizedStatus === 'archived' || normalizedStatus === 'inactive') return false;
   return true;
 }
 
@@ -167,7 +162,7 @@ export function getCategoryBySlug(slug: string): Category | undefined {
 
 export async function createCategory(
   data: Omit<Category, 'id'>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; category?: Category; error?: string }> {
   try {
     const rawName = data.name ? data.name.trim() : '';
@@ -249,23 +244,6 @@ export async function createCategory(
       );
     }
 
-    // Direct Firestore doc sync only if real Firebase credentials exist
-    const hasRealFirebase =
-      Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-    if (hasRealFirebase && db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'categories', newCat.id);
-        await Promise.race([
-          setDoc(docRef, newCat, { merge: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500)),
-        ]);
-      } catch (err) {
-        console.warn('Firestore create category notice:', err);
-      }
-    }
-
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('alhamd:data-updated', {
@@ -291,7 +269,7 @@ export async function createCategory(
 export async function updateCategory(
   id: string,
   updates: Partial<Category>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const categories = getCategories();
@@ -377,7 +355,7 @@ export async function updateCategory(
   }
 }
 
-export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteCategory(id: string, adminEmail = 'system'): Promise<boolean> {
   try {
     const categories = getCategories();
     const target = categories.find((c) => c.id === id);
@@ -411,23 +389,6 @@ export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'
       setLocal(DELETED_CATEGORY_SLUGS_KEY, [...deletedSlugs, targetSlug]);
     }
 
-    // Direct Firestore doc deletion only if real Firebase credentials exist
-    const hasRealFirebase =
-      Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-    if (hasRealFirebase && db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'categories', id);
-        await Promise.race([
-          deleteDoc(docRef),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500)),
-        ]);
-      } catch (err) {
-        console.warn('Firestore delete category notice:', err);
-      }
-    }
-
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('alhamd:data-updated', {
@@ -449,7 +410,7 @@ export async function deleteCategory(id: string, adminEmail = 'admin@alhamd.com'
   }
 }
 
-export async function reorderCategories(orderedIds: string[], adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function reorderCategories(orderedIds: string[], adminEmail = 'system'): Promise<boolean> {
   try {
     const categories = getCategories();
     const map = new Map(categories.map((c) => [c.id, c]));

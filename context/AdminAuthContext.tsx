@@ -3,15 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { StaffUser, AdminRole } from '@/types/admin';
-import { getStaffByEmail, getStaffUsers, hasStaffPermission, hasAnyStaffPermission, changeAdminSelfPassword } from '@/lib/db/staff';
-import { persistCollection, invalidateClientCache } from '@/lib/db/storage';
+import { hasStaffPermission, hasAnyStaffPermission } from '@/lib/permissions';
+import { invalidateClientCache } from '@/lib/db/storage';
 import { resetSettingsSyncTimestamp } from '@/lib/db/settings';
 import { resetProductsSyncTimestamp } from '@/lib/db/products';
 import { resetNavigationSyncTimestamp } from '@/lib/db/navigation';
-import { logActivity } from '@/lib/db/activity';
-import { verifyPassword } from '@/lib/crypto';
-import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 
 interface AdminAuthContextType {
   admin: StaffUser | null;
@@ -31,24 +27,6 @@ interface AdminAuthContextType {
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
 const ADMIN_STORAGE_KEY = 'alhamd_current_admin';
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-function setSessionCookies(token?: string) {
-  if (typeof document === 'undefined' || !token || !token.startsWith('v1.')) return;
-  const maxAge = 60 * 60 * 24 * 7;
-  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const secureSuffix = isHttps ? '; Secure' : '';
-  document.cookie = `${FALLBACK_COOKIE_NAME}=${token}; path=/; max-age=${maxAge}; SameSite=Lax${secureSuffix}`;
-}
-
-function clearSessionCookies() {
-  if (typeof document === 'undefined') return;
-  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const secureSuffix = isHttps ? '; Secure' : '';
-  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
-  document.cookie = `${FALLBACK_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${secureSuffix}`;
-}
 
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -57,76 +35,35 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Sync state with freshest record in database and server API
+  // Sync state with freshest record from server API
   const refreshAdmin = useCallback(async () => {
     try {
-      // 1. Fetch live authoritative session from server API
-      try {
-        const res = await fetch('/api/admin/login', {
-          credentials: 'include',
-          headers: { 'Cache-Control': 'no-cache' },
-          cache: 'no-store',
-        });
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data?.authenticated && data?.user) {
-            if (data.user.status === 'inactive') {
+      const res = await fetch('/api/admin/session', {
+        credentials: 'same-origin',
+        headers: { 'Cache-Control': 'no-cache' },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.authenticated && data?.user) {
+          if (data.user.status === 'inactive') {
+            try {
               localStorage.removeItem(ADMIN_STORAGE_KEY);
-              clearSessionCookies();
-              setAdmin(null);
-              return;
-            }
-            setAdmin(data.user);
-            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
-            if (data.token) {
-              try {
-                localStorage.setItem('alhamd_admin_token', data.token);
-                sessionStorage.setItem('alhamd_admin_token', data.token);
-              } catch {}
-            }
+            } catch {}
+            setAdmin(null);
             return;
           }
-        } else if (res.status === 401 || res.status === 403) {
-          localStorage.removeItem(ADMIN_STORAGE_KEY);
-          clearSessionCookies();
-          setAdmin(null);
+          setAdmin(data.user);
+          try {
+            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+          } catch {}
           return;
         }
-      } catch (networkErr) {
-        // Fallback to local storage on network disconnect
-      }
-
-      // 2. Synchronize with freshest local storage records
-      const saved = localStorage.getItem(ADMIN_STORAGE_KEY);
-      if (saved) {
-        const parsed: StaffUser = JSON.parse(saved);
-        const fresh = getStaffByEmail(parsed.email);
-
-        if (fresh && fresh.status !== 'inactive') {
-          const expiresAt = (parsed as any).expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000);
-          const fullFresh = { ...fresh, expiresAt };
-          setAdmin((prev) => {
-            const prevPerms = (prev?.permissions || []).slice().sort().join(',');
-            const freshPerms = (fullFresh.permissions || []).slice().sort().join(',');
-            if (
-              prev &&
-              prev.id === fresh.id &&
-              prev.role === fresh.role &&
-              prev.status === fresh.status &&
-              prev.email === fresh.email &&
-              prevPerms === freshPerms
-            ) {
-              return prev;
-            }
-            return fullFresh;
-          });
-          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(fullFresh));
-        } else if (fresh && fresh.status === 'inactive') {
-          // Account was deactivated
+      } else if (res.status === 401 || res.status === 403) {
+        try {
           localStorage.removeItem(ADMIN_STORAGE_KEY);
-          clearSessionCookies();
-          setAdmin(null);
-        }
+        } catch {}
+        setAdmin(null);
       }
     } catch (e) {
       console.warn('Could not refresh admin session', e);
@@ -149,22 +86,16 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           const data = await res.json().catch(() => null);
           if (data?.authenticated && data?.user && isMounted) {
             setAdmin(data.user);
-            localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
-            if (data.token) {
-              try {
-                localStorage.setItem('alhamd_admin_token', data.token);
-                sessionStorage.setItem('alhamd_admin_token', data.token);
-              } catch {}
-            }
+            try {
+              localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.user));
+            } catch {}
             setIsLoading(false);
             return;
           }
         } else if (res.status === 401 || res.status === 403) {
-          // Explicitly unauthenticated or logged out on server
-          localStorage.removeItem(ADMIN_STORAGE_KEY);
-          localStorage.removeItem('alhamd_admin_token');
-          sessionStorage.removeItem('alhamd_admin_token');
-          clearSessionCookies();
+          try {
+            localStorage.removeItem(ADMIN_STORAGE_KEY);
+          } catch {}
           if (isMounted) {
             setAdmin(null);
             setIsLoading(false);
@@ -178,9 +109,9 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       if (!isMounted) return;
 
       // Fail closed: never restore unauthenticated admin sessions from localStorage
-      localStorage.removeItem(ADMIN_STORAGE_KEY);
-      localStorage.removeItem('alhamd_admin_token');
-      sessionStorage.removeItem('alhamd_admin_token');
+      try {
+        localStorage.removeItem(ADMIN_STORAGE_KEY);
+      } catch {}
       setAdmin(null);
       setIsLoading(false);
     }
@@ -239,11 +170,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: 'Password must be at least 4 characters long.' };
       }
 
-      // 1. Delegate authentication to server-side API endpoint
+      // Delegate authentication authoritatively to server-side API endpoint
       try {
         const apiRes = await fetch('/api/admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: normalizedEmail, password }),
         });
 
@@ -256,11 +188,6 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           const sessionUser: StaffUser = data.user;
           try {
             localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
-            if (data.token) {
-              sessionStorage.setItem('alhamd_admin_token', data.token);
-              localStorage.setItem('alhamd_admin_token', data.token);
-              setSessionCookies(data.token);
-            }
           } catch (e) {}
 
           setAdmin(sessionUser);
@@ -280,109 +207,26 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           return { success: false, error: data.error };
         }
       } catch (err) {
-        // Fallback to local cryptographic verification if server is unreachable
-      }
-
-      // 2. Offline / Local fallback cryptographic verification
-      const existingStaff = getStaffByEmail(normalizedEmail);
-
-      if (!existingStaff) {
         setAuthLoading(false);
-        return { success: false, error: 'Invalid email or password.' };
+        return { success: false, error: 'Network error communicating with authentication service.' };
       }
 
-      if (existingStaff.status === 'inactive') {
-        setAuthLoading(false);
-        return { success: false, error: 'This account has been deactivated.' };
-      }
-
-      let passwordValid = false;
-      if (existingStaff.salt && existingStaff.passwordHash) {
-        passwordValid = await verifyPassword(password, existingStaff.salt, existingStaff.passwordHash);
-        if (!passwordValid && password.trim() !== password) {
-          passwordValid = await verifyPassword(password.trim(), existingStaff.salt, existingStaff.passwordHash);
-        }
-      }
-
-      if (!passwordValid) {
-        setAuthLoading(false);
-        return { success: false, error: 'Invalid email or password.' };
-      }
-
-      // Optional Firebase Auth sync
-      if (auth && auth.app) {
-        try {
-          await signInWithEmailAndPassword(auth, normalizedEmail, password);
-        } catch (firebaseErr: any) {
-          // Fallback to internal cryptographically validated credentials
-          console.debug('Firebase Auth background notice:', firebaseErr?.message);
-        }
-      }
-
-      // Establish authenticated session
-      const sessionUser: StaffUser = {
-        ...existingStaff,
-        lastLogin: new Date().toISOString(),
-      };
-
-      // Persist lastLogin to database collection
-      const allStaff = getStaffUsers();
-      const sIndex = allStaff.findIndex((s) => s.id === sessionUser.id);
-      if (sIndex !== -1) {
-        allStaff[sIndex] = sessionUser;
-        await persistCollection('admin_users', allStaff);
-      }
-
-      try {
-        localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessionUser));
-      } catch (e) {
-        console.warn('Could not persist staff session to storage', e);
-      }
-
-      // Also notify server API endpoint
-      try {
-        fetch('/api/admin/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: normalizedEmail, password }),
-        }).catch(() => {});
-      } catch {}
-
-      setAdmin(sessionUser);
-      setIsLoading(false);
       setAuthLoading(false);
-
-      await logActivity({
-        adminEmail: sessionUser.email,
-        action: `${sessionUser.role} Logged In`,
-        target: 'Control Center',
-        details: `Staff: ${sessionUser.name}`,
-      });
-
-      return { success: true, role: sessionUser.role };
+      return { success: false, error: 'Login failed. Please verify credentials.' };
     },
     []
   );
 
   const logout = useCallback(async () => {
-    if (admin) {
-      logActivity({
-        adminEmail: admin.email,
-        action: `${admin.role} Logged Out`,
-        target: 'Staff Session',
-        details: `Staff: ${admin.name}`,
-      }).catch(() => {});
-    }
     setAdmin(null);
     try {
       invalidateClientCache();
       resetSettingsSyncTimestamp();
       resetNavigationSyncTimestamp();
       resetProductsSyncTimestamp();
-      localStorage.removeItem(ADMIN_STORAGE_KEY);
-      localStorage.removeItem('alhamd_admin_token');
-      sessionStorage.removeItem('alhamd_admin_token');
-      clearSessionCookies();
+      try {
+        localStorage.removeItem(ADMIN_STORAGE_KEY);
+      } catch {}
       await fetch('/api/admin/logout', {
         method: 'POST',
         credentials: 'include',
@@ -394,7 +238,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       window.location.href = '/admin/login';
     }
-  }, [admin]);
+  }, []);
 
   const hasPermission = useCallback(
     (permissionKey: string): boolean => {
@@ -415,11 +259,26 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       if (!admin) {
         return { success: false, error: 'You must be logged in as an administrator.' };
       }
-      const res = await changeAdminSelfPassword(admin.id, currentPass, newPass);
-      if (res.success) {
+      try {
+        const res = await fetch('/api/admin/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            currentPassword: currentPass,
+            newPassword: newPass,
+          }),
+        });
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) {
+          return { success: false, error: json.error || 'Failed to change admin password on server.' };
+        }
         refreshAdmin();
+        return { success: true };
+      } catch {
+        return { success: false, error: 'Network error connecting to password update service.' };
       }
-      return res;
     },
     [admin, refreshAdmin]
   );
@@ -433,12 +292,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           admin?.role === 'SUPER_ADMIN' ||
           admin?.role === 'ADMIN' ||
           admin?.role === 'OWNER' ||
-          Boolean(admin?.isOwner) ||
-          admin?.id === 'staff-owner-1' ||
-          (Boolean(admin?.email) && (
-            admin!.email.toLowerCase() === 'admin@alhamdmobile.com' ||
-            admin!.email.toLowerCase() === 'admin@alhamd.com'
-          )),
+          Boolean(admin?.isOwner),
         isManager: admin?.role === 'Manager' || admin?.role === 'MANAGER',
         hasPermission,
         hasAnyPermission,

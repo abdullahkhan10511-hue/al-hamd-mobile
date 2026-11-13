@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession, isAuthorizedForShopBill } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { getAdminSessionAsync, isAuthorizedForShopBill } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllShopBillsFromDb, createShopBillInDb } from '@/lib/db/repositories/shopBills';
 import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!isAuthorizedForShopBill(session, false)) {
-      return NextResponse.json({ success: false, error: 'Access denied: Inventory permission required.' }, { status: 403 });
-    }
+    const auth = await requireAdmin(request, ['shop_bills.view', 'pos.view', 'shop_bills.manage', 'inventory.view']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '100', 10);
@@ -40,7 +36,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

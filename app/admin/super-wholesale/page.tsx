@@ -40,7 +40,7 @@ import {
 
 export default function SuperWholesaleManagementPage() {
   const { admin, hasPermission, isSuperAdmin } = useAdminAuth();
-  const operatorEmail = admin?.email || 'admin@alhamd.com';
+  const operatorEmail = admin?.email || 'system';
   const canManage = isSuperAdmin || hasPermission('wholesale.manage');
 
   const [accounts, setAccounts] = useState<Customer[]>([]);
@@ -91,11 +91,9 @@ export default function SuperWholesaleManagementPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
       const res = await fetch('/api/admin/super-wholesale', {
         credentials: 'include',
-        headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
+        headers: { },
       });
       if (res.ok) {
         const data = await res.json();
@@ -202,16 +200,13 @@ export default function SuperWholesaleManagementPage() {
     try {
       const cleanShopName = createShopName.trim();
       const cleanPassword = createPassword.trim();
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch('/api/admin/super-wholesale', {
         credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({
           shopName: cleanShopName,
           password: cleanPassword,
@@ -298,16 +293,13 @@ export default function SuperWholesaleManagementPage() {
 
     setIsSavingEdit(true);
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(editingAccount.id)}`, {
         credentials: 'include',
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({
           shopName: editShopName.trim(),
           phone: editPhone.trim(),
@@ -351,16 +343,13 @@ export default function SuperWholesaleManagementPage() {
     if (!pendingStatusToggle) return;
     const { account, newStatus } = pendingStatusToggle;
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(account.id)}`, {
         credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -389,15 +378,12 @@ export default function SuperWholesaleManagementPage() {
   const handleConfirmDelete = async () => {
     if (!pendingDelete) return;
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/super-wholesale/${encodeURIComponent(pendingDelete.id)}`, {
         credentials: 'include',
         method: 'DELETE',
         headers: {
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
       });
 
       const data = await res.json();

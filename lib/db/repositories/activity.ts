@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { ActivityLog } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
@@ -19,7 +20,7 @@ export async function logActivity(entry: {
 }): Promise<ActivityLog> {
   const log: ActivityLog = {
     id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    adminEmail: entry.adminEmail || 'admin@alhamd.com',
+    adminEmail: entry.adminEmail || 'system',
     action: entry.action,
     target: entry.target,
     details: entry.details,

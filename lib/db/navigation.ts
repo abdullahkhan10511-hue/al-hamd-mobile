@@ -2,7 +2,7 @@ import { NavigationItem } from '@/types/admin';
 import { seedNavigation } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'navigation';
 
@@ -105,24 +105,14 @@ export async function syncNavigationFromApi(forceFresh = false): Promise<Navigat
 }
 
 export function getNavigation(): NavigationItem[] {
-  let fallback = seedNavigation;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentNavigation } = require('./navigationStorage');
-      const saved = readPersistentNavigation();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback = seedNavigation;
   const items = getStoredCollection(COLLECTION_KEY, fallback);
   return normalizeNavigationList(items);
 }
 
 export async function updateNavigation(
   items: NavigationItem[],
-  adminEmail = 'admin@alhamdmobile.com'
+  adminEmail = 'system'
 ): Promise<NavigationItem[]> {
   const normalized = normalizeNavigationList(items);
 
@@ -168,7 +158,7 @@ export async function updateNavigation(
 
 export async function createNavigationItem(
   data: Omit<NavigationItem, 'id'>,
-  adminEmail = 'admin@alhamdmobile.com'
+  adminEmail = 'system'
 ): Promise<NavigationItem> {
   const items = getNavigation();
   const newItem: NavigationItem = {
@@ -184,7 +174,7 @@ export async function createNavigationItem(
 
 export async function deleteNavigationItem(
   id: string,
-  adminEmail = 'admin@alhamdmobile.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const items = getNavigation();
   const filtered = items.filter((n) => n.id !== id);

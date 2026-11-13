@@ -1,7 +1,9 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { Customer } from '@/types/admin';
 import { isDbConfigured } from './mysql';
+import { verifyUserPasswordUnified, hashPasswordSecure, validatePasswordPolicy } from '@/lib/security/password';
 import {
   getAllCustomersFromDb,
   getCustomerByIdFromDb,
@@ -18,7 +20,7 @@ import {
   verifyCustomerPassword,
 } from './repositories/customers';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
 
 export type SanitizedCustomer = Omit<Customer, 'passwordHash' | 'passwordSalt'>;
@@ -74,6 +76,7 @@ let memoryCustomers: Customer[] | null = null;
 let lastCustomersFileMtime = 0;
 
 import { allowDevMockFallback } from '../env';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 function shouldReloadFromFile(): boolean {
   if (!memoryCustomers || memoryCustomers.length === 0) return true;
@@ -247,7 +250,7 @@ export async function createWholesaleAccountServer(
     phone?: string;
     address?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<Customer> {
   if (isDbConfigured()) {
     return await createWholesaleAccountInDb(data);
@@ -300,7 +303,7 @@ export async function updateWholesaleAccountServer(
     status?: 'active' | 'suspended' | 'deactivated' | 'inactive';
     password?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<Customer> {
   if (isDbConfigured()) {
     return await updateWholesaleAccountInDb(id, updates);
@@ -416,7 +419,7 @@ export async function createSuperWholesaleAccountServer(
     address?: string;
     status?: 'active' | 'inactive';
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<Customer> {
   if (isDbConfigured()) {
     return await createSuperWholesaleAccountInDb(data);
@@ -468,7 +471,7 @@ export async function updateSuperWholesaleAccountServer(
     status?: 'active' | 'suspended' | 'deactivated' | 'inactive';
     password?: string;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<Customer> {
   if (isDbConfigured()) {
     return await updateWholesaleAccountInDb(id, updates);
@@ -606,8 +609,15 @@ export async function authenticateCustomerServer(
     if (!wholesaleMatch.passwordHash || !wholesaleMatch.passwordSalt) {
       throw new Error('This account has no password set. Please contact administration.');
     }
-    const isValid = verifyCustomerPassword(rawPassword, wholesaleMatch.passwordSalt, wholesaleMatch.passwordHash);
-    if (!isValid) throw new Error('Invalid shop name or password.');
+    const verifyRes = await verifyUserPasswordUnified({
+      password: rawPassword,
+      storedHash: wholesaleMatch.passwordHash,
+      salt: wholesaleMatch.passwordSalt,
+      userType: 'wholesale',
+      userId: wholesaleMatch.id,
+      email: wholesaleMatch.email || undefined,
+    });
+    if (!verifyRes.valid) throw new Error('Invalid shop name or password.');
     return wholesaleMatch;
   }
 
@@ -630,10 +640,15 @@ export async function authenticateCustomerServer(
     if (!retailMatch.passwordHash || !retailMatch.passwordSalt) {
       throw new Error('This account was created via guest checkout and has no password set. Please use "Create Account" or reset your password.');
     }
-    const isValid =
-      verifyCustomerPassword(rawPassword, retailMatch.passwordSalt, retailMatch.passwordHash) ||
-      verifyCustomerPassword(password, retailMatch.passwordSalt, retailMatch.passwordHash);
-    if (!isValid) throw new Error('Invalid email address or password.');
+    const verifyRes = await verifyUserPasswordUnified({
+      password: rawPassword,
+      storedHash: retailMatch.passwordHash,
+      salt: retailMatch.passwordSalt,
+      userType: 'customer',
+      userId: retailMatch.id,
+      email: retailMatch.email || undefined,
+    });
+    if (!verifyRes.valid) throw new Error('Invalid email address or password.');
     return retailMatch;
   }
 
@@ -684,7 +699,7 @@ export async function registerCustomerServer(params: {
     }
 
     const salt = generateCustomerSalt(16);
-    const passwordHash = hashCustomerPassword(params.password, salt);
+    const passwordHash = await hashPasswordSecure(params.password);
     const customerId = existing?.id || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
     const newCustomer: Customer = {

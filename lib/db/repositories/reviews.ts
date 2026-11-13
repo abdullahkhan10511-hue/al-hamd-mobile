@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { ProductReview } from '@/types';
 import { RowDataPacket } from 'mysql2/promise';

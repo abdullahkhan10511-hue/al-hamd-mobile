@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { getAdminSessionAsync, forbiddenResponse } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getProductByIdFromDb, updateProductInDb, deleteProductInDb } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
@@ -33,7 +34,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
     }
 
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     const safeProduct = session ? sanitizeProductForSession(product, session) : product;
 
     return NextResponse.json({ success: true, product: safeProduct });
@@ -47,14 +48,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Admin session required.');
-    }
-
-    if (!hasAdminPermission(session, ['products.edit', 'products.manage'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to edit products.');
-    }
+    const auth = await requireAdmin(request, ['products.edit', 'products.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     const body = await request.json();
@@ -140,14 +136,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Admin session required.');
-    }
-
-    if (!hasAdminPermission(session, ['products.delete', 'products.manage'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to delete products.');
-    }
+    const auth = await requireAdmin(request, ['products.delete', 'products.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     let ok = false;

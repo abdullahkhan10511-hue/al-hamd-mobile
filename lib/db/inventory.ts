@@ -1,6 +1,6 @@
 import { InventoryLog } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'inventory_logs';
 

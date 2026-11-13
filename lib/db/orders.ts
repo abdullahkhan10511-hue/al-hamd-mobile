@@ -4,12 +4,10 @@ import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
 import { adjustStock, adjustShopStock, getProductById, getProductBySlug } from './products';
 import { addNotification } from './notifications';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 import { validatePromoCode, recordPromoUsage } from './promotions';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import { allowDevMockFallback } from '../env';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'orders';
 
@@ -100,20 +98,7 @@ export function generateNextInvoiceNumber(existingOrders: Order[]): string {
 
 function getVerifiedWholesaleCustomer(customerId?: string, shopName?: string): Customer | null {
   try {
-    let customers: Customer[] = [];
-    if (typeof window === 'undefined') {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const filePath = path.join(process.cwd(), 'data', 'customers.json');
-        if (fs.existsSync(filePath)) {
-          customers = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        }
-      } catch {}
-    }
-    if (!customers || customers.length === 0) {
-      customers = getStoredCollection<Customer>('customers', []);
-    }
+    const customers = getStoredCollection<Customer>('customers', []);
     if (customerId) {
       const match = customers.find(
         (c) =>
@@ -434,17 +419,6 @@ export async function createOrder(
     console.warn('Notification warning:', e);
   }
 
-  // Direct Firestore doc sync
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'orders', newOrder.id);
-      const cleanData = JSON.parse(JSON.stringify(newOrder));
-      await setDoc(docRef, cleanData, { merge: true });
-    } catch (err) {
-      console.warn('Firestore create order notice:', err);
-    }
-  }
-
   return newOrder;
 }
 
@@ -481,7 +455,7 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   paymentStatus?: PaymentStatus,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const orders = getOrders();
   const index = orders.findIndex((o) => o.id === orderId);
@@ -543,16 +517,6 @@ export async function updateOrderStatus(
     }
   }
 
-  // Direct Firestore doc sync
-  if (db && typeof (db as any).type === 'string') {
-    try {
-      const docRef = doc(db, 'orders', orderId);
-      await setDoc(docRef, orders[index], { merge: true });
-    } catch (err) {
-      console.warn('Firestore update order notice:', err);
-    }
-  }
-
   await logActivity({
     adminEmail,
     action: 'Updated Order Status',
@@ -565,7 +529,7 @@ export async function updateOrderStatus(
 
 export async function verifyPayment(
   orderId: string,
-  adminEmail = 'admin@alhamd.com',
+  adminEmail = 'system',
   note?: string
 ): Promise<boolean> {
   const orders = getOrders();
@@ -626,7 +590,7 @@ export async function verifyPayment(
 
 export async function rejectPayment(
   orderId: string,
-  adminEmail = 'admin@alhamd.com',
+  adminEmail = 'system',
   note?: string
 ): Promise<boolean> {
   const orders = getOrders();

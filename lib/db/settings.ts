@@ -2,9 +2,7 @@ import { StoreSettings, SocialLinksSettings, SocialAccountConfig } from '@/types
 import { seedStoreSettings } from './seed';
 import { getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const SETTINGS_KEY = 'store_settings';
 
@@ -60,7 +58,7 @@ export function normalizeSocialLinks(rawSocial: any): SocialLinksSettings {
   const accounts: SocialAccountConfig[] = STANDARD_SOCIAL_PLATFORMS.map(({ platform, name, defaultUrl }) => {
     const accItem = Array.isArray(current.accounts) ? current.accounts.find((a: any) => a.platform === platform) : null;
     let existingUrl = accItem?.url !== undefined ? accItem.url : (typeof current[platform] === 'string' ? current[platform] : '');
-    
+
     // Migrate old demo whatsapp links
     if (platform === 'whatsapp' && (existingUrl.includes('923001234567') || !existingUrl)) {
       existingUrl = 'https://wa.me/923432200995';
@@ -146,39 +144,14 @@ export function normalizeCanonicalUrl(url?: string): string {
   }
 }
 
-function getServerSavedSettings(): Partial<StoreSettings> | null {
-  if (typeof window !== 'undefined') return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require('fs') as typeof import('fs');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require('path') as typeof import('path');
-    const filePath = path.join(process.cwd(), 'data', 'store-settings.json');
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed[0] : parsed;
-    }
-  } catch {
-    // Graceful fallback
-  }
-  return null;
-}
-
 export function getStoreSettings(): StoreSettings {
-  const serverSaved = getServerSavedSettings();
-  const settings = getLocal<StoreSettings>(
-    SETTINGS_KEY,
-    serverSaved ? ({ ...seedStoreSettings, ...serverSaved } as StoreSettings) : seedStoreSettings
-  );
+  const settings = getLocal<StoreSettings>(SETTINGS_KEY, seedStoreSettings);
 
   const base: StoreSettings = {
     ...seedStoreSettings,
-    ...(serverSaved || {}),
     ...(settings || {}),
     seo: {
       ...seedStoreSettings.seo,
-      ...(serverSaved?.seo || {}),
       ...(settings?.seo || {}),
     },
   };
@@ -206,7 +179,7 @@ export function getStoreSettings(): StoreSettings {
 
   const resolvedFavicon = resolveFaviconUrl(
     base.faviconUrl,
-    base.seo?.faviconUrl || serverSaved?.faviconUrl || serverSaved?.seo?.faviconUrl
+    base.seo?.faviconUrl
   );
 
   base.websiteTitle = websiteTitle;
@@ -370,7 +343,7 @@ export async function fetchAuthoritativeAdminSettings(): Promise<StoreSettings> 
 
 export async function updateStoreSettings(
   settings: Partial<StoreSettings>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<StoreSettings> {
   const current = getStoreSettings();
   const resolvedFavicon = resolveFaviconUrl(
@@ -427,23 +400,6 @@ export async function updateStoreSettings(
   // Only update local storage once authoritative database/server persistence succeeds
   setLocal(SETTINGS_KEY, serverSavedSettings);
 
-  // Attempt Firestore sync with non-destructive merge
-  const hasRealFirebase =
-    Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-  if (hasRealFirebase && db && typeof db.type === 'string') {
-    try {
-      const docRef = doc(db, 'system_data', SETTINGS_KEY);
-      await Promise.race([
-        setDoc(docRef, updated, { merge: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 1500)),
-      ]);
-    } catch {
-      // Offline or permission restriction; local persistence is already guaranteed
-    }
-  }
-
   await logActivity({
     adminEmail,
     action: 'Updated Store Settings',
@@ -495,7 +451,7 @@ export function getActiveSocialAccounts(settings: StoreSettings | null): SocialA
 export async function toggleSocialPlatformStatus(
   platform: string,
   isActive: boolean,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<StoreSettings> {
   const current = getStoreSettings();
   const currentSocial = current.socialLinks || {};
@@ -531,23 +487,6 @@ export async function toggleSocialPlatformStatus(
 
   setLocal(SETTINGS_KEY, updatedSettings);
 
-  // Firestore sync if available
-  const hasRealFirebase =
-    Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-  if (hasRealFirebase && db && typeof db.type === 'string') {
-    try {
-      const docRef = doc(db, 'system_data', SETTINGS_KEY);
-      await Promise.race([
-        setDoc(docRef, updatedSettings, { merge: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore sync timeout')), 1500)),
-      ]);
-    } catch {
-      // ignore
-    }
-  }
-
   await logActivity({
     adminEmail,
     action: isActive ? 'Activated Social Platform' : 'Deactivated Social Platform',
@@ -566,7 +505,7 @@ export async function toggleSocialPlatformStatus(
 export async function updateSocialPlatformUrl(
   platform: string,
   url: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<StoreSettings> {
   const current = getStoreSettings();
   const currentSocial = current.socialLinks || {};

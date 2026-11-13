@@ -27,7 +27,7 @@ import { Category } from '@/types';
 
 export default function AdminCategoriesPage() {
   const { admin } = useAdminAuth();
-  const userEmail = admin?.email || 'admin@alhamd.com';
+  const userEmail = admin?.email || 'system';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [categories, setCategories] = useState<Category[]>([]);

@@ -6,7 +6,7 @@ import { getServerStaffUsers } from '@/lib/db/staff-server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getCustomerByEmailFromDb } from '@/lib/db/repositories/customers';
 import { getStaffByEmailFromDb } from '@/lib/db/repositories/staff';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
 
 const GENERIC_SUCCESS_MESSAGE =
   'If an account associated with this email address exists, you will receive password reset instructions shortly.';
@@ -14,15 +14,9 @@ const GENERIC_SUCCESS_MESSAGE =
 export async function POST(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`forgot_pw_${ip}`, 5, 300000);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Too many password reset requests. Please wait ${rateCheck.retryAfterSeconds} seconds before requesting again.`,
-        },
-        { status: 429 }
-      );
+    const ipRate = await checkRateLimit(`forgot_pw_ip_${ip}`, 10, 3600000);
+    if (!ipRate.allowed) {
+      return createRateLimitResponse(ipRate.retryAfterSeconds, 'Too many password reset requests from this network.');
     }
     const body = await request.json().catch(() => ({}));
     const rawEmail = typeof body.email === 'string' ? body.email.trim() : '';
@@ -36,6 +30,10 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedEmail = rawEmail.toLowerCase();
+    const emailRate = await checkRateLimit(`forgot_pw_email_${normalizedEmail}`, 3, 3600000);
+    if (!emailRate.allowed) {
+      return createRateLimitResponse(emailRate.retryAfterSeconds, 'Too many password reset requests for this email address.');
+    }
     const forwardedFor = request.headers.get('x-forwarded-for');
     const ipAddress = forwardedFor ? forwardedFor.split(',')[0].trim() : request.headers.get('x-real-ip') || null;
     const userAgent = request.headers.get('user-agent') || null;

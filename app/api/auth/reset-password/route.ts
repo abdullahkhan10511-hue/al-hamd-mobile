@@ -3,7 +3,8 @@ import {
   verifyPasswordResetToken,
   completePasswordReset,
 } from '@/lib/db/repositories/passwordReset';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
+import { validatePasswordPolicy } from '@/lib/security/password';
 
 /**
  * GET /api/auth/reset-password?token=...
@@ -12,7 +13,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 export async function GET(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`reset_pw_get_${ip}`, 15, 60000);
+    const rateCheck = await checkRateLimit(`reset_pw_get_${ip}`, 15, 60000);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { valid: false, error: `Too many attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.` },
@@ -58,12 +59,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`reset_pw_post_${ip}`, 10, 60000);
+    const rateCheck = await checkRateLimit(`reset_pw_post_${ip}`, 10, 3600000);
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { success: false, error: `Too many password reset attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.` },
-        { status: 429 }
-      );
+      return createRateLimitResponse(rateCheck.retryAfterSeconds, 'Too many password reset attempts.');
     }
     const body = await request.json().catch(() => ({}));
     const token = typeof body.token === 'string' ? body.token.trim() : '';
@@ -77,9 +75,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!newPassword || newPassword.length < 8) {
+    const policy = validatePasswordPolicy(newPassword);
+    if (!policy.valid) {
       return NextResponse.json(
-        { success: false, error: 'Password must be at least 8 characters long.' },
+        { success: false, error: policy.error || 'Password does not meet complexity requirements.' },
         { status: 400 }
       );
     }

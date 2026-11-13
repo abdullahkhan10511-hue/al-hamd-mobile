@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getInventoryLogs, recordInventoryLog } from '@/lib/db/repositories/inventory';
-import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { getAdminSessionAsync, unauthorizedResponse, forbiddenResponse, hasAdminPermission } from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized: Admin session required.');
     }
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized: Admin session required.');
     }

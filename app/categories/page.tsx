@@ -8,6 +8,7 @@ import { Search, ArrowRight, Layers, Package } from 'lucide-react';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { Category, Product } from '@/types';
+import { getCategoryPlaceholder } from '@/lib/placeholders';
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -186,10 +187,11 @@ export default function CategoriesPage() {
                         src={
                           cat.image && typeof cat.image === 'string' && cat.image.trim()
                             ? cat.image.trim()
-                            : 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop'
+                            : getCategoryPlaceholder(cat.slug || cat.name, cat.name)
                         }
                         alt={cat.name}
                         fill
+                        unoptimized={!(cat.image && typeof cat.image === 'string' && cat.image.trim())}
                         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         className="object-cover transition-transform duration-700 ease-out group-hover:scale-108"
                       />

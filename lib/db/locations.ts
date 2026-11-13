@@ -1,9 +1,7 @@
 import { ShopLocation } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
-import { db } from '../firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'shopLocations';
 
@@ -100,17 +98,7 @@ export async function syncShopLocationsFromApi(forceFresh = false): Promise<Shop
  * Retrieve all shop locations from local storage / cache.
  */
 export function getShopLocations(): ShopLocation[] {
-  let fallback: ShopLocation[] = [];
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentLocations } = require('./locationStorage');
-      const saved = readPersistentLocations();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback: ShopLocation[] = [];
   const list = getStoredCollection<ShopLocation>(COLLECTION_KEY, fallback);
   return list.sort((a, b) => (a.displayOrder || 1) - (b.displayOrder || 1));
 }
@@ -142,7 +130,7 @@ export async function saveShopLocation(
     isActive?: boolean;
     displayOrder?: number;
   },
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; data?: ShopLocation; error?: string }> {
   try {
     const shopName = data.shopName?.trim();
@@ -229,7 +217,7 @@ export async function saveShopLocation(
  */
 export async function deleteShopLocation(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const locations = getShopLocations();
@@ -265,23 +253,6 @@ export async function deleteShopLocation(
       );
     }
 
-    // Direct Firestore document deletion if available and real credentials exist
-    const hasRealFirebase =
-      Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY !== 'demo-api-key-placeholder';
-
-    if (hasRealFirebase && db && typeof (db as any).type === 'string') {
-      try {
-        const docRef = doc(db, 'shopLocations', id);
-        await Promise.race([
-          deleteDoc(docRef),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500)),
-        ]);
-      } catch (err) {
-        console.warn('Firestore shopLocations direct deletion notice:', err);
-      }
-    }
-
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('alhamd:data-updated', {
@@ -308,7 +279,7 @@ export async function deleteShopLocation(
  */
 export async function toggleShopLocationStatus(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; data?: ShopLocation; error?: string }> {
   const target = getShopLocationById(id);
   if (!target) {

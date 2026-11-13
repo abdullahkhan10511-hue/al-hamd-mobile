@@ -1,27 +1,15 @@
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 import { NextRequest, NextResponse } from 'next/server';
 import { voidPosSale } from '@/lib/db/pos';
 import { voidOrderInDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured } from '@/lib/db/mysql';
-import {
-  getAdminSession,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Staff session required.');
-    }
-
-    const hasVoidPerm =
-      session.isOwner ||
-      (Array.isArray(session.permissions) && (session.permissions.includes('*') || session.permissions.includes('pos.void_sale')));
-
-    if (!hasVoidPerm) {
-      return forbiddenResponse('Permission Denied: Your staff account is not authorized to void completed sales.');
-    }
+    const auth = await requireAdmin(request, 'pos.void_sale');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     const { orderId, reason } = body;

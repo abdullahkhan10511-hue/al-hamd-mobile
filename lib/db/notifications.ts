@@ -8,7 +8,7 @@ export function getNotifications(): AdminNotification[] {
     {
       id: 'notif-1',
       title: 'Store Ready',
-      message: 'Admin control center is live and synced with Firestore.',
+      message: 'Admin control center is live and synced with MySQL.',
       type: 'system',
       read: false,
       timestamp: new Date().toISOString(),

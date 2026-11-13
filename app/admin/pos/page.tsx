@@ -10,7 +10,7 @@ import { createPosSale } from '@/lib/db/pos';
 import { getCustomers } from '@/lib/db/customers';
 import { getEnabledPaymentMethods } from '@/lib/db/paymentMethods';
 import { useAdminAuth } from '@/context/AdminAuthContext';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import { formatPrice } from '@/lib/utils';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 import PosReceiptModal from '@/components/admin/PosReceiptModal';

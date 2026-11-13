@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import { downloadAndPersistRemoteMedia } from '@/lib/mediaStorage';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
 
 export async function POST(request: NextRequest) {
+  let rawUrl = '';
   try {
-    const session = getAdminSession(request);
-    const authHeader = request.headers.get('authorization');
+    const auth = await requireAdmin(request, ['products.add', 'products.edit', 'products.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
-    if (!session && (!authHeader || !authHeader.startsWith('Bearer '))) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin credentials required to import media.' },
-        { status: 401 }
-      );
+    // Rate limit: 20 per hour per admin
+    // Bulk import rate limit: 300 requests per hour per admin
+    const rateCheck = await checkRateLimit(`import_url_admin_${session.id}`, 300, 3600000);
+    if (!rateCheck.allowed) {
+      return createRateLimitResponse(rateCheck.retryAfterSeconds, 'Too many media import attempts.');
     }
 
-    const body = await request.json();
-    const rawUrl = (body.url || '').trim();
+    const body = await request.json().catch(() => ({}));
+    rawUrl = (body.url || '').trim();
     const requestedFolder = body.folder === 'videos' ? 'videos' : 'products';
 
     if (!rawUrl) {
@@ -58,9 +61,13 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
-    console.error('Remote media import error:', err);
+    console.error('[SSRF MEDIA IMPORT REJECTED]', err?.message || err);
     return NextResponse.json(
-      { success: false, error: err?.message || 'Failed to import remote media.' },
+      {
+        success: false,
+        error: err?.message || 'Could not import this URL.',
+        url: rawUrl,
+      },
       { status: 400 }
     );
   }

@@ -10,10 +10,20 @@
     "setup:admin": "node scripts/setup-admin.js",
     "db:migrate": "node scripts/migrations/migrate.js",
     "db:import": "npx tsx scripts/migrations/import-data.ts",
-    "db:test": "node scripts/migrations/test-db.js"
+    "db:test": "node scripts/migrations/test-db.js",
+    "verify:step1": "node scripts/verify-step1.mjs",
+    "verify:step2": "node scripts/verify-step2.mjs",
+    "verify:step3": "node scripts/verify-step3.mjs",
+    "verify:step4": "node scripts/verify-step4.mjs",
+    "verify:step6": "node scripts/verify-step6.mjs",
+    "verify:step7a": "node scripts/verify-step7a.mjs",
+    "verify:step7b": "node scripts/verify-step7b.mjs",
+    "verify:step8": "node scripts/verify-step8.mjs",
+    "verify:animation": "node scripts/verify-animation.mjs",
+    "predeploy": "node scripts/predeploy-check.mjs",
+    "audit:image-hosts": "node scripts/list-image-hosts.mjs"
   },
   "dependencies": {
-    "firebase": "^12.19.0",
     "framer-motion": "^13.5.1",
     "lucide-react": "^1.61.0",
     "mysql2": "^3.24.6",
@@ -21,6 +31,7 @@
     "nodemailer": "^10.2.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
     "zod": "4.6.7"
   },
   "devDependencies": {

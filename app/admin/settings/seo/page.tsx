@@ -34,7 +34,7 @@ import {
   syncStoreSettingsFromApi,
   fetchAuthoritativeAdminSettings,
 } from '@/lib/db/settings';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export default function AdminSeoSettingsPage() {
   const { admin: currentAdmin } = useAdminAuth();
@@ -247,7 +247,7 @@ export default function AdminSeoSettingsPage() {
       };
 
       // 1. Update local storage and dispatch update event
-      const saved = await updateStoreSettings(updatedSettings, currentAdmin?.email || 'admin@alhamd.com');
+      const saved = await updateStoreSettings(updatedSettings, currentAdmin?.email || 'system');
       setSettings(saved);
 
       // 2. Direct server verification

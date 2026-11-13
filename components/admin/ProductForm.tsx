@@ -759,7 +759,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
 
     try {
       if (isNew) {
-        const res = await createProduct(payload, admin?.email || 'admin@alhamd.com');
+        const res = await createProduct(payload, admin?.email || 'system');
         if (!res.success) {
           setIsSaving(false);
           setError(res.error || 'Unable to save product. Please try again.');
@@ -767,7 +767,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           return;
         }
       } else {
-        const res = await updateProduct(initialProduct.id, payload, admin?.email || 'admin@alhamd.com');
+        const res = await updateProduct(initialProduct.id, payload, admin?.email || 'system');
         if (!res.success) {
           setIsSaving(false);
           setError(res.error || 'Unable to save product. Please try again.');

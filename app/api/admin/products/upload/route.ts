@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { saveMediaBuffer } from '@/lib/mediaStorage';
-import { getAdminSession } from '@/lib/db/adminAuth';
-
-// Allowed MIME types and extensions
-const ALLOWED_IMAGE_MIMES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-]);
-
-const ALLOWED_VIDEO_MIMES = new Set([
-  'video/mp4',
-  'video/webm',
-]);
-
-const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const ALLOWED_VIDEO_EXTS = new Set(['.mp4', '.webm']);
+import { saveMediaBuffer, validateUploadedFileBuffer } from '@/lib/mediaStorage';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
 
 const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
-
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe', '.sh', '.bat', '.cmd', '.php', '.phtml', '.js', '.jsx', '.ts', '.tsx',
-  '.pl', '.py', '.rb', '.cgi', '.jar', '.vbs', '.scr', '.msi', '.com'
-]);
 
 interface UploadedMediaItemResult {
   id: string;
@@ -37,14 +17,15 @@ interface UploadedMediaItemResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const auth = await requireAdmin(request, ['products.add', 'products.edit', 'products.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
-    // Strictly enforce valid administrator session
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized. Admin credentials required to upload product media.' },
-        { status: 401 }
-      );
+    // Task S10: Enforce upload rate limit (100 uploads / hour per admin user)
+    const rateLimitKey = `upload_admin_${session.id || session.email}`;
+    const rateLimit = await checkRateLimit(rateLimitKey, 100, 60 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      return createRateLimitResponse(rateLimit.retryAfterSeconds);
     }
 
     const contentType = request.headers.get('content-type') || '';
@@ -121,65 +102,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-
     const results: UploadedMediaItemResult[] = [];
     const errors: string[] = [];
 
     for (const file of files) {
       const originalName = file.name || 'unnamed-file';
-      const ext = path.extname(originalName).toLowerCase();
-      const mimeType = (file.type || '').toLowerCase();
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
-      // Security check: ban executable / script files
-      if (DANGEROUS_EXTENSIONS.has(ext)) {
-        errors.push(`Upload rejected for "${originalName}": executable and script files are strictly prohibited.`);
+      // Task S10: Rigorous buffer validation, magic bytes, SVG rejection, dangerous extension rejection
+      const validation = validateUploadedFileBuffer(buffer, originalName, file.type, {
+        allowVideo: true,
+        maxSizeBytes: MAX_VIDEO_SIZE_BYTES,
+      });
+
+      if (!validation.ok || !validation.format) {
+        errors.push(`"${originalName}": ${validation.error || 'Invalid file format.'}`);
         continue;
       }
 
-      const isImage = ALLOWED_IMAGE_MIMES.has(mimeType) || ALLOWED_IMAGE_EXTS.has(ext);
-      const isVideo = ALLOWED_VIDEO_MIMES.has(mimeType) || ALLOWED_VIDEO_EXTS.has(ext);
+      const format = validation.format;
+      const isVideo = format.type === 'video';
 
-      if (!isImage && !isVideo) {
+      // Specific size constraint check
+      if (!isVideo && buffer.length > MAX_IMAGE_SIZE_BYTES) {
         errors.push(
-          `"${originalName}" has an unsupported format. Allowed image formats: JPG, JPEG, PNG, WEBP. Allowed video formats: MP4, WEBM.`
+          `Image "${originalName}" is too large (${(buffer.length / (1024 * 1024)).toFixed(1)}MB). Maximum allowed image size is 15MB.`
         );
         continue;
       }
 
-      // Size checks
-      if (isImage && file.size > MAX_IMAGE_SIZE_BYTES) {
-        errors.push(
-          `Image "${originalName}" is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed image size is 15MB.`
-        );
-        continue;
-      }
-
-      if (isVideo && file.size > MAX_VIDEO_SIZE_BYTES) {
-        errors.push(
-          `Video "${originalName}" is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed video size is 100MB.`
-        );
-        continue;
-      }
-
-      // Clean filename
+      // Safe clean filename with cryptographically random suffix
       const safeBaseName = path
-        .basename(originalName, ext)
+        .basename(originalName, path.extname(originalName))
         .replace(/[^a-zA-Z0-9_-]/g, '_')
         .substring(0, 40);
       const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${ext}`;
+      const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${format.ext}`;
 
-      // Write file via persistent storage manager
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const saved = await saveMediaBuffer('products', uniqueFileName, buffer);
-
-      const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+      const targetFolder = isVideo ? 'videos' : 'products';
+      const saved = await saveMediaBuffer(targetFolder, uniqueFileName, buffer);
 
       results.push({
         id: `media-${uniqueSuffix}`,
         url: saved.publicUrl,
-        type: mediaType,
+        type: format.type,
         name: originalName,
         size: saved.size,
       });

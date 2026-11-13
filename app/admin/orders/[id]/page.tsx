@@ -38,7 +38,7 @@ export default function AdminOrderDetailPage() {
   const router = useRouter();
   const orderId = params.id as string;
   const { admin } = useAdminAuth();
-  const adminEmail = admin?.email || 'admin@alhamd.com';
+  const adminEmail = admin?.email || 'system';
 
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);

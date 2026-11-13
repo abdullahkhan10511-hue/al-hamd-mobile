@@ -1,7 +1,8 @@
+import 'server-only';
 import { isDbConfigured } from './mysql';
 import {
   getProductBySlugFromDb,
-  getAllProductsFromDb,
+  getStorefrontProductsFromDb,
 } from './repositories/products';
 import {
   getAllCategoriesFromDb,
@@ -11,11 +12,52 @@ import {
   getAllBrandsFromDb,
   getBrandBySlugFromDb,
 } from './repositories/brands';
-import { getProducts } from './products';
-import { getActiveCategories } from './categories';
-import { getActiveBrands } from './brands';
+import { getServerProducts as getProducts } from './productsServer';
+import { getServerActiveCategories as getActiveCategories } from './categoriesServer';
+import { getServerActiveBrands as getActiveBrands } from './brandsServer';
 import { Product, Category } from '@/types';
 import { Brand } from '@/types/admin';
+import { getVerifiedReviewStats, isStorefrontVisibleProduct } from '@/lib/utils';
+
+/**
+ * Projects a product down to minimal fields required by ProductCard
+ * to keep HTML and RSC transfer payloads small.
+ */
+export function projectMinimalCardProduct(p: Product): Product {
+  const verifiedStats = getVerifiedReviewStats(p);
+  return {
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    brand: p.brand,
+    brandId: p.brandId,
+    brandSlug: p.brandSlug,
+    category: p.category,
+    categorySlug: p.categorySlug,
+    price: Number(p.price) || 0,
+    compareAtPrice: p.compareAtPrice !== undefined ? Number(p.compareAtPrice) : undefined,
+    wholesalePrice: p.wholesalePrice !== undefined ? Number(p.wholesalePrice) : undefined,
+    superWholesalePrice: p.superWholesalePrice !== undefined ? Number(p.superWholesalePrice) : undefined,
+    discountPercentage: p.discountPercentage,
+    rating: Number(p.rating) || 0,
+    reviewCount: Number(p.reviewCount) || 0,
+    approvedReviewCount: verifiedStats.count,
+    approvedRating: verifiedStats.rating,
+    images: Array.isArray(p.images) ? p.images.slice(0, 2) : [],
+    stock: Number(p.stock) || 0,
+    shopStock: Number((p as any).shopStock) || 0,
+    isNew: Boolean(p.isNew),
+    isNewArrival: Boolean((p as any).isNewArrival),
+    isBestSeller: Boolean(p.isBestSeller),
+    isSale: Boolean(p.isSale),
+    featured: Boolean(p.featured),
+    trending: Boolean((p as any).trending),
+    status: p.status,
+    isActive: (p as any).isActive !== false,
+    createdAt: (p as any).createdAt,
+    description: '',
+  } as Product;
+}
 
 /**
  * Server-side product fetcher for SSR and generateMetadata.
@@ -49,7 +91,7 @@ export async function getServerProductBySlug(
         p.slug?.toLowerCase() === cleanSlug ||
         p.id?.toLowerCase() === cleanSlug
     );
-    if (found && (found as any).status !== 'archived' && (found as any).isActive !== false) {
+    if (found && isStorefrontVisibleProduct(found)) {
       return found;
     }
   } catch (err) {
@@ -68,31 +110,120 @@ export async function getServerRelatedProducts(
   limit = 4
 ): Promise<Product[]> {
   const cleanCat = (categorySlug || '').trim().toLowerCase();
-  let all: Product[] = [];
 
   if (isDbConfigured()) {
     try {
-      const dbProds = await getAllProductsFromDb();
-      all = dbProds;
-    } catch {}
+      const res = await getStorefrontProductsFromDb({ category: cleanCat, limit: limit + 2, minimal: true });
+      const filtered = res.products
+        .filter((p) => p.id !== currentProductId && isStorefrontVisibleProduct(p))
+        .slice(0, limit);
+      if (filtered.length > 0) {
+        return filtered.map(projectMinimalCardProduct);
+      }
+    } catch { }
   }
 
-  if (all.length === 0) {
-    try {
-      all = getProducts();
-    } catch {}
-  }
+  let all: Product[] = [];
+  try {
+    all = getProducts();
+  } catch { }
 
   return all
     .filter(
       (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false &&
+        isStorefrontVisibleProduct(p) &&
         p.id !== currentProductId &&
         p.categorySlug?.toLowerCase() === cleanCat
     )
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(projectMinimalCardProduct);
+}
+
+/**
+ * Server-side best sellers fetcher for Homepage SSR.
+ * Returns only admin-flagged best sellers, excluding any IDs in excludeIds.
+ */
+export async function getServerBestSellers(limit = 8, excludeIds: string[] = []): Promise<Product[]> {
+  const excludeSet = new Set(excludeIds);
+  if (isDbConfigured()) {
+    try {
+      const fetchLimit = Math.min(60, limit + excludeIds.length + 4);
+      const res = await getStorefrontProductsFromDb({ isBestSeller: true, limit: fetchLimit, minimal: true });
+      const filtered = res.products.filter(
+        (p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller) && !excludeSet.has(p.id)
+      );
+      if (filtered.length > 0) {
+        return filtered.slice(0, limit).map(projectMinimalCardProduct);
+      }
+    } catch { }
+  }
+  const all = getProducts();
+  return all
+    .filter(
+      (p) =>
+        isStorefrontVisibleProduct(p) &&
+        Boolean(p.isBestSeller) &&
+        !excludeSet.has(p.id)
+    )
+    .slice(0, limit)
+    .map(projectMinimalCardProduct);
+}
+
+/**
+ * Server-side new arrivals fetcher for Homepage SSR.
+ * Returns newest storefront-visible products sorted by createdAt descending.
+ */
+export async function getServerNewArrivals(limit = 8): Promise<Product[]> {
+  if (isDbConfigured()) {
+    try {
+      const res = await getStorefrontProductsFromDb({ sortBy: 'newest', limit, minimal: true });
+      const filtered = res.products.filter(isStorefrontVisibleProduct);
+      if (filtered.length > 0) {
+        return filtered.slice(0, limit).map(projectMinimalCardProduct);
+      }
+    } catch { }
+  }
+  const all = getProducts()
+    .filter(isStorefrontVisibleProduct)
+    .map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const tA = (a.item as any).createdAt ? new Date((a.item as any).createdAt).getTime() : 0;
+      const tB = (b.item as any).createdAt ? new Date((b.item as any).createdAt).getTime() : 0;
+      if (!Number.isNaN(tB) && !Number.isNaN(tA) && tB !== tA) {
+        return tB - tA;
+      }
+      return a.idx - b.idx;
+    })
+    .map(({ item }) => item);
+
+  return all.slice(0, limit).map(projectMinimalCardProduct);
+}
+
+/**
+ * Server-side all-products fetcher for Homepage initial render.
+ * Excludes products already shown in New Arrivals or Best Sellers.
+ */
+export async function getServerHomepageProducts(
+  limit = 8,
+  excludeIds: string[] = []
+): Promise<{ products: Product[]; total: number }> {
+  const excludeSet = new Set(excludeIds);
+  if (isDbConfigured()) {
+    try {
+      const fetchLimit = Math.min(60, limit + excludeIds.length + 8);
+      const res = await getStorefrontProductsFromDb({ limit: fetchLimit, page: 1, minimal: true });
+      const eligible = res.products.filter((p) => isStorefrontVisibleProduct(p) && !excludeSet.has(p.id));
+      return {
+        products: eligible.slice(0, limit).map(projectMinimalCardProduct),
+        total: Math.max(eligible.length, res.total - excludeIds.length),
+      };
+    } catch { }
+  }
+  const all = getProducts().filter((p) => isStorefrontVisibleProduct(p) && !excludeSet.has(p.id));
+  return {
+    products: all.slice(0, limit).map(projectMinimalCardProduct),
+    total: all.length,
+  };
 }
 
 /**
@@ -131,7 +262,7 @@ export async function getServerCategoryBySlug(
   if (allCats.length === 0) {
     try {
       allCats = getActiveCategories();
-    } catch {}
+    } catch { }
   }
 
   const found = allCats.find((c) => {
@@ -155,44 +286,53 @@ export async function getServerCategoryBySlug(
  * Server-side category products fetcher for SSR.
  */
 export async function getServerCategoryProducts(
-  category: Category
-): Promise<Product[]> {
-  let allProds: Product[] = [];
+  category: Category,
+  limit = 16
+): Promise<{ products: Product[]; total: number }> {
+  const targetSlug = (category.slug || category.id || '').trim().toLowerCase();
 
   if (isDbConfigured()) {
     try {
-      allProds = await getAllProductsFromDb();
-    } catch {}
+      const res = await getStorefrontProductsFromDb({ category: targetSlug, limit, page: 1, minimal: true });
+      if (res.products.length > 0 || res.total > 0) {
+        return {
+          products: res.products.map(projectMinimalCardProduct),
+          total: res.total,
+        };
+      }
+    } catch { }
   }
 
-  if (allProds.length === 0) {
-    try {
-      allProds = getProducts();
-    } catch {}
-  }
+  let allProds: Product[] = [];
+  try {
+    allProds = getProducts();
+  } catch { }
 
   const targetName = (category.name || '').trim().toLowerCase();
-  const targetSlug = (category.slug || '').trim().toLowerCase();
   const targetId = (category.id || '').trim().toLowerCase();
-  const targetSlugifiedName = targetName.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-  return allProds.filter((p) => {
-    if ((p as any).status === 'archived' || (p as any).status === 'inactive' || (p as any).isActive === false) {
+  const filtered = allProds.filter((p) => {
+    if (!isStorefrontVisibleProduct(p)) {
       return false;
     }
 
     const pCat = (p.category || '').trim().toLowerCase();
     const pCatSlug = (p.categorySlug || '').trim().toLowerCase();
     const pCatId = ((p as any).categoryId || '').toString().trim().toLowerCase();
-    const pCatSlugified = pCat.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
     return (
-      (pCat && (pCat === targetName || pCat === targetSlug || pCatSlugified === targetSlug || pCatSlugified === targetSlugifiedName)) ||
-      (pCatSlug && (pCatSlug === targetSlug || pCatSlug === targetName || pCatSlug === targetSlugifiedName)) ||
-      (targetId && pCatId && pCatId === targetId) ||
-      (targetId && pCat && pCat === targetId)
+      pCat === targetName ||
+      pCat === targetSlug ||
+      pCatSlug === targetSlug ||
+      pCatSlug === targetName ||
+      (targetId && pCatId === targetId)
     );
   });
+
+  return {
+    products: filtered.slice(0, limit).map(projectMinimalCardProduct),
+    total: filtered.length,
+  };
 }
 
 /**
@@ -231,7 +371,7 @@ export async function getServerBrandBySlug(
   if (allBrands.length === 0) {
     try {
       allBrands = getActiveBrands();
-    } catch {}
+    } catch { }
   }
 
   const found = allBrands.find((b) => {
@@ -254,43 +394,54 @@ export async function getServerBrandBySlug(
 /**
  * Server-side brand products fetcher for SSR.
  */
-export async function getServerBrandProducts(brand: Brand): Promise<Product[]> {
-  let allProds: Product[] = [];
+export async function getServerBrandProducts(
+  brand: Brand,
+  limit = 16
+): Promise<{ products: Product[]; total: number }> {
+  const targetSlug = (brand.slug || brand.id || '').trim().toLowerCase();
 
   if (isDbConfigured()) {
     try {
-      allProds = await getAllProductsFromDb();
-    } catch {}
+      const res = await getStorefrontProductsFromDb({ brand: targetSlug, limit, page: 1, minimal: true });
+      if (res.products.length > 0 || res.total > 0) {
+        return {
+          products: res.products.map(projectMinimalCardProduct),
+          total: res.total,
+        };
+      }
+    } catch { }
   }
 
-  if (allProds.length === 0) {
-    try {
-      allProds = getProducts();
-    } catch {}
-  }
+  let allProds: Product[] = [];
+  try {
+    allProds = getProducts();
+  } catch { }
 
   const targetName = (brand.name || '').trim().toLowerCase();
-  const targetSlug = (brand.slug || '').trim().toLowerCase();
   const targetId = (brand.id || '').trim().toLowerCase();
-  const targetSlugifiedName = targetName.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-  return allProds.filter((p) => {
-    if ((p as any).status === 'archived' || (p as any).status === 'inactive' || (p as any).isActive === false) {
+  const filtered = allProds.filter((p) => {
+    if (!isStorefrontVisibleProduct(p)) {
       return false;
     }
 
     const pBrand = (p.brand || '').trim().toLowerCase();
     const pBrandSlug = (p.brandSlug || '').trim().toLowerCase();
     const pBrandId = ((p as any).brandId || '').toString().trim().toLowerCase();
-    const pBrandSlugified = pBrand.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
     return (
-      (pBrand && (pBrand === targetName || pBrand === targetSlug || pBrandSlugified === targetSlug || pBrandSlugified === targetSlugifiedName)) ||
-      (pBrandSlug && (pBrandSlug === targetSlug || pBrandSlug === targetName || pBrandSlug === targetSlugifiedName)) ||
-      (targetId && pBrandId && pBrandId === targetId) ||
-      (targetId && pBrand && pBrand === targetId)
+      pBrand === targetName ||
+      pBrand === targetSlug ||
+      pBrandSlug === targetSlug ||
+      pBrandSlug === targetName ||
+      (targetId && pBrandId === targetId)
     );
   });
+
+  return {
+    products: filtered.slice(0, limit).map(projectMinimalCardProduct),
+    total: filtered.length,
+  };
 }
 
 /**
@@ -300,8 +451,16 @@ export async function getServerAllCategories(): Promise<Category[]> {
   if (isDbConfigured()) {
     try {
       const cats = await getAllCategoriesFromDb();
-      if (cats.length > 0) return cats;
-    } catch {}
+      return cats.filter((c) => {
+        if (!c || (c as any).isActive === false) return false;
+        const st = typeof c.status === 'string' ? c.status.trim().toLowerCase() : 'active';
+        return st !== 'inactive' && st !== 'archived';
+      });
+    } catch {
+      if (process.env.NODE_ENV === 'production') {
+        return [];
+      }
+    }
   }
   return getActiveCategories();
 }
@@ -314,7 +473,7 @@ export async function getServerAllBrands(): Promise<Brand[]> {
     try {
       const brands = await getAllBrandsFromDb(false);
       if (brands.length > 0) return brands;
-    } catch {}
+    } catch { }
   }
   return getActiveBrands();
 }

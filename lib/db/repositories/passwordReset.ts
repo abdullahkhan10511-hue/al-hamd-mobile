@@ -1,3 +1,5 @@
+import 'server-only';
+import { hashPasswordSecure, validatePasswordPolicy } from '@/lib/security/password';
 import crypto from 'crypto';
 import { RowDataPacket } from 'mysql2/promise';
 import { query, execute, isDbConfigured } from '../mysql';
@@ -278,9 +280,11 @@ export async function completePasswordReset(
   rawToken: string,
   newPassword: string
 ): Promise<{ success: boolean; message: string; userType?: 'customer' | 'staff'; email?: string }> {
-  if (!newPassword || newPassword.length < 8) {
-    throw new Error('Password must be at least 8 characters long.');
+  const policy = validatePasswordPolicy(newPassword);
+  if (!policy.valid) {
+    throw new Error(policy.error || 'Password does not meet complexity requirements.');
   }
+  const securePasswordHash = await hashPasswordSecure(newPassword);
 
   const verification = await verifyPasswordResetToken(rawToken);
   if (!verification.valid || !verification.email || !verification.userType) {
@@ -294,7 +298,7 @@ export async function completePasswordReset(
   // 1. Update Password based on userType
   if (userType === 'customer') {
     const salt = generateCustomerSalt(16);
-    const passwordHash = hashCustomerPassword(newPassword, salt);
+    const passwordHash = securePasswordHash;
 
     if (isDbConfigured()) {
       try {
@@ -322,7 +326,7 @@ export async function completePasswordReset(
     }
   } else if (userType === 'staff') {
     const salt = generateStaffSalt(16);
-    const passwordHash = hashStaffPassword(newPassword, salt);
+    const passwordHash = securePasswordHash;
 
     if (isDbConfigured()) {
       try {

@@ -8,6 +8,7 @@ import { getActiveBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { getProducts } from '@/lib/db/products';
 import { Brand } from '@/types/admin';
 import { Product } from '@/types';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -21,12 +22,7 @@ export default function BrandsPage() {
       const activeBrands = await syncBrandsFromApi().catch(() => getActiveBrands());
       setBrands(activeBrands.filter((b) => b.status === 'active'));
 
-      const activeProds = getProducts().filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false
-      );
+      const activeProds = getProducts().filter(isStorefrontVisibleProduct);
       setProducts(activeProds);
     } finally {
       setIsLoading(false);
@@ -36,12 +32,7 @@ export default function BrandsPage() {
   const refreshFromCache = () => {
     const activeBrands = getActiveBrands();
     setBrands(activeBrands.filter((b) => b.status === 'active'));
-    const activeProds = getProducts().filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
+    const activeProds = getProducts().filter(isStorefrontVisibleProduct);
     setProducts(activeProds);
   };
 

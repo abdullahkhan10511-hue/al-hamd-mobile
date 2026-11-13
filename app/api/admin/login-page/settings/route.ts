@@ -8,12 +8,13 @@ import {
   updateLoginPageSettingsInDb,
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, 'login-page-settings.json');
 
 function ensureDataDir() {
@@ -86,7 +87,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to modify settings.' },

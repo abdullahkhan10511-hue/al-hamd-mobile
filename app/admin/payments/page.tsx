@@ -30,7 +30,7 @@ import InvoiceModal from '@/components/admin/InvoiceModal';
 
 export default function AdminPaymentVerificationPage() {
   const { admin } = useAdminAuth();
-  const adminEmail = admin?.email || 'admin@alhamd.com';
+  const adminEmail = admin?.email || 'system';
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

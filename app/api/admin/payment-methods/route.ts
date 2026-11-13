@@ -1,29 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import {
   readPersistentPaymentConfig,
   writePersistentPaymentConfig,
+  computeAllowedCustomerTypes,
 } from '@/lib/db/paymentMethodsStorage';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
-  const session = getAdminSession(request);
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized: Admin session required.' },
-      { status: 401 }
-    );
-  }
-
-  if (!hasAdminPermission(session, ['settings.view', 'settings.edit'])) {
-    return NextResponse.json(
-      { success: false, error: 'Forbidden: Insufficient permissions to view payment settings.' },
-      { status: 403 }
-    );
-  }
+  const auth = await requireAdmin(request, ['settings.view', 'settings.edit']);
+  if (!auth.ok) return auth.response;
 
   const config = readPersistentPaymentConfig();
   return NextResponse.json(
@@ -37,20 +26,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = getAdminSession(request);
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized: Admin session required.' },
-      { status: 401 }
-    );
-  }
-
-  if (!hasAdminPermission(session, ['settings.edit'])) {
-    return NextResponse.json(
-      { success: false, error: 'Forbidden: Insufficient permissions to modify payment configuration.' },
-      { status: 403 }
-    );
-  }
+  const auth = await requireAdmin(request, { permissions: ['settings.edit'], checkCsrf: true });
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();
@@ -59,6 +36,37 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Invalid payload.' },
         { status: 400 }
       );
+    }
+
+    const ALLOWED_TIERS = new Set(['RETAIL', 'WHOLESALE', 'SUPER_WHOLESALE']);
+
+    if (Array.isArray(body.methods)) {
+      for (const m of body.methods) {
+        if (!m || typeof m !== 'object') {
+          return NextResponse.json(
+            { success: false, error: 'Invalid payment method payload.' },
+            { status: 400 }
+          );
+        }
+
+        // Validate allowedCustomerTypes if provided
+        if (m.allowedCustomerTypes !== undefined) {
+          if (!Array.isArray(m.allowedCustomerTypes) || m.allowedCustomerTypes.length === 0) {
+            return NextResponse.json(
+              { success: false, error: `Payment method "${m.name || m.id}" must be available for at least one customer tier.` },
+              { status: 400 }
+            );
+          }
+          for (const tier of m.allowedCustomerTypes) {
+            if (!ALLOWED_TIERS.has(tier)) {
+              return NextResponse.json(
+                { success: false, error: `Invalid customer tier "${tier}". Allowed tiers: RETAIL, WHOLESALE, SUPER_WHOLESALE.` },
+                { status: 400 }
+              );
+            }
+          }
+        }
+      }
     }
 
     writePersistentPaymentConfig({

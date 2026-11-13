@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, PackageX, ChevronDown, Tag, Layers, RotateCcw } from 'lucide-react';
 import { ProductCard } from '@/components/products/ProductCard';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 import { Brand } from '@/types/admin';
 import { Product, Category } from '@/types';
 import {
@@ -106,7 +107,7 @@ function BrandPageContent({
       const key = (e as CustomEvent)?.detail?.key;
       const CAT_KEYS = ['brands', 'products', 'categories'];
       if (key && !CAT_KEYS.includes(key)) return;
-      fetch(`/api/products?brand=${encodeURIComponent(brand.slug)}`)
+      fetch(`/api/products?brand=${encodeURIComponent(brand.slug)}&limit=60&minimal=true`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success && Array.isArray(data.products)) {
@@ -163,7 +164,7 @@ function BrandPageContent({
   };
 
   const filteredProducts = useMemo(() => {
-    let list = [...brandProducts];
+    let list = brandProducts.filter(isStorefrontVisibleProduct);
 
     list = list.filter((p) => p.price <= maxPrice);
 
@@ -462,7 +463,7 @@ function BrandPageContent({
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
               {filteredProducts.slice(0, visibleCount).map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}

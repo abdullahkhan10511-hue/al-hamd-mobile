@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Product } from '@/types';
 import { useAdminAuth } from '@/context/AdminAuthContext';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import { syncProductsFromApi } from '@/lib/db/products';
 import {
   ArrowRightLeft,

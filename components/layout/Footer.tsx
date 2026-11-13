@@ -342,16 +342,19 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
         </div>
 
         {/* Footer Bottom Bar */}
-        <div className="pt-8 border-t border-neutral-900 flex items-center justify-start text-xs text-neutral-500 text-left">
+        <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4 text-xs text-neutral-400 text-center sm:text-left">
           <p className="leading-relaxed">
-            © 2026 AL-HAMD SHOP | MADE BY{' '}
+            &copy; {new Date().getFullYear()} {officialStoreName}. All rights reserved.
+          </p>
+          <p className="leading-relaxed">
+            Designed &amp; Developed by{' '}
             <a
-              href="https://veltrivo.codes/"
+              href="https://veltrivo.codes"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-white transition-colors"
+              className="text-neutral-300 hover:text-white hover:underline underline-offset-4 transition-colors"
             >
-              veltrivo.codes
+              Veltrivo
             </a>
           </p>
         </div>

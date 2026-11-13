@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { ShopBill, ShopBillItem, ShopBillStatus } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';

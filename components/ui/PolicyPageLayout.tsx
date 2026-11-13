@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ShieldAlert, ArrowRight } from 'lucide-react';
-import { getPageById } from '@/lib/db/pages';
+import { getPageById, seedPages } from '@/lib/db/pages';
 import { CustomPage } from '@/types/admin';
 import PageRenderer from '@/components/ui/PageRenderer';
 
@@ -14,8 +14,9 @@ interface PolicyPageLayoutProps {
 }
 
 export default function PolicyPageLayout({ pageId, fallbackTitle, initialPage = null }: PolicyPageLayoutProps) {
-  const [page, setPage] = useState<CustomPage | null>(initialPage);
-  const [loading, setLoading] = useState(!initialPage);
+  const fallbackSeed = seedPages.find((p) => p.id === pageId || p.slug === pageId) || null;
+  const [page, setPage] = useState<CustomPage | null>(initialPage || fallbackSeed);
+  const [loading, setLoading] = useState(false);
 
   const loadData = async () => {
     try {

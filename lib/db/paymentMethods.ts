@@ -1,7 +1,7 @@
 import { PaymentMethodConfig, PaymentSecuritySettings } from '@/types/admin';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const METHODS_KEY = 'payment_methods';
 const SECURITY_KEY = 'payment_security_settings';
@@ -11,6 +11,7 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     id: 'cod',
     name: 'Cash on Delivery',
     type: 'cod',
+    allowedCustomerTypes: ['RETAIL'],
     enabled: true,
     badgeText: 'COD',
     description: 'Pay cash when your order is delivered.',
@@ -26,6 +27,7 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     id: 'card',
     name: 'Credit / Debit Card',
     type: 'card',
+    allowedCustomerTypes: ['WHOLESALE', 'SUPER_WHOLESALE'],
     enabled: true,
     badgeText: 'VISA / MC',
     description: 'Pay securely with Visa, Mastercard, or PayPak.',
@@ -45,6 +47,7 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     id: 'easypaisa',
     name: 'Easypaisa',
     type: 'wallet',
+    allowedCustomerTypes: ['WHOLESALE', 'SUPER_WHOLESALE'],
     enabled: true,
     badgeText: 'EP',
     description: 'Instant transfer via Easypaisa Mobile App or *786#.',
@@ -76,6 +79,7 @@ export const seedPaymentMethods: PaymentMethodConfig[] = [
     id: 'jazzcash',
     name: 'JazzCash',
     type: 'wallet',
+    allowedCustomerTypes: ['WHOLESALE', 'SUPER_WHOLESALE'],
     enabled: true,
     badgeText: 'JC',
     description: 'Instant transfer via JazzCash Mobile App or *786#.',
@@ -197,17 +201,7 @@ export async function syncPaymentMethodsFromApi(): Promise<{ methods: PaymentMet
 }
 
 export function getPaymentMethods(): PaymentMethodConfig[] {
-  let fallback = seedPaymentMethods;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentPaymentConfig } = require('./paymentMethodsStorage');
-      const saved = readPersistentPaymentConfig();
-      if (Array.isArray(saved.methods) && saved.methods.length > 0) {
-        fallback = saved.methods;
-      }
-    } catch {}
-  }
+  const fallback = seedPaymentMethods;
   const methods = getStoredCollection<PaymentMethodConfig>(METHODS_KEY, fallback);
   return [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }
@@ -222,7 +216,7 @@ export function getPaymentMethodById(id: string): PaymentMethodConfig | undefine
 
 async function savePaymentConfigToServer(
   payload: { methods?: PaymentMethodConfig[]; security?: PaymentSecuritySettings },
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<any> {
   if (typeof window === 'undefined') return;
   const res = await fetch('/api/admin/payment-methods', {
@@ -245,7 +239,7 @@ async function savePaymentConfigToServer(
 export async function updatePaymentMethod(
   id: string,
   updates: Partial<PaymentMethodConfig>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<PaymentMethodConfig | null> {
   const methods = getPaymentMethods();
   const index = methods.findIndex((m) => m.id === id);
@@ -274,7 +268,7 @@ export async function updatePaymentMethod(
 
 export async function togglePaymentMethod(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const methods = getPaymentMethods();
   const method = methods.find((m) => m.id === id);
@@ -295,7 +289,7 @@ export async function togglePaymentMethod(
 
 export async function reorderPaymentMethods(
   orderedIds: string[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<PaymentMethodConfig[]> {
   const methods = getPaymentMethods();
   const updated = methods.map((m) => {
@@ -322,23 +316,13 @@ export async function reorderPaymentMethods(
 }
 
 export function getPaymentSecuritySettings(): PaymentSecuritySettings {
-  let fallback = seedPaymentSecuritySettings;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentPaymentConfig } = require('./paymentMethodsStorage');
-      const saved = readPersistentPaymentConfig();
-      if (saved.security && typeof saved.security === 'object') {
-        fallback = { ...seedPaymentSecuritySettings, ...saved.security };
-      }
-    } catch {}
-  }
+  const fallback = seedPaymentSecuritySettings;
   return getLocal<PaymentSecuritySettings>(SECURITY_KEY, fallback);
 }
 
 export async function updatePaymentSecuritySettings(
   updates: Partial<PaymentSecuritySettings>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<PaymentSecuritySettings> {
   const current = getPaymentSecuritySettings();
   const updated = { ...current, ...updates };
@@ -356,7 +340,7 @@ export async function updatePaymentSecuritySettings(
 }
 
 export async function resetPaymentMethodsToDefault(
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<PaymentMethodConfig[]> {
   await persistCollection(METHODS_KEY, seedPaymentMethods);
   setLocal(SECURITY_KEY, seedPaymentSecuritySettings);
@@ -378,7 +362,7 @@ export async function resetPaymentMethodsToDefault(
 export async function saveCompletePaymentConfig(
   methods: PaymentMethodConfig[],
   security: PaymentSecuritySettings,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ methods: PaymentMethodConfig[]; security: PaymentSecuritySettings }> {
   const sortedMethods = [...methods].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   // Authoritative server persistence first

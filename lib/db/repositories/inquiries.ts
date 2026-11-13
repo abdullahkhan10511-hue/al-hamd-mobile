@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import {
   CustomerInquiry,
@@ -9,6 +10,7 @@ import {
 import { RowDataPacket } from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
+import { getDataFilePath } from '@/lib/storage/dataDir';
 
 interface InquiryRow extends RowDataPacket {
   id: string;
@@ -53,7 +55,7 @@ function mapRowToInquiry(row: InquiryRow): CustomerInquiry {
 // ----------------------------------------------------------------------------
 // Offline Development & Fallback Storage (Used only when MySQL is not configured)
 // ----------------------------------------------------------------------------
-const DEV_FILE_PATH = path.join(process.cwd(), 'data', 'dev-inquiries.json');
+const DEV_FILE_PATH = getDataFilePath('dev-inquiries.json');
 
 function readDevInquiries(): CustomerInquiry[] {
   try {

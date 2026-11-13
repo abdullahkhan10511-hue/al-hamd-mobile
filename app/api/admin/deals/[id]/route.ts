@@ -4,12 +4,7 @@ import { getDealById, saveDeal, deleteDeal } from '@/lib/db/deals';
 import { getDealByIdFromDb, updateDealInDb, deleteDealFromDb } from '@/lib/db/repositories/deals';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,13 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, 'promotions.view')) {
-      return forbiddenResponse('Forbidden: Staff permissions required to view deals.');
-    }
+    const auth = await requireAdmin(request, 'promotions.view');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     let deal = null;
@@ -64,13 +55,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, 'promotions.edit')) {
-      return forbiddenResponse('Forbidden: Admin or Promotion Manager credentials required.');
-    }
+    const auth = await requireAdmin(request, 'promotions.edit');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     const body = await request.json();
@@ -138,13 +125,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, 'promotions.delete')) {
-      return forbiddenResponse('Forbidden: Admin or Promotion Manager credentials required.');
-    }
+    const auth = await requireAdmin(request, 'promotions.delete');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
 

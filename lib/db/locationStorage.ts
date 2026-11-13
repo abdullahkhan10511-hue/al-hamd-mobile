@@ -1,8 +1,10 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { ShopLocation } from '@/types/admin';
+import { getDataDir } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const LOCATIONS_FILE = path.join(DATA_DIR, 'shop-locations.json');
 
 export function readPersistentLocations(): ShopLocation[] {

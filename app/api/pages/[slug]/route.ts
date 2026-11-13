@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getPageBySlugFromDb } from '@/lib/db/repositories/pages';
 import { readPersistentPages } from '@/lib/db/pagesStorage';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +18,7 @@ export async function GET(
       try {
         const page = await getPageBySlugFromDb(slug);
         if (page) {
-          return NextResponse.json({ success: true, page });
+          return NextResponse.json({ success: true, page }, { headers: getPublicCacheHeaders(request) });
         }
       } catch (err: any) {
         console.error('MySQL error in /api/pages/[slug]:', err);
@@ -30,7 +31,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Page not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, page: fallback });
+    return NextResponse.json({ success: true, page: fallback }, { headers: getPublicCacheHeaders(request) });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
   }

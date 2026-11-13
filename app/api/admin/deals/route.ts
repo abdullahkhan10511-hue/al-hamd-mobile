@@ -4,24 +4,15 @@ import { getDeals, saveDeal } from '@/lib/db/deals';
 import { getAllDealsFromDb, insertDealToDb } from '@/lib/db/repositories/deals';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, 'promotions.view')) {
-      return forbiddenResponse('Forbidden: Staff permissions required to view deals.');
-    }
+    const auth = await requireAdmin(request, 'promotions.view');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     let deals = [];
     if (isDbConfigured()) {
@@ -56,13 +47,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, 'promotions.add')) {
-      return forbiddenResponse('Forbidden: Admin or Promotion Manager credentials required.');
-    }
+    const auth = await requireAdmin(request, 'promotions.add');
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     if (!body || !body.name || !body.name.trim()) {

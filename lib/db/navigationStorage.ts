@@ -1,9 +1,11 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { NavigationItem } from '@/types/admin';
 import { seedNavigation } from './seed';
+import { getDataDir } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const NAVIGATION_FILE = path.join(DATA_DIR, 'navigation.json');
 
 function ensureDataDir() {

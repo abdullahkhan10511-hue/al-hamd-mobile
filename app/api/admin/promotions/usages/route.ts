@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPromoCodeUsages } from '@/lib/db/promotions';
 import {
-  getAdminSession,
+  getAdminSessionAsync,
   hasAdminPermission,
   unauthorizedResponse,
   forbiddenResponse,
@@ -9,7 +9,7 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }

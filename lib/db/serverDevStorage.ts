@@ -1,3 +1,4 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { Product, Category, ProductMediaItem, ProductModelVariant } from '@/types';
@@ -8,6 +9,7 @@ import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
 import { logActivity } from './activity';
 import { deduplicateCategoriesById } from '@/lib/utils';
 import { isDbConfigured } from './mysql';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 /**
  * Strict Security Guard:
@@ -22,7 +24,7 @@ function assertDevOnly(operationName: string) {
   }
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const DEV_PRODUCTS_FILE = path.join(DATA_DIR, 'dev-products.json');
 const DEV_CATEGORIES_FILE = path.join(DATA_DIR, 'dev-categories.json');
 const DEV_BRANDS_FILE = path.join(DATA_DIR, 'dev-brands.json');
@@ -85,7 +87,7 @@ export function getDevCategoryById(id: string): Category | null {
 
 export async function insertDevCategory(
   data: Partial<Category>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Category> {
   assertDevOnly('insertDevCategory');
   const cats = getDevCategories();
@@ -120,7 +122,7 @@ export async function insertDevCategory(
 export async function updateDevCategory(
   id: string,
   updates: Partial<Category>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Category> {
   assertDevOnly('updateDevCategory');
   const cats = getDevCategories();
@@ -151,7 +153,7 @@ export async function updateDevCategory(
   return updatedCat;
 }
 
-export async function deleteDevCategory(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteDevCategory(id: string, adminEmail = 'system'): Promise<boolean> {
   assertDevOnly('deleteDevCategory');
   const cats = getDevCategories();
   const filtered = cats.filter((c) => c.id !== id && c.slug !== id);
@@ -187,7 +189,7 @@ export function getDevProductById(id: string): any | null {
 
 export async function insertDevProduct(
   data: any,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<any> {
   assertDevOnly('insertDevProduct');
   const products = getDevProducts();
@@ -275,7 +277,7 @@ export async function insertDevProduct(
 export async function updateDevProduct(
   id: string,
   updates: any,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<any> {
   assertDevOnly('updateDevProduct');
   const products = getDevProducts();
@@ -353,7 +355,7 @@ export async function updateDevProduct(
   return updatedProd;
 }
 
-export async function deleteDevProduct(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteDevProduct(id: string, adminEmail = 'system'): Promise<boolean> {
   assertDevOnly('deleteDevProduct');
   const products = getDevProducts();
   const filtered = products.filter((p) => p.id !== id && p.slug !== id);
@@ -411,7 +413,7 @@ export function getDevBrandByIdOrSlug(idOrSlug: string): Brand | null {
 
 export async function insertDevBrand(
   data: Partial<Brand>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Brand> {
   assertDevOnly('insertDevBrand');
   const brands = getDevBrands();
@@ -447,7 +449,7 @@ export async function insertDevBrand(
 export async function updateDevBrand(
   id: string,
   updates: Partial<Brand>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Brand> {
   assertDevOnly('updateDevBrand');
   const brands = getDevBrands();
@@ -482,7 +484,7 @@ export async function updateDevBrand(
 
 export async function reorderDevBrands(
   orderedIds: string[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   assertDevOnly('reorderDevBrands');
   const brands = getDevBrands();
@@ -514,7 +516,7 @@ export async function reorderDevBrands(
   return true;
 }
 
-export async function deleteDevBrand(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteDevBrand(id: string, adminEmail = 'system'): Promise<boolean> {
   assertDevOnly('deleteDevBrand');
   const brands = getDevBrands();
   const filtered = brands.filter((b) => b.id !== id && b.slug !== id);
@@ -834,7 +836,7 @@ export function getDevDealById(id: string): Deal | null {
 
 export async function insertDevDeal(
   data: Partial<Deal>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Deal> {
   assertDevOnly('insertDevDeal');
   const deals = getDevDeals();
@@ -906,7 +908,7 @@ export async function insertDevDeal(
 export async function updateDevDeal(
   id: string,
   data: Partial<Deal>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Deal> {
   assertDevOnly('updateDevDeal');
   const deals = getDevDeals();
@@ -983,7 +985,7 @@ export async function updateDevDeal(
 
 export async function deleteDevDeal(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   assertDevOnly('deleteDevDeal');
   const deals = getDevDeals();

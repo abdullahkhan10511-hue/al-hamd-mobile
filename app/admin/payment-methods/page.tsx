@@ -44,7 +44,7 @@ type TabKey = 'global' | 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'preview';
 
 export default function AdminPaymentContentManagementPage() {
   const { admin, hasPermission, isSuperAdmin } = useAdminAuth();
-  const adminEmail = admin?.email || 'admin@alhamd.com';
+  const adminEmail = admin?.email || 'system';
   const canEdit = isSuperAdmin || hasPermission('settings.edit') || hasPermission('settings.manage');
 
   // Server/Canonical state
@@ -808,6 +808,57 @@ export default function AdminPaymentContentManagementPage() {
                       className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm font-mono text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-950 focus:bg-white"
                     />
                     <p className="text-[11px] text-neutral-500 mt-1">Short badge displayed in the radio card.</p>
+                  </div>
+
+                  {/* Available for customer tiers */}
+                  <div className="sm:col-span-3 p-4 rounded-xl bg-neutral-50 border border-neutral-200">
+                    <label className="block text-xs font-bold text-neutral-900 mb-1">
+                      Available for *
+                    </label>
+                    <p className="text-[11px] text-neutral-500 mb-3">
+                      Select which customer tiers can use this payment method at checkout. At least one must be selected.
+                    </p>
+                    <div className="flex flex-wrap gap-4 sm:gap-6">
+                      {(
+                        [
+                          { id: 'RETAIL', label: 'Retail' },
+                          { id: 'WHOLESALE', label: 'Wholesale' },
+                          { id: 'SUPER_WHOLESALE', label: 'Super Wholesale' },
+                        ] as const
+                      ).map((tier) => {
+                        const currentAllowed =
+                          selectedMethodForTab.allowedCustomerTypes ||
+                          (selectedMethodForTab.type === 'cod' ? ['RETAIL'] : ['WHOLESALE', 'SUPER_WHOLESALE']);
+                        const isChecked = currentAllowed.includes(tier.id);
+
+                        return (
+                          <label
+                            key={tier.id}
+                            className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-neutral-800 hover:text-neutral-950 select-none"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                let next: ('RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE')[];
+                                if (e.target.checked) {
+                                  next = Array.from(new Set([...currentAllowed, tier.id]));
+                                } else {
+                                  next = currentAllowed.filter((t) => t !== tier.id);
+                                }
+                                if (next.length > 0) {
+                                  updateDraftMethod(selectedMethodForTab.id, {
+                                    allowedCustomerTypes: next,
+                                  });
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-neutral-950 focus:ring-neutral-950 border-neutral-300"
+                            />
+                            <span>{tier.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="sm:col-span-3">

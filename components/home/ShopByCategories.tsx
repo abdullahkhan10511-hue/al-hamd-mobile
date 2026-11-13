@@ -1,216 +1,210 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
+import { ArrowRight } from 'lucide-react';
+import {
+  getActiveCategories,
+  isCategoryActive,
+  syncCategoriesFromApi,
+  hasCompletedCategoryApiSync,
+  deduplicateCategoriesById,
+} from '@/lib/db/categories';
 import { Category } from '@/types';
+import { getCategoryPlaceholder } from '@/lib/placeholders';
+import { Marquee } from '@/components/ui/Marquee';
+import { Tilt3D } from '@/components/ui/motion/Tilt3D';
 
-export function ShopByCategories() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isTouchingRef = useRef(false);
+const CategoryCard = React.memo(function CategoryCard({
+  category,
+  isFailed,
+  onError,
+  tabIndex,
+  'aria-hidden': ariaHiddenAttr,
+}: {
+  category: Category;
+  isFailed: boolean;
+  onError: (id: string) => void;
+  tabIndex?: number;
+  'aria-hidden'?: boolean | 'true' | 'false';
+}) {
+  const isAriaHidden = Boolean(ariaHiddenAttr === true || ariaHiddenAttr === 'true');
+  const rawImage =
+    !isFailed && category.image && typeof category.image === 'string' && category.image.trim()
+      ? category.image.trim()
+      : getCategoryPlaceholder(category.slug || category.name, category.name);
 
-  const loadData = useCallback(() => {
-    const raw = getActiveCategories();
-    setCategories(deduplicateCategoriesById(raw));
-    setIsLoaded(true);
+  return (
+    <div className="shrink-0 w-44 sm:w-56 md:w-60" aria-hidden={isAriaHidden ? 'true' : undefined}>
+      <Tilt3D maxTilt={4} perspective={800} glare={false} scaleOnHover={1.01}>
+        <Link
+          href={`/category/${category.slug}`}
+          tabIndex={tabIndex}
+          aria-hidden={isAriaHidden ? 'true' : undefined}
+          className="group relative w-full rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-900 border border-neutral-200/80 hover:border-neutral-900 shadow-xs hover:shadow-xl transition-all duration-300 block"
+        >
+          {/* Category Image */}
+          <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-100">
+            <Image
+              src={rawImage}
+              alt={category.name}
+              fill
+              unoptimized={
+                rawImage.startsWith('http://') ||
+                rawImage.startsWith('https://') ||
+                rawImage.toLowerCase().endsWith('.svg') ||
+                rawImage.startsWith('data:')
+              }
+              sizes="(max-width: 640px) 176px, (max-width: 768px) 224px, 240px"
+              className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+              onError={() => onError(category.id)}
+            />
+            {/* Gradient Shading */}
+            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/30 to-transparent transition-opacity group-hover:opacity-95" />
+
+            {/* Text Content Overlay */}
+            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 text-white">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-amber-400 transition-colors block">
+                Category
+              </span>
+              <h3 className="text-sm sm:text-base font-bold tracking-tight text-white line-clamp-1 mt-0.5">
+                {category.name}
+              </h3>
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-300 font-semibold group-hover:text-white transition-colors">
+                <span>Shop Collection</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </div>
+        </Link>
+      </Tilt3D>
+    </div>
+  );
+});
+
+export function ShopByCategories({ initialCategories }: { initialCategories?: Category[] }) {
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (Array.isArray(initialCategories)) {
+      return deduplicateCategoriesById(initialCategories.filter(isCategoryActive));
+    }
+    return deduplicateCategoriesById(getActiveCategories());
+  });
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  const applyCategories = useCallback((nextList: Category[]) => {
+    const clean = deduplicateCategoriesById(nextList.filter(isCategoryActive));
+    setCategories((prev) => {
+      if (
+        prev.length === clean.length &&
+        prev.every(
+          (c, i) =>
+            c.id === clean[i].id &&
+            c.name === clean[i].name &&
+            c.slug === clean[i].slug &&
+            c.image === clean[i].image &&
+            c.status === clean[i].status
+        )
+      ) {
+        return prev;
+      }
+      return clean;
+    });
   }, []);
 
+  const loadData = useCallback(() => {
+    applyCategories(getActiveCategories());
+  }, [applyCategories]);
+
   useEffect(() => {
-    loadData();
-    syncCategoriesFromApi().then(() => loadData()).catch(() => {
-      setIsLoaded(true);
-    });
+    let mounted = true;
+    if (!Array.isArray(initialCategories)) {
+      loadData();
+    }
+
+    syncCategoriesFromApi()
+      .then((synced) => {
+        if (!mounted) return;
+        if (hasCompletedCategoryApiSync()) {
+          applyCategories(synced);
+        } else if (!Array.isArray(initialCategories)) {
+          loadData();
+        }
+      })
+      .catch(() => {});
 
     const handleUpdate = (e: Event) => {
-      const key = (e as CustomEvent)?.detail?.key;
-      if (key && key !== 'categories') return;
-      loadData();
+      const detail = (e as CustomEvent)?.detail;
+      if (detail?.key !== 'categories') return;
+      if (Array.isArray(detail?.value)) {
+        applyCategories(detail.value);
+      } else {
+        loadData();
+      }
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
-    return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, [loadData]);
-
-  // Unique categories guaranteed by database ID
-  const uniqueCategories = deduplicateCategoriesById(categories);
-
-  // Smooth relaxed auto-glide animation without duplicating DOM items
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container || uniqueCategories.length === 0) return;
-
-    let animationFrameId: number;
-    let lastTime = performance.now();
-    const speed = 25; // Smooth slow glide
-    let direction: 'forward' | 'backward' = 'forward';
-
-    const step = (now: number) => {
-      const delta = (now - lastTime) / 1000;
-      lastTime = now;
-
-      if (!isPaused && !isTouchingRef.current && container) {
-        const maxScroll = container.scrollWidth - container.clientWidth;
-        if (maxScroll > 15) {
-          if (direction === 'forward') {
-            container.scrollLeft += speed * delta;
-            if (container.scrollLeft >= maxScroll - 2) {
-              direction = 'backward';
-            }
-          } else {
-            container.scrollLeft -= speed * delta * 1.5;
-            if (container.scrollLeft <= 2) {
-              direction = 'forward';
-            }
-          }
-        }
-      }
-      animationFrameId = requestAnimationFrame(step);
+    return () => {
+      mounted = false;
+      window.removeEventListener('alhamd:data-updated', handleUpdate);
     };
+  }, [initialCategories, applyCategories, loadData]);
 
-    animationFrameId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPaused, uniqueCategories.length]);
+  const handleImageError = useCallback((categoryId: string) => {
+    setFailedImages((prev) => {
+      if (prev.has(categoryId)) return prev;
+      const next = new Set(prev);
+      next.add(categoryId);
+      return next;
+    });
+  }, []);
 
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -280, behavior: 'smooth' });
-    }
-  };
-
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 280, behavior: 'smooth' });
-    }
-  };
-
-  if (!isLoaded) {
-    return (
-      <section id="categories" className="py-14 sm:py-18 bg-white border-b border-neutral-100 overflow-hidden min-h-[280px]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="h-7 w-48 bg-neutral-200/80 rounded-lg animate-pulse" />
-            <div className="h-4 w-20 bg-neutral-200/60 rounded-full animate-pulse" />
-          </div>
-          <div className="flex gap-4 overflow-hidden">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="w-[160px] sm:w-[190px] h-[180px] shrink-0 bg-neutral-100 rounded-2xl animate-pulse" />
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (uniqueCategories.length === 0) {
+  if (categories.length === 0) {
     return null;
   }
 
+  const categoryCards = categories.map((cat) => (
+    <CategoryCard
+      key={cat.id}
+      category={cat}
+      isFailed={failedImages.has(cat.id)}
+      onError={handleImageError}
+    />
+  ));
+
   return (
-    <section id="categories" className="py-14 sm:py-18 bg-white border-b border-neutral-100 overflow-hidden">
+    <section id="categories" className="py-12 sm:py-16 bg-white border-b border-neutral-100 overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header with Left / Right Navigation Controls */}
-        <div className="flex items-center justify-between mb-8">
+        {/* Section Header */}
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950">
+            <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+              Browse Collections
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 mt-1">
               Shop by Category
             </h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div>
             <Link
               href="/categories"
-              className="text-xs sm:text-sm font-semibold text-neutral-600 hover:text-neutral-950 transition-colors mr-2 hidden sm:inline-flex items-center gap-1"
+              className="text-xs sm:text-sm font-semibold text-neutral-600 hover:text-neutral-950 transition-colors inline-flex items-center gap-1"
             >
               <span>View All</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
-            <button
-              type="button"
-              onClick={scrollLeft}
-              className="w-8 h-8 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
-              aria-label="Previous categories"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={scrollRight}
-              className="w-8 h-8 rounded-full border border-neutral-200 bg-white hover:bg-neutral-100 flex items-center justify-center text-neutral-700 transition-colors cursor-pointer shadow-2xs"
-              aria-label="Next categories"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
 
-      {/* Horizontal Strip Container */}
+      {/* Continuous CSS Marquee Container (Right-to-Left) */}
       <div className="relative w-full">
-        {/* Left & Right gradient edge fade masks for high-end look */}
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 sm:w-20 bg-gradient-to-r from-white via-white/80 to-transparent z-10" />
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:w-20 bg-gradient-to-l from-white via-white/80 to-transparent z-10" />
-
-        {/* Scrollable / Touch-drag container */}
-        <div
-          ref={scrollRef}
-          onMouseEnter={() => setIsPaused(true)}
-          onMouseLeave={() => {
-            isTouchingRef.current = false;
-            setIsPaused(false);
-          }}
-          onTouchStart={() => {
-            isTouchingRef.current = true;
-            setIsPaused(true);
-          }}
-          onTouchEnd={() => {
-            isTouchingRef.current = false;
-            setTimeout(() => setIsPaused(false), 600);
-          }}
-          className="flex items-center gap-4 sm:gap-6 overflow-x-auto scrollbar-none py-3 px-4 sm:px-8 cursor-grab active:cursor-grabbing select-none"
-          style={{ scrollBehavior: 'smooth' }}
-        >
-          {uniqueCategories.map((cat) => (
-            <Link
-              key={cat.id}
-              href={`/category/${cat.slug}`}
-              className="group relative shrink-0 w-44 sm:w-56 md:w-60 rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-900 border border-neutral-200/80 hover:border-neutral-900 shadow-xs hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1.5 block"
-            >
-              {/* Category Image */}
-              <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-100">
-                <Image
-                  src={
-                    cat.image && typeof cat.image === 'string' && cat.image.trim()
-                      ? cat.image.trim()
-                      : 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?q=80&w=800&auto=format&fit=crop'
-                  }
-                  alt={cat.name}
-                  fill
-                  sizes="(max-width: 640px) 176px, (max-width: 768px) 224px, 240px"
-                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-                />
-                {/* Gradient Shading */}
-                <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/30 to-transparent transition-opacity group-hover:opacity-95" />
-
-                {/* Text Content Overlay */}
-                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 text-white">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-amber-400 transition-colors block">
-                    Category
-                  </span>
-                  <h3 className="text-sm sm:text-base font-bold tracking-tight text-white line-clamp-1 mt-0.5">
-                    {cat.name}
-                  </h3>
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-300 font-semibold group-hover:text-white transition-colors">
-                    <span>Shop Collection</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <Marquee
+          items={categoryCards}
+          direction="rtl"
+          ariaLabel="Shop by Category list"
+          className="py-2 px-4 sm:px-8"
+          gapClassName="gap-4 sm:gap-5 pr-4 sm:pr-5"
+        />
       </div>
     </section>
   );

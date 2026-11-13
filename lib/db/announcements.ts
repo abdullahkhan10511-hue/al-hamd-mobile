@@ -2,7 +2,7 @@ import { AnnouncementItem } from '@/types/admin';
 import { seedAnnouncements } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'announcements';
 
@@ -51,24 +51,14 @@ export async function syncAnnouncementsFromApi(): Promise<AnnouncementItem[]> {
 }
 
 export function getAnnouncements(): AnnouncementItem[] {
-  let fallback = seedAnnouncements;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentAnnouncements } = require('./announcementsStorage');
-      const saved = readPersistentAnnouncements();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback = seedAnnouncements;
   const items = getStoredCollection(COLLECTION_KEY, fallback);
   return normalizeAnnouncementsList(items);
 }
 
 export async function updateAnnouncements(
   announcements: AnnouncementItem[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<AnnouncementItem[]> {
   const normalized = normalizeAnnouncementsList(announcements);
 
@@ -106,7 +96,7 @@ export async function updateAnnouncements(
 
 export async function createAnnouncement(
   data: Omit<AnnouncementItem, 'id'>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<AnnouncementItem> {
   const list = getAnnouncements();
   const newItem: AnnouncementItem = {
@@ -120,7 +110,7 @@ export async function createAnnouncement(
   return newItem;
 }
 
-export async function deleteAnnouncement(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteAnnouncement(id: string, adminEmail = 'system'): Promise<boolean> {
   const list = getAnnouncements();
   const filtered = list.filter((a) => a.id !== id);
   await updateAnnouncements(filtered, adminEmail);

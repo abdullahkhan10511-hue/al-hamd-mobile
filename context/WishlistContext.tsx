@@ -16,6 +16,7 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<string[]>([]);
+  const [wishlistProducts, setWishlistProducts] = useState<Product[]>([]);
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
@@ -40,6 +41,38 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
     }
   }, [wishlist, hasHydrated]);
 
+  // Fetch only the product ids contained in wishlist (max 50)
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (wishlist.length === 0) {
+      setWishlistProducts([]);
+      return;
+    }
+
+    const idsToFetch = wishlist.slice(0, 50);
+    let isMounted = true;
+    fetch(`/api/products?ids=${idsToFetch.join(',')}&minimal=true`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && Array.isArray(data.products)) {
+          setWishlistProducts(data.products);
+        } else {
+          const fallback = getProducts().filter((p) => idsToFetch.includes(p.id));
+          setWishlistProducts(fallback);
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        const fallback = getProducts().filter((p) => idsToFetch.includes(p.id));
+        setWishlistProducts(fallback);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [wishlist, hasHydrated]);
+
   const toggleWishlist = useCallback((productId: string) => {
     setWishlist((prev) =>
       prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
@@ -47,17 +80,6 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isInWishlist = useCallback((productId: string) => wishlist.includes(productId), [wishlist]);
-
-  const wishlistProducts = useMemo(() => {
-    if (wishlist.length === 0) return [];
-    return getProducts().filter(
-      (p) =>
-        wishlist.includes(p.id) &&
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
-  }, [wishlist]);
 
   const contextValue = useMemo<WishlistContextType>(
     () => ({

@@ -49,7 +49,7 @@ export function sanitizeAndMigrateActivityLogs(rawLogs: any[]): { logs: Activity
 
     return {
       id,
-      adminEmail: typeof log?.adminEmail === 'string' && log.adminEmail.trim() !== '' ? log.adminEmail : 'admin@alhamd.com',
+      adminEmail: typeof log?.adminEmail === 'string' && log.adminEmail.trim() !== '' ? log.adminEmail : 'system',
       action: typeof log?.action === 'string' && log.action.trim() !== '' ? log.action : 'General Operation',
       target: typeof log?.target === 'string' && log.target.trim() !== '' ? log.target : 'System',
       details: typeof log?.details === 'string' ? log.details : '',

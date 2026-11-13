@@ -1,3 +1,4 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -7,8 +8,9 @@ import {
   seedTrustBenefits,
   seedAllProductsConfig,
 } from '@/lib/db/seed';
+import { getDataDir } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, 'homepage-settings.json');
 
 export interface PersistentHomepageSettings {
@@ -50,7 +52,7 @@ export function getMergedHomepageSettings() {
   const saved = readPersistentHomepageSettings();
   return {
     sections: saved.sections || seedHomepageSections,
-    hero: saved.hero || seedHeroConfig,
+    hero: { showText: false, ...seedHeroConfig, ...(saved.hero || {}) },
     flashSale: saved.flashSale || seedFlashSaleConfig,
     trustBenefits: saved.trustBenefits || seedTrustBenefits,
     allProducts: saved.allProducts || seedAllProductsConfig,

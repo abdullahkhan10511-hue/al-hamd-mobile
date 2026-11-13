@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronRight, PackageX, ChevronDown, Tag, RotateCcw } from 'lucide-react';
 import { ProductCard } from '@/components/products/ProductCard';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 import { Category, Product } from '@/types';
 import { Brand } from '@/types/admin';
 import {
@@ -106,7 +107,7 @@ function CategoryPageContent({
       const CAT_KEYS = ['categories', 'products', 'brands'];
       if (key && !CAT_KEYS.includes(key)) return;
       // Background refresh if needed
-      fetch(`/api/products?category=${encodeURIComponent(category.slug)}`)
+      fetch(`/api/products?category=${encodeURIComponent(category.slug)}&limit=60&minimal=true`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success && Array.isArray(data.products)) {
@@ -163,7 +164,7 @@ function CategoryPageContent({
   };
 
   const filteredProducts = useMemo(() => {
-    let list = [...categoryProducts];
+    let list = categoryProducts.filter(isStorefrontVisibleProduct);
 
     list = list.filter((p) => p.price <= maxPrice);
 
@@ -234,6 +235,12 @@ function CategoryPageContent({
               src={category.image.trim()}
               alt={category.name}
               fill
+              unoptimized={
+                category.image.trim().startsWith('http://') ||
+                category.image.trim().startsWith('https://') ||
+                category.image.trim().toLowerCase().endsWith('.svg') ||
+                category.image.trim().startsWith('data:')
+              }
               className="object-cover"
               priority
             />
@@ -431,7 +438,7 @@ function CategoryPageContent({
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
               {filteredProducts.slice(0, visibleCount).map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}

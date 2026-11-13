@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import PolicyPageLayout from '@/components/ui/PolicyPageLayout';
-import { getPageById } from '@/lib/db/pages';
+import { getServerPageById } from '@/lib/db/pagesServer';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -9,7 +9,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const page = await getPageById(slug);
+  const page = await getServerPageById(slug);
 
   if (!page || page.status !== 'Published') {
     return {
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DynamicCustomPage({ params }: PageProps) {
   const { slug } = await params;
-  const page = await getPageById(slug);
+  const page = await getServerPageById(slug);
 
   if (!page || page.status !== 'Published') {
     notFound();

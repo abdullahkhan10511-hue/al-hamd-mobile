@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMergedHomepageSettings } from '@/lib/db/homepageSettingsStorage';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const settings = getMergedHomepageSettings();
 
     return NextResponse.json(
       { success: true, settings },
       {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err: any) {

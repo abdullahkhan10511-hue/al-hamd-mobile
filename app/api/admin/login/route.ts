@@ -7,33 +7,55 @@ import { StaffUser } from '@/types/admin';
 import { ROLE_DEFAULT_PERMISSIONS } from '@/lib/constants/permissions';
 
 const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
 
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, createRateLimitResponse, resetRateLimit } from '@/lib/rateLimit';
 import { createSignedSessionToken, getAdminSessionAsync, extractRawToken } from '@/lib/db/adminAuth';
+import { isKnownWeakHash } from '@/lib/security/knownWeakHashes';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
+import { verifyUserPasswordUnified, runDummyPasswordComputation } from '@/lib/security/password';
+import { logActivity } from '@/lib/db/repositories/activity';
 
 export async function POST(request: NextRequest) {
   try {
+    // Defense-in-depth CSRF origin verification
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
+    }
     const body = await request.json();
     const { email, password } = body;
 
     const normalizedEmail = (email || '').trim().toLowerCase();
-
-    // Brute-force rate limiting: 8 attempts per minute per IP + email
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`admin_login_${ip}_${normalizedEmail}`, 8, 60000);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Too many login attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        { status: 429 }
-      );
+
+    // S7 Rate Limiting: 20 per 15 mins per IP, 5 per 15 mins per email
+    const ipRate = await checkRateLimit(`admin_login_ip_${ip}`, 20, 15 * 60 * 1000);
+    if (!ipRate.allowed) {
+      await logActivity({
+        adminEmail: 'anonymous',
+        action: 'RATE_LIMIT_EXCEEDED',
+        target: 'admin_login_ip',
+        details: `IP rate limit exceeded (${ip})`,
+      });
+      return createRateLimitResponse(ipRate.retryAfterSeconds, 'Too many login attempts from this network.');
+    }
+
+    if (normalizedEmail) {
+      const emailRate = await checkRateLimit(`admin_login_email_${normalizedEmail}`, 5, 15 * 60 * 1000);
+      if (!emailRate.allowed) {
+        await logActivity({
+          adminEmail: normalizedEmail,
+          action: 'RATE_LIMIT_EXCEEDED',
+          target: 'admin_login_email',
+          details: `Email rate limit exceeded from IP: ${ip}`,
+        });
+        return createRateLimitResponse(emailRate.retryAfterSeconds, 'Too many failed login attempts for this account.');
+      }
     }
 
     // Validate inputs
     if (!normalizedEmail || !normalizedEmail.includes('@') || !password || typeof password !== 'string') {
+      await runDummyPasswordComputation(password || 'dummy-pass');
       return NextResponse.json(
         { success: false, error: 'Invalid email or password. Please verify your credentials and try again.' },
         { status: 401 }
@@ -46,7 +68,9 @@ export async function POST(request: NextRequest) {
 
     let isAuthenticatedViaEnv = false;
     if (envAdminEmail && envAdminPassword && normalizedEmail === envAdminEmail) {
-      if (password === envAdminPassword) {
+      const submittedBuf = Buffer.from(password);
+      const envBuf = Buffer.from(envAdminPassword);
+      if (submittedBuf.length === envBuf.length && crypto.timingSafeEqual(submittedBuf, envBuf)) {
         isAuthenticatedViaEnv = true;
       }
     }
@@ -82,8 +106,9 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // If still no user found, return generic error
+    // If still no user found, return generic error (with timing equalization)
     if (!staffUser) {
+      await runDummyPasswordComputation(password);
       return NextResponse.json(
         { success: false, error: 'Invalid email or password. Please verify your credentials and try again.' },
         { status: 401 }
@@ -98,43 +123,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Cryptographic password verification (unless already verified via server environment)
+    // S1.3: Reject known default/weak seed hashes
+    if (staffUser.passwordHash && isKnownWeakHash(staffUser.passwordHash)) {
+      console.warn(
+        `[SECURITY] Denylisted legacy seed hash detected for ${normalizedEmail}. Run npm run setup:admin to set a strong password.`
+      );
+      return NextResponse.json(
+        { success: false, error: 'Invalid email or password. Please verify your credentials and try again.' },
+        { status: 401 }
+      );
+    }
+
+    // 3. Cryptographic password verification (with unified scrypt/legacy verification & auto-upgrade)
     let isValid = isAuthenticatedViaEnv;
-    if (!isValid && staffUser.salt && staffUser.passwordHash) {
-      isValid = verifyServerPassword(password, staffUser.salt, staffUser.passwordHash);
-      if (!isValid) {
-        isValid = await verifyPassword(password, staffUser.salt, staffUser.passwordHash);
-      }
-      if (!isValid && password.trim() !== password) {
-        isValid = verifyServerPassword(password.trim(), staffUser.salt, staffUser.passwordHash);
-        if (!isValid) {
-          isValid = await verifyPassword(password.trim(), staffUser.salt, staffUser.passwordHash);
-        }
-      }
-
-      // Safe legacy password compatibility strictly scoped to verified primary admin
-      if (!isValid) {
-        const isPrimaryAdmin =
-          Boolean(staffUser.isOwner || staffUser.id === 'staff-owner-1' || staffUser.id === 'admin-1') &&
-          (normalizedEmail === 'admin@alhamdmobile.com' || normalizedEmail === 'admin@alhamd.com');
-
-        const isLegacySeedHash =
-          staffUser.passwordHash === 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e' ||
-          staffUser.passwordHash === 'c420262734ea8537651c3e53b3a0708468d33b1cb4a4a6c24c3efbb6032313b1';
-
-        if (isPrimaryAdmin && isLegacySeedHash) {
-          const submittedTrimmed = Buffer.from(password.trim());
-          const legacyPass1 = Buffer.from('AlHamd@Admin2026!');
-          const legacyPass2 = Buffer.from('AlHamd@Admin2026');
-
-          if (
-            (submittedTrimmed.length === legacyPass1.length && crypto.timingSafeEqual(submittedTrimmed, legacyPass1)) ||
-            (submittedTrimmed.length === legacyPass2.length && crypto.timingSafeEqual(submittedTrimmed, legacyPass2))
-          ) {
-            isValid = true;
-          }
-        }
-      }
+    if (!isValid && staffUser.passwordHash) {
+      const verifyResult = await verifyUserPasswordUnified({
+        password,
+        storedHash: staffUser.passwordHash,
+        salt: staffUser.salt,
+        userType: 'staff',
+        userId: staffUser.id,
+        email: staffUser.email,
+      });
+      isValid = verifyResult.valid;
     }
 
     if (!isValid) {
@@ -144,15 +155,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Reset email rate limit on successful credentials verification
+    await resetRateLimit(`admin_login_email_${normalizedEmail}`);
+
     // 4. Construct secure signed session token
     const role = staffUser.role || 'SUPER_ADMIN';
     const isOwner = Boolean(
       staffUser.isOwner ||
-      staffUser.id === 'staff-owner-1' ||
       role === 'SUPER_ADMIN' ||
       role === 'OWNER' ||
-      normalizedEmail === 'admin@alhamdmobile.com' ||
-      normalizedEmail === 'admin@alhamd.com' ||
       (envAdminEmail && normalizedEmail === envAdminEmail)
     );
 
@@ -182,33 +193,27 @@ export async function POST(request: NextRequest) {
       role: role,
       permissions: safeUser.permissions,
       isOwner: safeUser.isOwner,
-      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12 hours (Task X1.4)
     });
 
+    // Task S9.1: token field removed from JSON body. Token lives strictly in httpOnly cookie.
     const response = NextResponse.json({
       success: true,
-      token: sessionToken,
       user: safeUser,
       role: safeUser.role,
       message: 'Admin authentication successful.',
     });
 
-    // Set secure HttpOnly authentication cookies
-    const isHttps =
-      request.nextUrl.protocol === 'https:' ||
-      request.headers.get('x-forwarded-proto') === 'https' ||
-      request.headers.get('x-forwarded-ssl') === 'on';
-
+    // Set secure HttpOnly authentication cookie (Task S9.1 / S9.5)
     const cookieOptions = {
       path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+      maxAge: 12 * 60 * 60, // 12 hours in seconds
       sameSite: 'lax' as const,
       httpOnly: true,
-      secure: isHttps,
+      secure: process.env.NODE_ENV === 'production',
     };
 
     response.cookies.set(COOKIE_NAME, sessionToken, cookieOptions);
-    response.cookies.set(FALLBACK_COOKIE_NAME, sessionToken, cookieOptions);
 
     return response;
   } catch (err: any) {
@@ -221,15 +226,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const rawToken = extractRawToken(request);
     const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
+    // Task S9.1: Token field excluded from GET response
     return NextResponse.json({
       authenticated: true,
-      token: rawToken,
       user: {
         id: session.id,
         name: session.name,

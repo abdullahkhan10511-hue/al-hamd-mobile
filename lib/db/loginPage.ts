@@ -1,6 +1,6 @@
 import { getLocal, setLocal, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export type MediaTransitionType = 'fade' | 'slide' | 'zoom' | 'crossfade';
 
@@ -221,22 +221,7 @@ export const DEFAULT_LOGIN_PAGE_MEDIA: LoginPageMediaItem[] = [
 // ============================================================================
 
 export function getLoginPageSettings(): LoginPageSettings {
-  let fallback = DEFAULT_LOGIN_PAGE_SETTINGS;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const file = path.join(process.cwd(), 'data', 'login-page-settings.json');
-      if (fs.existsSync(file)) {
-        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-        if (parsed && typeof parsed === 'object') {
-          fallback = { ...DEFAULT_LOGIN_PAGE_SETTINGS, ...parsed };
-        }
-      }
-    } catch {}
-  }
+  const fallback = DEFAULT_LOGIN_PAGE_SETTINGS;
   const settings = getLocal<LoginPageSettings>(SETTINGS_STORAGE_KEY, fallback);
   return {
     ...fallback,
@@ -267,7 +252,7 @@ export async function fetchLoginPageSettings(): Promise<LoginPageSettings> {
 
 export async function updateLoginPageSettings(
   updates: Partial<LoginPageSettings>,
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; settings: LoginPageSettings; error?: string }> {
   try {
     const current = getLoginPageSettings();
@@ -314,24 +299,7 @@ export async function updateLoginPageSettings(
 // ============================================================================
 
 export function getLoginPageMedia(): LoginPageMediaItem[] {
-  let defaultMedia = DEFAULT_LOGIN_PAGE_MEDIA;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const file = path.join(process.cwd(), 'data', 'login-page-media.json');
-      if (fs.existsSync(file)) {
-        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          defaultMedia = parsed;
-        }
-      }
-    } catch {}
-    return [...defaultMedia].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-  }
-
+  const defaultMedia = DEFAULT_LOGIN_PAGE_MEDIA;
   const isInitialized = getLocal<boolean>(MEDIA_INITIALIZED_KEY, false);
 
   if (!isInitialized) {
@@ -377,7 +345,7 @@ export async function fetchLoginPageMedia(): Promise<LoginPageMediaItem[]> {
 
 export async function addLoginPageMedia(
   data: Omit<LoginPageMediaItem, 'id' | 'createdAt' | 'updatedAt'>,
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; item?: LoginPageMediaItem; error?: string }> {
   const trimmedUrl = data.url?.trim();
   if (!trimmedUrl) {
@@ -442,7 +410,7 @@ export async function addLoginPageMedia(
 export async function updateLoginPageMedia(
   id: string,
   updates: Partial<Omit<LoginPageMediaItem, 'id' | 'createdAt'>>,
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; item?: LoginPageMediaItem; error?: string }> {
   const list = getLoginPageMedia();
   const index = list.findIndex((m) => m.id === id);
@@ -489,7 +457,7 @@ export async function updateLoginPageMedia(
 
 export async function deleteLoginPageMedia(
   id: string,
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const list = getLoginPageMedia();
   const target = list.find((m) => m.id === id);
@@ -523,7 +491,7 @@ export async function deleteLoginPageMedia(
 
 export async function toggleLoginPageMediaActive(
   id: string,
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; newStatus?: boolean; error?: string }> {
   const list = getLoginPageMedia();
   const target = list.find((m) => m.id === id);
@@ -543,7 +511,7 @@ export async function toggleLoginPageMediaActive(
 
 export async function reorderLoginPageMedia(
   orderedIds: string[],
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean }> {
   const list = getLoginPageMedia();
   const map = new Map(list.map((item) => [item.id, item]));
@@ -592,7 +560,7 @@ export async function reorderLoginPageMedia(
 }
 
 export async function resetLoginPageToDefault(
-  operatorEmail = 'admin@alhamdmobile.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; settings: LoginPageSettings; media: LoginPageMediaItem[] }> {
   setLocal(SETTINGS_STORAGE_KEY, DEFAULT_LOGIN_PAGE_SETTINGS);
   setLocal(MEDIA_STORAGE_KEY, DEFAULT_LOGIN_PAGE_MEDIA);

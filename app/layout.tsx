@@ -4,14 +4,14 @@ import './globals.css';
 import { Providers } from '@/components/Providers';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
+import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp';
 
-import { getStoreSettings, normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
+import { getServerStoreSettings as getStoreSettings, normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settingsServer';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { StoreSettings } from '@/types/admin';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 const loadServerSettings = cache(async (): Promise<StoreSettings> => {
   let settings = getStoreSettings();
@@ -34,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const customFavicon = resolveFaviconUrl(settings.faviconUrl, settings.seo?.faviconUrl);
 
   const defaultOgImage =
-    'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop';
+    '/placeholders/general.svg';
 
   const customOgImage =
     (settings.ogImageUrl && typeof settings.ogImageUrl === 'string' && settings.ogImageUrl.trim()) ||
@@ -227,18 +227,19 @@ export default async function RootLayout({
   ];
 
   return (
-    <html lang="en" className="h-full antialiased font-sans" data-scroll-behavior="smooth">
+    <html lang="en" className="h-full antialiased font-sans overflow-x-hidden max-w-full" data-scroll-behavior="smooth">
       <head>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-white text-neutral-900 selection:bg-neutral-950 selection:text-white">
+      <body className="min-h-full flex flex-col bg-white text-neutral-900 selection:bg-neutral-950 selection:text-white overflow-x-hidden max-w-full">
         <Providers>
           <Header initialSettings={settings} />
           <main className="flex-1">{children}</main>
           <Footer initialSettings={settings} />
+          <FloatingWhatsApp />
         </Providers>
       </body>
     </html>

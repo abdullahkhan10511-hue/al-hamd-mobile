@@ -82,7 +82,7 @@ export default async function BrandPage({ params }: PageProps) {
   }
 
   // Fetch products, brands, and categories on the server
-  const [products, allBrands, allCategories] = await Promise.all([
+  const [brandData, allBrands, allCategories] = await Promise.all([
     getServerBrandProducts(brand),
     getServerAllBrands(),
     getServerAllCategories(),
@@ -91,7 +91,7 @@ export default async function BrandPage({ params }: PageProps) {
   return (
     <BrandPageClient
       brand={brand}
-      initialProducts={products}
+      initialProducts={brandData.products}
       allBrands={allBrands}
       allCategories={allCategories}
     />

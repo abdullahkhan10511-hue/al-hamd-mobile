@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-import { verifySignedSessionToken } from '@/lib/db/sessionToken';
+import { verifySignedSessionToken, verifySignedCustomerToken } from '@/lib/db/sessionToken';
+import { assertSameOrigin } from '@/lib/security/csrf';
 
 const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
-const ADMIN_FALLBACK_COOKIE = 'admin_session';
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 
 function parseValidAdminSession(raw: string | undefined): boolean {
@@ -18,7 +18,7 @@ function parseValidAdminSession(raw: string | undefined): boolean {
   if (!payload && curr.includes('%')) {
     try {
       payload = verifySignedSessionToken(decodeURIComponent(curr));
-    } catch {}
+    } catch { }
   }
   if (!payload) return false;
 
@@ -34,58 +34,49 @@ function parseValidCustomerSession(raw: string | undefined): boolean {
   if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
     curr = curr.slice(1, -1);
   }
-  for (let i = 0; i < 4; i++) {
+  if (curr.includes('%')) {
     try {
-      const customerSession = JSON.parse(curr);
-      if (typeof customerSession === 'string') {
-        curr = customerSession;
-        continue;
-      }
-      if (
-        customerSession &&
-        typeof customerSession === 'object' &&
-        (customerSession.email || customerSession.shopName) &&
-        customerSession.status !== 'inactive'
-      ) {
-        const notExpired =
-          !customerSession.expiresAt ||
-          typeof customerSession.expiresAt !== 'number' ||
-          customerSession.expiresAt > Date.now();
-        if (notExpired) {
-          return true;
-        }
-      }
-      return false;
-    } catch {
-      if (curr.includes('\\"')) {
-        curr = curr.replace(/\\"/g, '"');
-        continue;
-      }
-      try {
-        const decoded = decodeURIComponent(curr);
-        if (decoded === curr) break;
-        curr = decoded;
-      } catch {
-        break;
-      }
-    }
+      curr = decodeURIComponent(curr);
+    } catch { }
   }
-  return false;
+
+  // Task S5.4: Strictly verify the HMAC-signed customer token (Edge-compatible)
+  // Unsigned JSON cookies or forged tokens immediately return null and are rejected
+  const payload = verifySignedCustomerToken(curr);
+  if (!payload || payload.typ !== 'customer') {
+    return false;
+  }
+
+  return Boolean(payload.sub && payload.exp > Date.now());
 }
 
 /**
- * Next.js Edge Middleware for Server-Side Route Protection & Perimeter RBAC
- * 
+ * Next.js Edge Middleware for Server-Side Route Protection, CSRF Defense & Perimeter RBAC
+ *
  * Enforces:
- * 1. Admin route protection (/admin, /admin/*) - Accessible ONLY to verified authenticated Staff/Admin sessions.
- * 2. Cross-role isolation - Customer sessions are strictly barred from Admin routes.
- * 3. Customer account protection (/account, /account/*) - Requires authenticated customer session.
- * 4. Token validation - Rejects arbitrary, unverified Bearer tokens or non-session cookies.
+ * 1. Global CSRF protection for all mutating requests (POST, PUT, PATCH, DELETE) across /api/* and pages.
+ * 2. Admin route protection (/admin, /admin/*) - Accessible ONLY to verified authenticated Staff/Admin sessions.
+ * 3. Cross-role isolation - Customer sessions are strictly barred from Admin routes.
+ * 4. Customer account protection (/account, /account/*) - Requires authenticated customer session.
+ * 5. Strict session cookies - Rejects arbitrary, unverified tokens or non-session cookies.
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const method = request.method.toUpperCase();
 
-  // Skip static assets, API routes, and internal next requests
+  // =========================================================================
+  // 1. GLOBAL CSRF DEFENSE (Task S13)
+  // Evaluated for every state-changing request BEFORE skipping /api routes
+  // =========================================================================
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      console.warn(`[CSRF BLOCKED] Mutating ${method} ${pathname} rejected: ${csrfCheck.reason}`);
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
+  // Skip static assets, API routes (after CSRF verification), and internal next requests
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -94,30 +85,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // --- Validate Admin Session (Cookies and authorized Bearer tokens) ---
-  const adminCookieValue =
-    request.cookies.get(ADMIN_COOKIE_NAME)?.value ||
-    request.cookies.get(ADMIN_FALLBACK_COOKIE)?.value;
+  // --- Validate Admin Session from Authoritative Cookie (Task S9) ---
+  const adminCookieValue = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
+  const isAdminAuthenticated = parseValidAdminSession(adminCookieValue);
 
-  let isAdminAuthenticated = parseValidAdminSession(adminCookieValue);
-
-  const authHeader = request.headers.get('authorization');
-  if (!isAdminAuthenticated && authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    if (token) {
-      isAdminAuthenticated = parseValidAdminSession(token);
-    }
-  }
-
-  // --- Validate Customer Session Cookie ---
+  // --- Validate Customer Session Cookie from Signed Token (Task S5) ---
   const customerCookieValue = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
   const isCustomerAuthenticated = parseValidCustomerSession(customerCookieValue);
 
   // =========================================================================
-  // 1. ADMIN ROUTES (/admin, /admin/*)
+  // 2. ADMIN ROUTES (/admin, /admin/*)
   // =========================================================================
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    // 1A: On /admin/login page
+    // 2A: On /admin/login page
     if (pathname === '/admin/login') {
       if (isAdminAuthenticated) {
         return NextResponse.redirect(new URL('/admin/dashboard', request.url));
@@ -125,14 +105,14 @@ export function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // 1B: If user is logged in ONLY as a Customer and attempts to access Admin Panel
+    // 2B: If user is logged in ONLY as a Customer and attempts to access Admin Panel
     if (!isAdminAuthenticated && isCustomerAuthenticated) {
       const loginUrl = new URL('/admin/login', request.url);
       loginUrl.searchParams.set('error', 'customer_unauthorized');
       return NextResponse.redirect(loginUrl);
     }
 
-    // 1C: Unauthenticated user accessing protected Admin routes
+    // 2C: Unauthenticated user accessing protected Admin routes
     if (!isAdminAuthenticated) {
       const loginUrl = new URL('/admin/login', request.url);
       if (pathname !== '/admin' && pathname !== '/admin/dashboard') {
@@ -145,7 +125,7 @@ export function middleware(request: NextRequest) {
   }
 
   // =========================================================================
-  // 2. CUSTOMER ACCOUNT ROUTES (/account, /account/*)
+  // 3. CUSTOMER ACCOUNT ROUTES (/account, /account/*)
   // =========================================================================
   if (pathname === '/account' || pathname.startsWith('/account/')) {
     // Whitelist public redirect helper routes
@@ -167,5 +147,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin', '/admin/:path*', '/account', '/account/:path*'],
+  matcher: ['/admin', '/admin/:path*', '/account', '/account/:path*', '/api/:path*'],
 };

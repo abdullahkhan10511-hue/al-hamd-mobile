@@ -2,52 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllOrdersFromDb, createOrderInDb } from '@/lib/db/repositories/orders';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getCustomerSession } from '@/lib/db/customerSession';
+import { getServerCustomerById } from '@/lib/db/customers-server';
+import { readPersistentPaymentConfig, computeAllowedCustomerTypes } from '@/lib/db/paymentMethodsStorage';
 import { seedOrders } from '@/lib/db/seed';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
-
-function getCustomerSession(request: NextRequest): { id?: string; email?: string; shopName?: string } | null {
-  const cookieVal = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
-  if (!cookieVal) return null;
-  let curr = cookieVal.trim();
-  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
-    curr = curr.slice(1, -1);
-  }
-  for (let i = 0; i < 4; i++) {
-    try {
-      const parsed = JSON.parse(curr);
-      if (typeof parsed === 'string') {
-        curr = parsed;
-        continue;
-      }
-      if (parsed && typeof parsed === 'object' && (parsed.id || parsed.email || parsed.shopName)) {
-        return parsed;
-      }
-      return null;
-    } catch {
-      if (curr.includes('\\"')) {
-        curr = curr.replace(/\\"/g, '"');
-        continue;
-      }
-      try {
-        const decoded = decodeURIComponent(curr);
-        if (decoded === curr) break;
-        curr = decoded;
-      } catch {
-        break;
-      }
-    }
-  }
-  return null;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const admin = await getAdminSessionAsync(request);
-    const customer = getCustomerSession(request);
+    const customer = await getCustomerSession(request);
 
     if (admin) {
       if (!hasAdminPermission(admin, ['orders.view', 'orders.manage'])) {
@@ -72,12 +40,9 @@ export async function GET(request: NextRequest) {
     });
 
     if (!admin && customer) {
-      // Non-admins only see their own orders
+      // Task S5.6: Non-admins strictly only see orders matching verified customer.id (removes IDOR email/shop matching)
       orders = orders.filter(
-        (o) =>
-          o.customer?.id === customer.id ||
-          (customer.email && o.customer?.email?.toLowerCase() === customer.email.toLowerCase()) ||
-          (customer.shopName && o.shopName?.toLowerCase() === customer.shopName.toLowerCase())
+        (o) => o.customer?.id === customer.id || (o as any).customerId === customer.id
       );
     }
 
@@ -87,20 +52,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
-
 export async function POST(request: NextRequest) {
   try {
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
+    }
+
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`order_submit_${ip}`, 15, 300000); // 15 attempts per 5 mins
+    const rateCheck = await checkRateLimit(`order_submit_${ip}`, 10, 3600000); // 10 orders/hr per IP
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Too many order attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before submitting again.`,
-        },
-        { status: 429 }
-      );
+      return createRateLimitResponse(rateCheck.retryAfterSeconds, 'Too many order submissions.');
     }
 
     const body = await request.json();
@@ -158,6 +120,72 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
+
+    // 1. Determine customer tier strictly from verified session and DB record
+    const verifiedSession = await getCustomerSession(request);
+    let customerType: 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE' = 'RETAIL';
+    let fullCustomer = null;
+
+    if (verifiedSession) {
+      fullCustomer = await getServerCustomerById(verifiedSession.id);
+      if (
+        fullCustomer &&
+        fullCustomer.status !== 'suspended' &&
+        (fullCustomer as any).status !== 'inactive'
+      ) {
+        const ct = fullCustomer.customerType?.toUpperCase();
+        if (ct === 'WHOLESALE' || ct === 'SUPER_WHOLESALE') {
+          customerType = ct;
+        }
+      }
+    }
+
+    // Ignore client-sent properties to prevent spoofing
+    body.customerType = customerType;
+    body.orderType = customerType === 'RETAIL' ? 'online' : (customerType === 'SUPER_WHOLESALE' ? 'super_wholesale' : 'wholesale');
+    body.wholesaleAccountId = fullCustomer?.id ? (customerType !== 'RETAIL' ? fullCustomer.id : null) : null;
+
+    if (fullCustomer) {
+      body.customer = {
+        ...body.customer,
+        id: fullCustomer.id,
+      };
+      body.customerId = fullCustomer.id;
+    } else {
+      if (body.customer) delete body.customer.id;
+      delete body.customerId;
+    }
+
+    // 2. Validate payment method: must exist, be enabled, and be allowed for that tier
+    const paymentMethodId = String(body.paymentMethodId || '').trim();
+    if (!paymentMethodId) {
+      return NextResponse.json(
+        { success: false, error: 'Payment method is required.' },
+        { status: 400 }
+      );
+    }
+
+    const paymentConfig = readPersistentPaymentConfig();
+    const targetMethod = paymentConfig.methods.find((m) => m.id === paymentMethodId);
+
+    if (!targetMethod || !targetMethod.enabled) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or disabled payment method.' },
+        { status: 400 }
+      );
+    }
+
+    const allowedTiers = computeAllowedCustomerTypes(targetMethod);
+    if (!allowedTiers.includes(customerType)) {
+      return NextResponse.json(
+        { success: false, error: 'This payment method is not available for your account type' },
+        { status: 400 }
+      );
+    }
+
+    // Store payment method NAME strictly from server config, never from browser
+    body.paymentMethod = targetMethod.name;
+    body.paymentMethodId = targetMethod.id;
 
     const order = await createOrderInDb(body);
     return NextResponse.json({ success: true, order }, { status: 201 });

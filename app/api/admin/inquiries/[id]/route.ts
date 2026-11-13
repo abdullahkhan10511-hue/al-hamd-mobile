@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import {
   getInquiryByIdFromDb,
   updateInquiryInDb,
@@ -27,13 +27,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session || !canManageInquiries(session)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin access required.' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireAdmin(request, ['inquiries.view', 'inquiries.manage', 'customers.view', 'orders.view']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await context.params;
     const inquiry = await getInquiryByIdFromDb(id);
@@ -60,13 +56,9 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session || !canManageInquiries(session)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Admin session required.' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireAdmin(request, ['inquiries.manage', 'customers.manage', 'orders.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await context.params;
     const existing = await getInquiryByIdFromDb(id);

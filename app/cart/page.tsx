@@ -6,6 +6,7 @@ import { ArrowRight, Trash2, Minus, Plus, ShoppingBag, ShieldCheck, Tag, Package
 import { useCart } from '@/context/CartContext';
 import { FreeShippingBar } from '@/components/cart/FreeShippingBar';
 import { formatPrice, getValidImageSrc } from '@/lib/utils';
+import { getCategoryPlaceholder } from '@/lib/placeholders';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
 
 export default function CartPage() {
@@ -132,10 +133,11 @@ export default function CartPage() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 text-neutral-400 p-2 text-center">
-                            <Package className="w-6 h-6 stroke-1 text-neutral-400 mb-1" />
-                            <span className="text-[9px] font-medium text-neutral-400 uppercase tracking-tighter">No Image</span>
-                          </div>
+                          <img
+                            src={getCategoryPlaceholder(item.product?.categorySlug || item.product?.category, itemName)}
+                            alt={itemName || 'Product'}
+                            className="w-full h-full object-contain bg-[#f5f5f5]"
+                          />
                         )}
                       </Link>
                       <div>

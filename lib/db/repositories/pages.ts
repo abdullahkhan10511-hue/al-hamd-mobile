@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { CustomPage, PageBlock } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';

@@ -1,10 +1,34 @@
 import { HomepageVideo } from '@/types/admin';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const COLLECTION_KEY = 'homepage_videos';
 const ACTIVE_COLLECTION_KEY = 'homepage_active_videos';
+
+export type HeroMediaType = 'video' | 'image' | 'animated';
+
+export function getHeroMediaType(url?: string, mimeType?: string): HeroMediaType {
+  const cleanMime = (mimeType || '').toLowerCase();
+  if (cleanMime.includes('gif') || cleanMime.includes('animated')) return 'animated';
+  if (cleanMime.startsWith('video/')) return 'video';
+  if (cleanMime.startsWith('image/')) return 'image';
+
+  const cleanUrl = (url || '').split('?')[0].toLowerCase();
+  const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.'));
+  if (ext === '.gif') return 'animated';
+  if (['.mp4', '.webm', '.mov', '.m4v'].includes(ext)) return 'video';
+  if (['.jpg', '.jpeg', '.png', '.webp', '.avif'].includes(ext)) return 'image';
+
+  return 'video';
+}
+
+export function getHeroSlideDuration(duration?: number | null): number {
+  if (typeof duration === 'number' && !isNaN(duration) && duration >= 3 && duration <= 15) {
+    return Math.round(duration);
+  }
+  return 5;
+}
 
 export const seedHomepageVideos: HomepageVideo[] = [
   {
@@ -114,17 +138,7 @@ export async function syncHomepageVideosFromApi(forceFresh = false): Promise<Hom
  * Get all homepage videos ordered deterministically by displayOrder ASC, then id ASC
  */
 export function getHomepageVideos(): HomepageVideo[] {
-  let fallback = seedHomepageVideos;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageVideos } = require('./homepageVideosStorage');
-      const saved = readPersistentHomepageVideos();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback = seedHomepageVideos;
   const items = getStoredCollection<HomepageVideo>(COLLECTION_KEY, fallback);
   return items.sort((a, b) => {
     const orderA = typeof a.displayOrder === 'number' && !isNaN(a.displayOrder) ? a.displayOrder : 0;
@@ -138,17 +152,7 @@ export function getHomepageVideos(): HomepageVideo[] {
  * Get only ACTIVE homepage videos for the live storefront sequence
  */
 export function getActiveHomepageVideos(): HomepageVideo[] {
-  let fallback: HomepageVideo[] = [];
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageVideos } = require('./homepageVideosStorage');
-      const saved = readPersistentHomepageVideos();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback: HomepageVideo[] = [];
   const items = getStoredCollection<HomepageVideo>(ACTIVE_COLLECTION_KEY, fallback);
   return items
     .filter((v) => {
@@ -175,7 +179,7 @@ export function getActiveHomepageVideos(): HomepageVideo[] {
  */
 export async function saveHomepageVideo(
   videoData: Partial<HomepageVideo>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<HomepageVideo> {
   const current = getHomepageVideos();
   const now = new Date().toISOString();
@@ -300,7 +304,7 @@ export async function saveHomepageVideo(
 export async function toggleHomepageVideoStatus(
   id: string,
   active: boolean,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<HomepageVideo | null> {
   const current = getHomepageVideos();
   const item = current.find((v) => v.id === id);
@@ -365,7 +369,7 @@ export async function toggleHomepageVideoStatus(
  */
 export async function reorderHomepageVideos(
   orderedIds: string[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<HomepageVideo[]> {
   const current = getHomepageVideos();
   const map = new Map(current.map((v) => [v.id, v]));
@@ -445,7 +449,7 @@ export async function reorderHomepageVideos(
  */
 export async function deleteHomepageVideo(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const current = getHomepageVideos();
   const target = current.find((v) => v.id === id);

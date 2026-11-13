@@ -166,7 +166,7 @@ export default function AdminInventoryPage() {
         productId,
         nextStock,
         `Quick adjust ${delta > 0 ? '+' : ''}${delta} control`,
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
 
       setSavingId(null);
@@ -211,7 +211,7 @@ export default function AdminInventoryPage() {
         model.id || model.name,
         nextStock,
         `Quick adjust ${delta > 0 ? '+' : ''}${delta} control for ${model.name}`,
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
       setSavingId(null);
       if (ok) {
@@ -246,7 +246,7 @@ export default function AdminInventoryPage() {
             keypadModel.id || keypadModel.name,
             newValue,
             `Direct manual keypad adjustment for ${keypadModel.name}`,
-            admin?.email || 'admin@alhamd.com'
+            admin?.email || 'system'
           );
           setSavingId(null);
           if (ok) {
@@ -259,7 +259,7 @@ export default function AdminInventoryPage() {
             productId,
             newValue,
             'Direct manual keypad adjustment',
-            admin?.email || 'admin@alhamd.com'
+            admin?.email || 'system'
           );
           setSavingId(null);
           if (ok) {
@@ -272,7 +272,7 @@ export default function AdminInventoryPage() {
         const ok = await setProductLowStockThreshold(
           productId,
           newValue,
-          admin?.email || 'admin@alhamd.com'
+          admin?.email || 'system'
         );
         setSavingId(null);
         if (ok) {
@@ -300,7 +300,7 @@ export default function AdminInventoryPage() {
         productId,
         stockMap,
         `Bulk variant stock adjustment for ${bulkVariantProduct.name}`,
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
       setSavingId(null);
       if (ok) {

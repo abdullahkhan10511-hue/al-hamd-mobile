@@ -1,7 +1,7 @@
 import { Deal, DealProductItem } from '@/types/admin';
 import { getStoredCollection, persistCollection, getLocal, setLocal } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 export const DEALS_STORAGE_KEY = 'store_deals';
 const DELETED_DEALS_KEY = 'deleted_deal_ids';
@@ -14,15 +14,6 @@ export function getDeletedDealIds(): Set<string> {
 export function getDeals(): Deal[] {
   const deletedIds = getDeletedDealIds();
   let data = getStoredCollection<Deal>(DEALS_STORAGE_KEY, []);
-  if (typeof window === 'undefined' && data.length === 0) {
-    try {
-      const { getDevDeals } = require('./serverDevStorage');
-      const devDeals = getDevDeals();
-      if (Array.isArray(devDeals) && devDeals.length > 0) {
-        data = devDeals;
-      }
-    } catch {}
-  }
   const filtered = data.filter((d) => d && !deletedIds.has(d.id));
   return filtered.sort((a: Deal, b: Deal) => (a.displayOrder || 0) - (b.displayOrder || 0));
 }
@@ -40,7 +31,7 @@ export function getDealBySlug(slug: string): Deal | null {
 
 export async function saveDeal(
   dealData: Partial<Deal> & { name: string },
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<Deal> {
   const deals = getDeals();
   const id = dealData.id || `deal-${Date.now()}`;
@@ -139,21 +130,10 @@ export async function saveDeal(
 
   await persistCollection(DEALS_STORAGE_KEY, updatedList);
 
-  if (typeof window === 'undefined') {
-    try {
-      const { insertDevDeal, updateDevDeal } = require('./serverDevStorage');
-      if (existingIndex >= 0) {
-        await updateDevDeal(id, finalDeal, adminEmail);
-      } else {
-        await insertDevDeal(finalDeal, adminEmail);
-      }
-    } catch {}
-  }
-
   return finalDeal;
 }
 
-export async function deleteDeal(id: string, adminEmail: string = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteDeal(id: string, adminEmail: string = 'system'): Promise<boolean> {
   const deals = getDeals();
   const target = deals.find((d) => d.id === id);
   if (!target) return false;
@@ -181,13 +161,6 @@ export async function deleteDeal(id: string, adminEmail: string = 'admin@alhamd.
   const filtered = deals.filter((d) => d.id !== id);
   await persistCollection(DEALS_STORAGE_KEY, filtered);
 
-  if (typeof window === 'undefined') {
-    try {
-      const { deleteDevDeal } = require('./serverDevStorage');
-      await deleteDevDeal(id, adminEmail);
-    } catch {}
-  }
-
   await logActivity({
     adminEmail,
     action: 'DELETE_DEAL',
@@ -198,7 +171,7 @@ export async function deleteDeal(id: string, adminEmail: string = 'admin@alhamd.
   return true;
 }
 
-export async function toggleDealStatus(id: string, adminEmail: string = 'admin@alhamd.com'): Promise<Deal | null> {
+export async function toggleDealStatus(id: string, adminEmail: string = 'system'): Promise<Deal | null> {
   const deal = await getDealById(id);
   if (!deal) return null;
 

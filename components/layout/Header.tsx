@@ -217,28 +217,31 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
     <>
       <AnnouncementBar initialSettings={currentSettings || undefined} />
       <header
-        className={`w-full transition-all duration-300 ${
-          isHomePage
-            ? `fixed top-0 left-0 right-0 z-40 ${
-                isTransparent
-                  ? 'bg-transparent border-transparent py-4 sm:py-4.5'
-                  : 'bg-white/95 backdrop-blur-md shadow-xs border-b border-neutral-200/70 py-3'
-              }`
-            : `sticky top-0 z-40 ${
-                isScrolled
-                  ? 'bg-white/95 backdrop-blur-md shadow-xs border-b border-neutral-200/70 py-3'
-                  : 'bg-white border-b border-neutral-100 py-4 sm:py-4.5'
-              }`
+        className={`w-full max-w-full py-3.5 ${
+          isHomePage ? 'fixed top-0 left-0 w-full max-w-full z-40' : 'sticky top-0 z-40'
         }`}
       >
-        {/* Cinematic gradient overlay when navbar is transparent over video hero */}
+        {/* Solid / Frosted Background fade on scroll (opacity only) */}
         <div
-          className={`pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/25 to-transparent transition-opacity duration-500 ${
-            isTransparent ? 'opacity-100' : 'opacity-0'
-          }`}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-white/95 backdrop-blur-md shadow-xs border-b border-neutral-200/70 transition-opacity duration-300"
+          style={{ opacity: isTransparent ? 0 : 1 }}
         />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Cinematic gradient overlay when navbar is transparent over video hero */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/25 to-transparent transition-opacity duration-500"
+          style={{ opacity: isTransparent ? 1 : 0 }}
+        />
+
+        {/* Inner header with gentle shrink on scroll (transform only) */}
+        <div
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-transform duration-250 ease-out origin-top"
+          style={{
+            transform: isScrolled ? 'scale(0.985)' : 'scale(1)',
+          }}
+        >
           <div className="flex items-center justify-between gap-4">
             {/* Left: Mobile hamburger & Brand Logo */}
             <div className="flex items-center gap-3">

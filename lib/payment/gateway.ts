@@ -2,7 +2,7 @@
  * Payment Gateway Abstraction Layer
  *
  * PCI-DSS Compliance & Security Rule:
- * DO NOT collect or store raw card numbers, CVV, or card expiry dates in Firebase or local storage.
+ * DO NOT collect or store raw card numbers, CVV, or card expiry dates in database or local storage.
  * When a real Pakistan payment gateway (PayFast, Safepay, Bank Alfalah, Stripe) is integrated,
  * tokenization or redirect-based checkout flows MUST be used.
  *

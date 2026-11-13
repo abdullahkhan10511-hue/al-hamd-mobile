@@ -11,17 +11,20 @@ import {
   hashServerPassword,
 } from '@/lib/db/staff-server';
 import { getStaffByEmail, INITIAL_STAFF_USERS } from '@/lib/db/staff';
+import { isKnownWeakHash } from '@/lib/security/knownWeakHashes';
 import { verifyPassword } from '@/lib/crypto';
 import { canAccessAdminRoute } from '@/lib/db/admins';
 import { ROLE_DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
-import { createSignedSessionToken } from '@/lib/db/sessionToken';
+import { createSignedSessionToken, createSignedCustomerToken } from '@/lib/db/sessionToken';
 import { StaffUser } from '@/types/admin';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
 const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_ADMIN_COOKIE = 'admin_session';
 
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, createRateLimitResponse, resetRateLimit } from '@/lib/rateLimit';
+import { verifyUserPasswordUnified, runDummyPasswordComputation } from '@/lib/security/password';
+import { logActivity } from '@/lib/db/repositories/activity';
 
 /**
  * Resolves an authoritative, safe redirection target for authenticated staff members.
@@ -93,9 +96,16 @@ function resolveSafeStaffRedirect(
 
 export async function POST(request: NextRequest) {
   let identifier = '';
+  let enteredPassword = '';
   try {
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
+    }
+
     const body = await request.json();
     const { email, password, shopName, identifier: reqIdentifier, redirect: reqRedirect } = body;
+    enteredPassword = password;
 
     identifier = (reqIdentifier || shopName || email || '').trim();
     if (!identifier || !password) {
@@ -112,18 +122,29 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedIdentifier = identifier.toLowerCase();
-
-    // Brute-force rate limiting: 10 attempts per minute per IP + identifier
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`customer_login_${ip}_${normalizedIdentifier}`, 10, 60000);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Too many login attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        { status: 429 }
-      );
+
+    // S7 Rate Limiting: 20 per 15 mins per IP, 5 per 15 mins per identifier
+    const ipRate = await checkRateLimit(`customer_login_ip_${ip}`, 20, 15 * 60 * 1000);
+    if (!ipRate.allowed) {
+      await logActivity({
+        adminEmail: 'anonymous',
+        action: 'RATE_LIMIT_EXCEEDED',
+        target: 'customer_login_ip',
+        details: `IP rate limit exceeded (${ip})`,
+      });
+      return createRateLimitResponse(ipRate.retryAfterSeconds, 'Too many login attempts from this network.');
+    }
+
+    const idRate = await checkRateLimit(`customer_login_id_${normalizedIdentifier}`, 5, 15 * 60 * 1000);
+    if (!idRate.allowed) {
+      await logActivity({
+        adminEmail: normalizedIdentifier,
+        action: 'RATE_LIMIT_EXCEEDED',
+        target: 'customer_login_id',
+        details: `Identifier rate limit exceeded from IP: ${ip}`,
+      });
+      return createRateLimitResponse(idRate.retryAfterSeconds, 'Too many failed login attempts for this account.');
     }
 
     // 1. Check environment variable override for server-side admin setup
@@ -132,7 +153,9 @@ export async function POST(request: NextRequest) {
 
     let isAuthenticatedViaEnv = false;
     if (envAdminEmail && envAdminPassword && normalizedIdentifier === envAdminEmail) {
-      if (password === envAdminPassword) {
+      const submittedBuf = Buffer.from(password);
+      const envBuf = Buffer.from(envAdminPassword);
+      if (submittedBuf.length === envBuf.length && crypto.timingSafeEqual(submittedBuf, envBuf)) {
         isAuthenticatedViaEnv = true;
       }
     }
@@ -178,49 +201,34 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // S1.3: Reject known default/weak seed hashes
+      if (staffUser.passwordHash && isKnownWeakHash(staffUser.passwordHash)) {
+        console.warn(
+          `[SECURITY] Denylisted legacy seed hash detected for ${normalizedIdentifier}. Run npm run setup:admin to set a strong password.`
+        );
+        return NextResponse.json(
+          { success: false, error: 'Invalid email address or password.' },
+          { status: 401 }
+        );
+      }
+
       let isStaffValid = isAuthenticatedViaEnv;
-      if (!isStaffValid && staffUser.salt && staffUser.passwordHash) {
-        isStaffValid = verifyServerPassword(password, staffUser.salt, staffUser.passwordHash);
-        if (!isStaffValid) {
-          isStaffValid = await verifyPassword(password, staffUser.salt, staffUser.passwordHash);
-        }
-        if (!isStaffValid && password.trim() !== password) {
-          isStaffValid = verifyServerPassword(password.trim(), staffUser.salt, staffUser.passwordHash);
-          if (!isStaffValid) {
-            isStaffValid = await verifyPassword(password.trim(), staffUser.salt, staffUser.passwordHash);
-          }
-        }
-
-        // Safe legacy password compatibility strictly scoped to verified primary admin
-        if (!isStaffValid) {
-          const isPrimaryAdmin =
-            Boolean(staffUser.isOwner || staffUser.id === 'staff-owner-1' || staffUser.id === 'admin-1') &&
-            (normalizedIdentifier === 'admin@alhamdmobile.com' || normalizedIdentifier === 'admin@alhamd.com');
-
-          const isLegacySeedHash =
-            staffUser.passwordHash === 'ac9337e548d76d824371bb3ea6331659d4b171adaf9ee052f38f687f8f26ad8e' ||
-            staffUser.passwordHash === 'c420262734ea8537651c3e53b3a0708468d33b1cb4a4a6c24c3efbb6032313b1';
-
-          if (isPrimaryAdmin && isLegacySeedHash) {
-            const submittedTrimmed = Buffer.from(password.trim());
-            const legacyPass1 = Buffer.from('AlHamd@Admin2026!');
-            const legacyPass2 = Buffer.from('AlHamd@Admin2026');
-
-            if (
-              (submittedTrimmed.length === legacyPass1.length && crypto.timingSafeEqual(submittedTrimmed, legacyPass1)) ||
-              (submittedTrimmed.length === legacyPass2.length && crypto.timingSafeEqual(submittedTrimmed, legacyPass2))
-            ) {
-              isStaffValid = true;
-            }
-          }
-        }
+      if (!isStaffValid && staffUser.passwordHash) {
+        const verifyRes = await verifyUserPasswordUnified({
+          password,
+          storedHash: staffUser.passwordHash,
+          salt: staffUser.salt,
+          userType: 'staff',
+          userId: staffUser.id,
+          email: staffUser.email,
+        });
+        isStaffValid = verifyRes.valid;
       }
 
       if (isStaffValid) {
+        await resetRateLimit(`customer_login_id_${normalizedIdentifier}`);
         const isOwner = Boolean(
           staffUser.isOwner ||
-          staffUser.id === 'staff-owner-1' ||
-          normalizedIdentifier === 'admin@alhamdmobile.com' ||
           (envAdminEmail && normalizedIdentifier === envAdminEmail)
         );
 
@@ -243,36 +251,37 @@ export async function POST(request: NextRequest) {
         };
 
         const targetRedirect = resolveSafeStaffRedirect(staffUser, reqRedirect || body.redirect);
-        const signedToken = createSignedSessionToken(sessionPayload);
+        const signedToken = createSignedSessionToken({
+          id: staffUser.id,
+          email: staffUser.email,
+          role: role,
+          permissions: permissions,
+          isOwner: isOwner,
+          expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12 hours (Task X1.4)
+        });
 
         const isSuperOrAdmin = isOwner || role === 'SUPER_ADMIN' || role === 'ADMIN';
 
+        // Task S9.1: token field removed from response body
         const response = NextResponse.json({
           success: true,
           accountType: isSuperOrAdmin ? 'ADMIN' : 'STAFF',
           role: role,
           isAdmin: true,
           redirect: targetRedirect,
-          token: signedToken,
           user: sessionPayload,
           message: `${isSuperOrAdmin ? 'Admin' : 'Staff'} credentials recognized. Redirecting to dashboard.`,
         });
 
-        const isHttps =
-          request.nextUrl.protocol === 'https:' ||
-          request.headers.get('x-forwarded-proto') === 'https' ||
-          request.headers.get('x-forwarded-ssl') === 'on';
-
         const cookieOptions = {
           path: '/',
-          maxAge: 7 * 24 * 60 * 60,
+          maxAge: 12 * 60 * 60, // 12 hours
           sameSite: 'lax' as const,
           httpOnly: true,
-          secure: isHttps,
+          secure: process.env.NODE_ENV === 'production',
         };
 
         response.cookies.set(ADMIN_COOKIE_NAME, signedToken, cookieOptions);
-        response.cookies.set(FALLBACK_ADMIN_COOKIE, signedToken, cookieOptions);
         // Clear customer cookie if one was present in request
         if (request.cookies.has(CUSTOMER_COOKIE_NAME)) {
           response.cookies.set(CUSTOMER_COOKIE_NAME, '', { path: '/', maxAge: 0, expires: new Date(0) });
@@ -291,21 +300,16 @@ export async function POST(request: NextRequest) {
     const customer = await authenticateCustomerServer(identifier, password);
     const sanitized = sanitizeCustomer(customer);
 
-    const sessionPayload = {
+    // Reset rate limit on customer success
+    await resetRateLimit(`customer_login_id_${normalizedIdentifier}`);
+
+    // Task S5.1: Create cryptographically signed customer token with separated key & typ: customer
+    const signedCustomerToken = createSignedCustomerToken({
       id: sanitized.id,
       email: sanitized.email || '',
-      shopName: sanitized.shopName || '',
+      shopName: sanitized.shopName || undefined,
       customerType: sanitized.customerType || 'RETAIL',
-      fullName:
-        sanitized.fullName ||
-        sanitized.shopName ||
-        `${sanitized.firstName || ''} ${sanitized.lastName || ''}`.trim(),
-      role: 'CUSTOMER',
-      status: sanitized.status || 'active',
-      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    };
-
-    const cookieValue = encodeURIComponent(JSON.stringify(sessionPayload));
+    });
 
     // Handle safe customer redirect
     let customerRedirect = '/account';
@@ -332,23 +336,26 @@ export async function POST(request: NextRequest) {
       message: `${sanitized.customerType === 'WHOLESALE' ? 'Wholesale customer' : 'Customer'} signed in successfully.`,
     });
 
-    response.cookies.set(CUSTOMER_COOKIE_NAME, cookieValue, {
+    // Task S5.2: Set httpOnly, secure in prod, sameSite lax, maxAge 7 days
+    response.cookies.set(CUSTOMER_COOKIE_NAME, signedCustomerToken, {
       path: '/',
       maxAge: 7 * 24 * 60 * 60,
       sameSite: 'lax',
-      httpOnly: false,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
     });
 
     // Clear admin cookies if present in request for cross-role isolation
     if (request.cookies.has(ADMIN_COOKIE_NAME)) {
       response.cookies.set(ADMIN_COOKIE_NAME, '', { path: '/', maxAge: 0, expires: new Date(0) });
     }
-    if (request.cookies.has(FALLBACK_ADMIN_COOKIE)) {
-      response.cookies.set(FALLBACK_ADMIN_COOKIE, '', { path: '/', maxAge: 0, expires: new Date(0) });
+    if (request.cookies.has('admin_session')) {
+      response.cookies.set('admin_session', '', { path: '/', maxAge: 0, expires: new Date(0) });
     }
 
     return response;
   } catch (err: any) {
+    await runDummyPasswordComputation(enteredPassword || 'dummy-pass');
     const isEmail = identifier.includes('@');
     const defaultMsg = isEmail
       ? 'Invalid email address or password.'

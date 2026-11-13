@@ -135,6 +135,7 @@ export interface PaymentMethodConfig {
   requiresReference: boolean;
   referenceFormat?: string;
   isConfigured?: boolean;
+  allowedCustomerTypes?: ('RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE')[];
   createdAt: string;
   updatedAt: string;
   // Dynamic Content Fields
@@ -413,11 +414,17 @@ export interface HomepageVideo {
   title: string;
   url: string;
   thumbnailUrl?: string;
+  mobileUrl?: string;
+  mobileThumbnailUrl?: string;
+  mobileMimeType?: string;
+  blurDataUrl?: string;
+  mobileBlurDataUrl?: string;
   active: boolean;
   displayOrder: number;
   duration?: number;
   size?: number;
   mimeType?: string;
+  mediaType?: 'video' | 'image' | 'animated';
   createdAt: string;
   updatedAt: string;
 }
@@ -452,6 +459,7 @@ export interface HeroConfig {
   desktopImage: string;
   mobileImage?: string;
   floatingProducts: FloatingProductConfig[];
+  showText?: boolean;
 }
 
 export interface TrustBenefitItem {

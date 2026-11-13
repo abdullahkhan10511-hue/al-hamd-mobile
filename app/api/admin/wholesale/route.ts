@@ -5,21 +5,15 @@ import {
   getServerCustomerByShopName,
   sanitizeCustomer,
 } from '@/lib/db/customers-server';
-import { getServerStaffByEmailSync } from '@/lib/db/staff-server';
 import { ALL_PERMISSION_KEYS } from '@/lib/constants/permissions';
 import { StaffUser } from '@/types/admin';
 
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 
-function getSessionStaffUser(request: NextRequest): (StaffUser & { role: string }) | null {
-  const session = getAdminSession(request);
-  if (!session || !session.email) return null;
-
-  const fresh = getServerStaffByEmailSync(session.email);
-  if (fresh) {
-    if (fresh.status === 'inactive') return null;
-    return fresh;
-  }
+async function getSessionStaffUser(request: NextRequest): Promise<(StaffUser & { role: string }) | null> {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return null;
+  const session = auth.session;
 
   return {
     id: session.id || 'admin-root',
@@ -53,7 +47,7 @@ function verifyWholesaleWriteAccess(user: StaffUser | null): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = getSessionStaffUser(request);
+    const session = await getSessionStaffUser(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Staff session required.' },
@@ -92,7 +86,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionStaffUser(request);
+    const session = await getSessionStaffUser(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Staff session required.' },

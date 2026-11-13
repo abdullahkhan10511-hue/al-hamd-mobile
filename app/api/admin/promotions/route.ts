@@ -4,7 +4,7 @@ import { getAllPromoCodesFromDb, insertPromoCodeToDb } from '@/lib/db/repositori
 import { isDbConfigured } from '@/lib/db/mysql';
 
 import {
-  getAdminSession,
+  getAdminSessionAsync,
   hasAdminPermission,
   unauthorizedResponse,
   forbiddenResponse,
@@ -12,7 +12,7 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }

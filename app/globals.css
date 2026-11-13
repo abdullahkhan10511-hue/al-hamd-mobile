@@ -13,11 +13,19 @@
   --accent: #18181b;
   --accent-light: #f8fafc;
   --ring: #09090b;
+
+  /* Motion System 3D Tokens */
+  --motion-duration-tilt: 350ms;
+  --motion-ease-tilt: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-duration-reveal: 600ms;
+  --motion-ease-reveal: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-button-press: 120ms;
 }
 
 html {
   scroll-behavior: smooth;
   color-scheme: light;
+  overflow-x: clip;
 }
 
 body {
@@ -28,7 +36,7 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Custom subtle scrollbar */
@@ -92,5 +100,182 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   Continuous Smooth CSS Marquee Animation (Shop by Category & Shop by Brand)
+   ========================================================================== */
+
+@keyframes marquee-ltr {
+  0% {
+    transform: translate3d(-50%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes marquee-rtl {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.marquee-container {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+.marquee-track-ltr {
+  animation: marquee-ltr var(--marquee-duration, 30s) linear infinite;
+}
+
+.marquee-track-rtl {
+  animation: marquee-rtl var(--marquee-duration, 30s) linear infinite;
+}
+
+/* Pause on hover, focus-within, and pointer interaction */
+.marquee-container[data-pause-on-hover="true"]:hover .marquee-track,
+.marquee-container:focus-within .marquee-track,
+.marquee-container[data-is-paused="true"] .marquee-track {
+  animation-play-state: paused !important;
+}
+
+/* Accessibility: gracefully collapse to a native scrollable strip under reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-container {
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .marquee-track {
+    animation: none !important;
+    transform: none !important;
+    width: auto !important;
+  }
+
+  .marquee-copy {
+    display: none !important;
+  }
+
+  .marquee-group > * {
+    scroll-snap-align: start;
+  }
+
+  .hero-ambient-glow {
+    animation: none !important;
+  }
+}
+
+@keyframes hero-glow-drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(2%, -2%, 0) scale(1.06);
+    opacity: 0.8;
+  }
+}
+
+.hero-ambient-glow {
+  animation: hero-glow-drift 12s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   Motion System 3D Layer Utilities (Buttons & Floating Fallback Shapes)
+   ========================================================================== */
+
+/* Button pressed depth & subtle lift on hover */
+.btn-motion-depth {
+  transition: transform var(--motion-button-press, 120ms) ease-out, box-shadow var(--motion-button-press, 120ms) ease-out;
+}
+.btn-motion-depth:hover {
+  transform: translateY(-1.5px);
+}
+.btn-motion-depth:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* 3D Floating Shapes for Fallback Hero */
+@keyframes float-cube {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotateX(15deg) rotateY(25deg);
+  }
+  50% {
+    transform: translate3d(-10px, -18px, 20px) rotateX(25deg) rotateY(40deg);
+  }
+}
+
+@keyframes float-ring {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotateX(45deg) rotateZ(0deg);
+  }
+  50% {
+    transform: translate3d(14px, -15px, 15px) rotateX(60deg) rotateZ(180deg);
+  }
+}
+
+.hero-shape-cube {
+  transform-style: preserve-3d;
+  animation: float-cube 10s ease-in-out infinite;
+  will-change: transform;
+}
+
+.hero-shape-ring {
+  transform-style: preserve-3d;
+  animation: float-ring 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-shape-cube,
+  .hero-shape-ring {
+    animation: none !important;
+    transform: none !important;
+  }
+  .btn-motion-depth:hover,
+  .btn-motion-depth:active {
+    transform: none !important;
+  }
+}
+
+/* WhatsApp Floating Button Entrance & Gentle Pulse */
+@keyframes whatsapp-pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.whatsapp-pulse-ring {
+  animation: whatsapp-pulse-ring 1.8s cubic-bezier(0.24, 0, 0.38, 1) 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-pulse-ring {
+    animation: none !important;
   }
 }

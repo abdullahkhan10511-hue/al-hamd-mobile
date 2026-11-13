@@ -83,7 +83,7 @@ export default async function CategoryPage({ params }: PageProps) {
   }
 
   // 3. Fetch products, brands, and categories on the server
-  const [products, allBrands, allCategories] = await Promise.all([
+  const [categoryData, allBrands, allCategories] = await Promise.all([
     getServerCategoryProducts(category),
     getServerAllBrands(),
     getServerAllCategories(),
@@ -92,7 +92,7 @@ export default async function CategoryPage({ params }: PageProps) {
   return (
     <CategoryPageClient
       category={category}
-      initialProducts={products}
+      initialProducts={categoryData.products}
       allBrands={allBrands}
       allCategories={allCategories}
     />

@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { Category } from '@/types';
 import { RowDataPacket } from 'mysql2/promise';
@@ -33,8 +34,8 @@ function mapRowToCategory(row: CategoryRow): Category {
     image: row.image,
     description: row.description || '',
     productCount: Number(row.product_count),
-    status: row.status,
-    isActive: Boolean(row.is_active),
+    status: (typeof row.status === 'string' && row.status.trim() ? row.status.trim().toLowerCase() : 'active') as Category['status'],
+    isActive: row.is_active !== undefined && row.is_active !== null ? Boolean(Number(row.is_active)) : (typeof row.status !== 'string' || row.status.trim().toLowerCase() === 'active'),
     featured: Boolean(row.featured),
   };
 }
@@ -87,7 +88,7 @@ export async function getCategoryBySlugFromDb(slug: string): Promise<Category | 
 
 export async function insertCategoryToDb(
   data: Partial<Category>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Category> {
   const id = data.id || `cat-${Date.now()}`;
   const name = (data.name || '').trim();
@@ -97,7 +98,7 @@ export async function insertCategoryToDb(
     'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=600&auto=format&fit=crop';
   const description = data.description || '';
   const status = data.status || 'active';
-  const isActive = (data as any).isActive !== false ? 1 : 0;
+  const isActive = (data as any).isActive !== undefined ? ((data as any).isActive ? 1 : 0) : (status === 'active' ? 1 : 0);
   const featured = data.featured ? 1 : 0;
 
   await execute(
@@ -120,7 +121,7 @@ export async function insertCategoryToDb(
 export async function updateCategoryInDb(
   id: string,
   updates: Partial<Category>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Category> {
   const existing = await getCategoryByIdFromDb(id);
   if (!existing) {
@@ -135,7 +136,7 @@ export async function updateCategoryInDb(
       : existing.image;
   const description = updates.description !== undefined ? updates.description : existing.description;
   const status = updates.status !== undefined ? updates.status : existing.status;
-  const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (existing.isActive ? 1 : 0);
+  const isActive = (updates as any).isActive !== undefined ? ((updates as any).isActive ? 1 : 0) : (updates.status !== undefined ? (status === 'active' ? 1 : 0) : (existing.isActive ? 1 : 0));
   const featured = updates.featured !== undefined ? (updates.featured ? 1 : 0) : (existing.featured ? 1 : 0);
 
   await execute(
@@ -158,7 +159,7 @@ export async function updateCategoryInDb(
 
 export async function deleteCategoryInDb(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const existing = await getCategoryByIdFromDb(id);
   if (!existing) return false;

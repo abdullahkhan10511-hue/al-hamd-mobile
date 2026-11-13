@@ -319,7 +319,7 @@ function AdminLoginContent() {
                     disabled={isSubmitting}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@alhamdmobile.com"
+                    placeholder="admin@example.com"
                     className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-neutral-950/80 border text-white focus:outline-none transition-all duration-200 text-xs disabled:opacity-50"
                     style={{
                       borderColor: settings.borderColor || '#262626',

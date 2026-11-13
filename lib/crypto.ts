@@ -1,6 +1,6 @@
 /**
- * Cryptographic helper for secure staff password hashing and verification
- * Uses the standard Web Crypto API (SHA-256 with per-user salt)
+ * Cryptographic helper for legacy staff and customer password verification.
+ * Modern password hashing uses scrypt via lib/security/password.ts.
  */
 
 export function generateSalt(byteLength = 16): string {
@@ -12,8 +12,7 @@ export function generateSalt(byteLength = 16): string {
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }
-  // Fallback if getRandomValues unavailable
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  throw new Error('Secure random generator (crypto.getRandomValues) is required but unavailable.');
 }
 
 export async function hashPassword(password: string, salt: string): Promise<string> {
@@ -27,15 +26,7 @@ export async function hashPassword(password: string, salt: string): Promise<stri
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // Fallback simple bitwise hash for non-crypto test environments
-  let hash = 0;
-  const str = `${password}:${salt}`;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(32, '0');
+  throw new Error('Web Crypto subtle.digest is required for hashPassword.');
 }
 
 export async function verifyPassword(password: string, salt: string, expectedHash: string): Promise<boolean> {
@@ -46,19 +37,6 @@ export async function verifyPassword(password: string, salt: string, expectedHas
   if (password.trim() !== password) {
     const computedTrimmed = await hashPassword(password.trim(), salt);
     if (computedTrimmed === expectedHash) return true;
-  }
-
-  if (password.length > 0) {
-    const toggled =
-      password[0] === password[0].toUpperCase()
-        ? password[0].toLowerCase() + password.slice(1)
-        : password[0].toUpperCase() + password.slice(1);
-    const computedToggled = await hashPassword(toggled, salt);
-    if (computedToggled === expectedHash) return true;
-    if (toggled.trim() !== toggled) {
-      const computedToggledTrimmed = await hashPassword(toggled.trim(), salt);
-      if (computedToggledTrimmed === expectedHash) return true;
-    }
   }
 
   return false;
@@ -75,20 +53,18 @@ export async function hashCustomerPassword(password: string, salt: string): Prom
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // Fallback simple bitwise hash for non-crypto test environments
-  let hash = 0;
-  const str = `${password}:${salt}:customer`;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(32, '0');
+  throw new Error('Web Crypto subtle.digest is required for hashCustomerPassword.');
 }
 
 export async function verifyCustomerPassword(password: string, salt: string, expectedHash: string): Promise<boolean> {
   if (!password || !salt || !expectedHash) return false;
   const computed = await hashCustomerPassword(password, salt);
-  return computed === expectedHash;
-}
+  if (computed === expectedHash) return true;
 
+  if (password.trim() !== password) {
+    const computedTrimmed = await hashCustomerPassword(password.trim(), salt);
+    if (computedTrimmed === expectedHash) return true;
+  }
+
+  return false;
+}

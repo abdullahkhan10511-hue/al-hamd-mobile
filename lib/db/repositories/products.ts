@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Product, ProductModelVariant, ProductColorVariant, ProductMediaItem, BulkPricingRule, ProductReview } from '@/types';
 import { RowDataPacket } from 'mysql2/promise';
@@ -237,8 +238,8 @@ export function mapRowToProduct(
   const finalImages = galleryImages.length > 0
     ? galleryImages
     : modelImages.length > 0
-    ? modelImages
-    : [];
+      ? modelImages
+      : [];
 
   // Parse specifications safely using deserializeSpecifications:
   // - JSON string (new format) -> plain multiline text
@@ -323,6 +324,17 @@ export function mapRowToProduct(
     variants: parsedVariants,
     shippingInfo: row.shipping_info || undefined,
     returnsInfo: row.returns_info || undefined,
+    createdAt: row.created_at || undefined,
+    ...(reviews.length > 0
+      ? (() => {
+          const verifiedRevs = reviews.filter((r) => r && r.verified !== false);
+          const avg =
+            verifiedRevs.length > 0
+              ? Number((verifiedRevs.reduce((acc, r) => acc + (Number(r.rating) || 0), 0) / verifiedRevs.length).toFixed(1))
+              : 0;
+          return { approvedReviewCount: verifiedRevs.length, approvedRating: avg };
+        })()
+      : {}),
   };
 }
 
@@ -455,6 +467,290 @@ export async function getAllProductsFromDb(): Promise<(Product & { sku: string; 
   }, 60000);
 }
 
+export interface StorefrontProductQueryParams {
+  category?: string;
+  brand?: string;
+  search?: string;
+  slug?: string;
+  id?: string;
+  ids?: string[];
+  page?: number;
+  limit?: number;
+  sortBy?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating' | string;
+  inStockOnly?: boolean;
+  isBestSeller?: boolean;
+  isNewArrival?: boolean;
+  minimal?: boolean;
+}
+
+export async function getStorefrontProductsFromDb(params: StorefrontProductQueryParams = {}): Promise<{
+  products: (Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean })[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  if (!isDbConfigured()) {
+    throw new Error('Database is not configured.');
+  }
+
+  const conditions: string[] = ["status = 'active'", 'is_active = 1', 'price > 0'];
+  const queryParams: any[] = [];
+
+  // Filter: specific slug
+  if (params.slug) {
+    conditions.push('LOWER(TRIM(slug)) = ?');
+    queryParams.push(params.slug.trim().toLowerCase());
+  }
+
+  // Filter: specific single id
+  if (params.id) {
+    conditions.push('id = ?');
+    queryParams.push(params.id.trim());
+  }
+
+  // Filter: multiple ids (up to 50, for cart & wishlist)
+  if (Array.isArray(params.ids) && params.ids.length > 0) {
+    const cleanIds = params.ids.slice(0, 50).map((i) => String(i).trim()).filter(Boolean);
+    if (cleanIds.length > 0) {
+      const placeholders = cleanIds.map(() => '?').join(',');
+      conditions.push(`id IN (${placeholders})`);
+      queryParams.push(...cleanIds);
+    }
+  }
+
+  // Filter: category (slug or exact name)
+  if (params.category && params.category !== 'all') {
+    const cat = params.category.trim();
+    conditions.push('(category_slug = ? OR category = ?)');
+    queryParams.push(cat.toLowerCase(), cat);
+  }
+
+  // Filter: brand (slug or name)
+  if (params.brand && params.brand !== 'all') {
+    const brand = params.brand.trim();
+    conditions.push('(brand = ? OR brand_id = ? OR LOWER(brand) = ?)');
+    queryParams.push(brand, brand, brand.toLowerCase());
+  }
+
+  // Filter: search keyword (minimum 2 chars)
+  if (params.search && params.search.trim().length >= 2) {
+    const s = `%${params.search.trim().toLowerCase()}%`;
+    conditions.push('(LOWER(name) LIKE ? OR LOWER(sku) LIKE ? OR LOWER(brand) LIKE ? OR LOWER(description) LIKE ?)');
+    queryParams.push(s, s, s, s);
+  }
+
+  // Filter: in stock only
+  if (params.inStockOnly) {
+    conditions.push('(stock > 0 OR shop_stock > 0)');
+  }
+
+  // Filter: badges
+  if (params.isBestSeller) {
+    conditions.push('is_best_seller = 1');
+  }
+  if (params.isNewArrival) {
+    conditions.push('(is_new = 1 OR is_new_arrival = 1)');
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+  // 1. Fast SQL COUNT
+  const countSql = `SELECT COUNT(*) as total FROM products ${whereClause}`;
+  const countRows = await query<RowDataPacket[]>(countSql, queryParams);
+  const total = Number(countRows[0]?.total || 0);
+
+  // Pagination bounds: default 24, max 60 for public
+  const page = Math.max(1, Number(params.page) || 1);
+  const limit = Math.max(1, Math.min(Number(params.limit) || 24, 60));
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const offset = (page - 1) * limit;
+
+  // 2. SQL ORDER BY
+  let orderBy = 'created_at DESC';
+  switch (params.sortBy) {
+    case 'featured':
+      orderBy = 'featured DESC, created_at DESC';
+      break;
+    case 'newest':
+      orderBy = 'created_at DESC';
+      break;
+    case 'price-asc':
+      orderBy = 'price ASC';
+      break;
+    case 'price-desc':
+      orderBy = 'price DESC';
+      break;
+    case 'rating':
+      orderBy = 'rating DESC, review_count DESC';
+      break;
+    default:
+      orderBy = 'created_at DESC';
+      break;
+  }
+
+  // 3. Paginated SQL SELECT (using numeric interpolation for safe LIMIT/OFFSET)
+  const selectSql = `SELECT * FROM products ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+  const productRows = await query<ProductRow[]>(selectSql, queryParams);
+
+  if (!productRows || productRows.length === 0) {
+    return { products: [], total, page, limit, totalPages };
+  }
+
+  const productIds = productRows.map((p) => p.id);
+  const placeholders = productIds.map(() => '?').join(',');
+
+  // 4. Batched related records query for ONLY current page product IDs (Zero N+1)
+  const [modelsRows, colorsRows, mediaRows] = await Promise.all([
+    query<RowDataPacket[]>(
+      `SELECT * FROM product_models WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+      productIds
+    ),
+    query<RowDataPacket[]>(
+      `SELECT * FROM product_colors WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+      productIds
+    ),
+    query<RowDataPacket[]>(
+      `SELECT * FROM product_media WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+      productIds
+    ),
+  ]);
+
+  let bulkRows: RowDataPacket[] = [];
+  let reviewsRows: RowDataPacket[] = [];
+  let reviewStatsRows: RowDataPacket[] = [];
+  if (!params.minimal) {
+    [bulkRows, reviewsRows] = await Promise.all([
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_bulk_pricing WHERE product_id IN (${placeholders}) ORDER BY min_qty ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_reviews WHERE product_id IN (${placeholders}) ORDER BY date DESC`,
+        productIds
+      ),
+    ]);
+  } else {
+    try {
+      reviewStatsRows = await query<RowDataPacket[]>(
+        `SELECT product_id, COUNT(*) as cnt, AVG(rating) as avg_rating FROM product_reviews WHERE product_id IN (${placeholders}) AND verified = 1 GROUP BY product_id`,
+        productIds
+      );
+    } catch {
+      reviewStatsRows = [];
+    }
+  }
+
+  // Group related by product_id
+  const modelsByProd = new Map<string, ProductModelVariant[]>();
+  for (const m of modelsRows) {
+    const list = modelsByProd.get(m.product_id) || [];
+    list.push({
+      id: m.id,
+      name: m.name,
+      price: Number(m.price),
+      compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
+      wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
+      superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
+      stock: Number(m.stock),
+      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
+      sku: m.sku || undefined,
+      isActive: Boolean(m.is_active),
+      images: parseJsonField<string[]>(m.images, []),
+      videos: parseJsonField<string[]>(m.videos, []),
+    } as any);
+    modelsByProd.set(m.product_id, list);
+  }
+
+  const colorsByProd = new Map<string, ProductColorVariant[]>();
+  for (const c of colorsRows) {
+    const list = colorsByProd.get(c.product_id) || [];
+    list.push({
+      id: c.id,
+      name: c.name,
+      hex: c.hex || undefined,
+      isActive: Boolean(c.is_active),
+    });
+    colorsByProd.set(c.product_id, list);
+  }
+
+  const mediaByProd = new Map<string, ProductMediaItem[]>();
+  for (const med of mediaRows) {
+    const list = mediaByProd.get(med.product_id) || [];
+    list.push({
+      id: med.id,
+      url: med.url,
+      type: med.media_type,
+      name: med.name || undefined,
+      size: med.size || undefined,
+    });
+    mediaByProd.set(med.product_id, list);
+  }
+
+  const bulkByProd = new Map<string, BulkPricingRule[]>();
+  for (const b of bulkRows) {
+    const list = bulkByProd.get(b.product_id) || [];
+    list.push({
+      id: b.id,
+      minQty: Number(b.min_qty),
+      maxQty: Number(b.max_qty),
+      discountPercentage: Number(b.discount_percentage),
+    });
+    bulkByProd.set(b.product_id, list);
+  }
+
+  const reviewsByProd = new Map<string, ProductReview[]>();
+  for (const r of reviewsRows) {
+    const list = reviewsByProd.get(r.product_id) || [];
+    list.push({
+      id: r.id,
+      author: r.author,
+      rating: Number(r.rating),
+      comment: r.comment,
+      title: r.title || '',
+      verified: Boolean(r.verified),
+      date: r.date,
+    });
+    reviewsByProd.set(r.product_id, list);
+  }
+
+  const reviewStatsByProd = new Map<string, { count: number; rating: number }>();
+  for (const rs of reviewStatsRows) {
+    reviewStatsByProd.set(rs.product_id, {
+      count: Number(rs.cnt) || 0,
+      rating: rs.avg_rating ? Number(Number(rs.avg_rating).toFixed(1)) : 0,
+    });
+  }
+
+  const products = productRows.map((row) => {
+    const mapped = mapRowToProduct(
+      row,
+      modelsByProd.get(row.id) || [],
+      colorsByProd.get(row.id) || [],
+      mediaByProd.get(row.id) || [],
+      bulkByProd.get(row.id) || [],
+      reviewsByProd.get(row.id) || []
+    );
+    if (params.minimal) {
+      const stats = reviewStatsByProd.get(row.id) || { count: 0, rating: 0 };
+      return {
+        ...mapped,
+        approvedReviewCount: stats.count,
+        approvedRating: stats.rating,
+      };
+    }
+    return mapped;
+  });
+
+  return {
+    products,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
+}
+
 export async function getProductByIdFromDb(id: string): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
@@ -559,7 +855,7 @@ export async function getProductBySlugFromDb(slug: string): Promise<(Product & {
 
 export async function insertProductToDb(
   data: Partial<Product & { sku?: string; lowStockThreshold?: number; trending?: boolean }>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }> {
   return withTransaction(async (conn) => {
     const id = data.id || `prod-${Date.now()}`;
@@ -670,14 +966,14 @@ export async function insertProductToDb(
     const rawImages = Array.isArray(data.images) && data.images.length > 0
       ? data.images
       : Array.isArray(data.media)
-      ? data.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
-      : [];
+        ? data.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
+        : [];
 
     const rawVideos = Array.isArray(data.videos) && data.videos.length > 0
       ? data.videos
       : Array.isArray(data.media)
-      ? data.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
-      : [];
+        ? data.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
+        : [];
 
     const safeImages = await ensureSafeMediaUrls(rawImages, 'products');
     const safeVideos = await ensureSafeMediaUrls(rawVideos, 'products');
@@ -777,7 +1073,7 @@ export async function insertProductToDb(
 export async function updateProductInDb(
   id: string,
   updates: Partial<Product & { sku?: string; lowStockThreshold?: number; trending?: boolean }>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }> {
   return withTransaction(async (conn) => {
     const existing = await getProductByIdFromDb(id);
@@ -865,13 +1161,13 @@ export async function updateProductInDb(
       const imagesToSave = updates.images !== undefined
         ? updates.images
         : Array.isArray(updates.media)
-        ? updates.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
-        : existing.images;
+          ? updates.media.filter((m: any) => m && (m.type === 'image' || !m.type)).map((m: any) => typeof m === 'string' ? m : m.url)
+          : existing.images;
       const videosToSave = updates.videos !== undefined
         ? updates.videos
         : Array.isArray(updates.media)
-        ? updates.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
-        : (existing.videos || []);
+          ? updates.media.filter((m: any) => m && m.type === 'video').map((m: any) => typeof m === 'string' ? m : m.url)
+          : (existing.videos || []);
 
       const safeImages = await ensureSafeMediaUrls(imagesToSave, 'products');
       const safeVideos = await ensureSafeMediaUrls(videosToSave, 'products');
@@ -966,7 +1262,7 @@ export async function updateProductInDb(
 
 export async function deleteProductInDb(
   id: string,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const existing = await getProductByIdFromDb(id);
   if (!existing) return false;

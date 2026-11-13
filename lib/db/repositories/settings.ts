@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { StoreSettings, BillSettings, BillFieldToggles } from '@/types/admin';
 import { seedStoreSettings } from '../seed';
@@ -452,7 +453,7 @@ export async function getBillSettingsFromDb(): Promise<BillSettings> {
   };
 }
 
-export async function updateBillSettingsInDb(updates: Partial<BillSettings>, adminEmail = 'admin@alhamd.com'): Promise<BillSettings> {
+export async function updateBillSettingsInDb(updates: Partial<BillSettings>, adminEmail = 'system'): Promise<BillSettings> {
   const current = await getBillSettingsFromDb();
   const width =
     updates.thermalPaperWidth ||

@@ -211,10 +211,10 @@ await runAsyncTest('Customer server registration: Normalizes email, hashes passw
 
 await runAsyncTest('Admin authentication remains intact and functional', async () => {
   const { getServerStaffByEmail, verifyServerPassword } = await import('../lib/db/staff-server.ts');
-  const admin = await getServerStaffByEmail('admin@alhamd.com');
-  assert(admin, 'Admin account admin@alhamd.com must exist');
+  const admin = (await getServerStaffUsers())[0];
+  assert(admin, 'An initial staff account must exist');
   assert(admin.passwordHash && admin.salt, 'Admin must have password hash and salt');
-  assert(verifyServerPassword('AlHamd@Admin2026!', admin.salt, admin.passwordHash), 'Admin password verification must succeed');
+  // Note: Default password check removed per Task S1 security hardening
 });
 
 console.log('\n======================================================');

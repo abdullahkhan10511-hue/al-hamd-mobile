@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getCategoryByIdFromDb, updateCategoryInDb, deleteCategoryInDb } from '@/lib/db/repositories/categories';
 import { allowDevMockFallback } from '@/lib/env';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -28,7 +29,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Category not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, category });
+    return NextResponse.json({ success: true, category }, { headers: getPublicCacheHeaders(request) });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
   }
@@ -39,10 +40,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request, ['categories.edit', 'categories.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     const body = await request.json();
@@ -75,10 +75,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request, ['categories.delete', 'categories.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     let ok = false;

@@ -4,11 +4,12 @@ import path from 'path';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getLoginPageSettingsFromDb } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const SETTINGS_FILE = path.join(DATA_DIR, 'login-page-settings.json');
 
 function extractCleanSettings(parsed: any): any {

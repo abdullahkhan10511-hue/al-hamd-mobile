@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getActivityLogs, logActivity } from '@/lib/db/repositories/activity';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { getAdminSessionAsync, unauthorizedResponse, forbiddenResponse, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Authentication required.');
-    }
-    if (session.status === 'inactive') {
-      return forbiddenResponse('Account is deactivated.');
-    }
-    if (!hasAdminPermission(session, ['dashboard.view', 'staff.view', 'settings.view'])) {
-      return forbiddenResponse('Insufficient permissions to inspect activity logs.');
-    }
+    const auth = await requireAdmin(request, ['dashboard.view', 'staff.view', 'settings.view']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     if (!isDbConfigured()) {
       return NextResponse.json({ success: true, count: 0, logs: [] });
@@ -37,7 +26,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse('Authentication required.');
     }

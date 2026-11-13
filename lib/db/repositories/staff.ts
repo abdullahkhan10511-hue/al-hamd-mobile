@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { StaffUser } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
@@ -68,11 +69,10 @@ function parseJsonField<T>(field: any, fallback: T): T {
 function mapRowToStaff(row: StaffRow): StaffUser {
   const parsedPerms = parseJsonField<string[]>(row.permissions, []);
   const emailLower = (row.email || '').trim().toLowerCase();
+  const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const isOwner = Boolean(
     row.is_owner ||
-    row.id === 'staff-owner-1' ||
-    emailLower === 'admin@alhamdmobile.com' ||
-    emailLower === 'admin@alhamd.com'
+    (envAdminEmail && emailLower === envAdminEmail)
   );
   const role = row.role || (isOwner ? 'SUPER_ADMIN' : 'Manager');
   const fallbackPerms = isOwner || role === 'SUPER_ADMIN' || role === 'OWNER'
@@ -141,16 +141,6 @@ export async function getStaffByEmailFromDb(email: string): Promise<StaffUser | 
 
   if (rows && rows.length > 0) {
     return mapRowToStaff(rows[0]);
-  }
-
-  // Support primary admin alias
-  if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
-    const ownerRows = await query<StaffRow[]>(
-      'SELECT * FROM staff_users WHERE is_owner = 1 OR id = "staff-owner-1" LIMIT 1'
-    );
-    if (ownerRows && ownerRows.length > 0) {
-      return mapRowToStaff(ownerRows[0]);
-    }
   }
 
   return null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 import {
   readPersistentNavigation,
   writePersistentNavigation,
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
-  const session = getAdminSession(request);
+  const session = await getAdminSessionAsync(request);
   if (!session) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = getAdminSession(request);
+  const session = await getAdminSessionAsync(request);
   if (!session) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },

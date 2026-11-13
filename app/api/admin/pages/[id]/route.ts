@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { deletePageInDb, savePageInDb } from '@/lib/db/repositories/pages';
 import { savePersistentPage, deletePersistentPage } from '@/lib/db/pagesStorage';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync } from '@/lib/db/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,7 +13,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
     }
@@ -44,7 +44,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required.' }, { status: 401 });
     }

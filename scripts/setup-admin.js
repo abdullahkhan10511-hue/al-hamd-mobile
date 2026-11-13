@@ -1,144 +1,140 @@
 /**
  * Server-Side Admin Setup & Password Reset Utility
- * 
+ *
  * Usage:
- *   node scripts/setup-admin.js [email] [new_password]
- * 
+ *   node scripts/setup-admin.js [email] [password]
+ *
  * Or configure environment variables:
- *   ADMIN_EMAIL=admin@alhamd.com
- *   ADMIN_PASSWORD=YourSecurePassword@123
+ *   ADMIN_EMAIL=admin@example.com
+ *   ADMIN_PASSWORD=...
  *   node scripts/setup-admin.js
- * 
- * This script securely hashes the password using salted SHA-256 (matching the project's
- * Web Crypto algorithm) and configures the main Administrator account in the project database.
  */
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+function loadEnvFile(filePath) {
+  if (fs.existsSync(filePath)) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    content.split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [k, ...v] = trimmed.split('=');
+        if (k && v.length > 0) {
+          const key = k.trim();
+          const val = v.join('=').trim().replace(/^["']|["']$/g, '');
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+    });
+  }
+}
+
+// Load .env.local and .env
+loadEnvFile(path.join(__dirname, '..', '.env.local'));
+loadEnvFile(path.join(__dirname, '..', '.env'));
+
+function validatePasswordComplexity(password) {
+  if (!password || typeof password !== 'string') {
+    return 'Password is required.';
+  }
+  if (password.length < 12) {
+    return 'Password must be at least 12 characters long.';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least one uppercase letter.';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least one lowercase letter.';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'Password must contain at least one digit.';
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+    return 'Password must contain at least one symbol.';
+  }
+  return null;
+}
+
 function generateSalt(byteLength = 16) {
   return crypto.randomBytes(byteLength).toString('hex');
 }
 
 function hashPassword(password, salt) {
-  return crypto
-    .createHash('sha256')
-    .update(`${password}:${salt}:alhamd_staff_v1`)
-    .digest('hex');
+  const saltBytes = Buffer.isBuffer(salt)
+    ? salt
+    : (typeof salt === 'string' && salt.length === 32 ? Buffer.from(salt, 'hex') : crypto.randomBytes(16));
+  const derived = crypto.scryptSync(password, saltBytes, 64, {
+    N: 32768,
+    r: 8,
+    p: 1,
+    maxmem: 128 * 1024 * 1024,
+  });
+  return `scrypt$32768$8$1${saltBytes.toString('base64url')}${derived.toString('base64url')}`;
+}
+
+async function updateDatabaseIfConfigured(email, passwordHash, salt) {
+  const dbUrl = process.env.DATABASE_URL;
+  const dbHost = process.env.DB_HOST || process.env.MYSQL_HOST || process.env.MYSQLHOST;
+  const dbUser = process.env.DB_USER || process.env.MYSQL_USER || process.env.MYSQLUSER;
+  const dbName = process.env.DB_NAME || process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE;
+
+  if (!dbUrl && (!dbHost || !dbUser || !dbName)) {
+    return; // DB not configured
+  }
+
+  try {
+    const mysql = require('mysql2/promise');
+    let pool;
+    if (dbUrl && dbUrl.startsWith('mysql')) {
+      pool = mysql.createPool(dbUrl);
+    } else {
+      pool = mysql.createPool({
+        host: dbHost,
+        port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306', 10),
+        user: dbUser,
+        password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '',
+        database: dbName,
+        connectTimeout: 5000,
+      });
+    }
+
+    await pool.execute(
+      'UPDATE staff_users SET password_hash = ?, salt = ?, updated_at = NOW() WHERE LOWER(email) = LOWER(?)',
+      [passwordHash, salt, email]
+    );
+    await pool.end();
+    console.log('[OK] MySQL staff_users table updated');
+  } catch (err) {
+    console.warn('[WARN] Could not update MySQL (continuing with JSON file):', err.message);
+  }
 }
 
 async function main() {
   const args = process.argv.slice(2);
-  
-  // 1. Resolve email and password from CLI args or environment variables
-  let email = args[0] || process.env.ADMIN_EMAIL;
-  let password = args[1] || process.env.ADMIN_PASSWORD;
+  const email = (args[0] || process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = args[1] || process.env.ADMIN_PASSWORD;
 
   if (!email || !password) {
-    // Check .env / .env.local if exists
-    const envLocalPath = path.join(__dirname, '..', '.env.local');
-    const envPath = path.join(__dirname, '..', '.env');
-    const loadEnvFile = (filePath) => {
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf8');
-        content.split('\n').forEach((line) => {
-          const trimmed = line.trim();
-          if (trimmed && !trimmed.startsWith('#')) {
-            const [k, ...v] = trimmed.split('=');
-            if (k && v.length > 0) {
-              const val = v.join('=').trim().replace(/^["']|["']$/g, '');
-              if (k.trim() === 'ADMIN_EMAIL' && !email) email = val;
-              if (k.trim() === 'ADMIN_PASSWORD' && !password) password = val;
-            }
-          }
-        });
-      }
-    };
-    loadEnvFile(envLocalPath);
-    loadEnvFile(envPath);
-  }
-
-  // Fallback defaults if still not provided
-  if (!email) {
-    email = 'admin@alhamdmobile.com';
-  }
-
-  if (!password) {
-    console.log('====================================================');
-    console.log('AL-HAMD MOBILE — ADMIN ACCOUNT SETUP / RESET UTILITY');
-    console.log('====================================================\n');
-    console.log('ERROR: No new admin password provided.\n');
-    console.log('Usage:');
-    console.log('  node scripts/setup-admin.js <email> <password>\n');
-    console.log('Example:');
-    console.log('  node scripts/setup-admin.js admin@alhamdmobile.com AlHamd@Admin2026!\n');
-    console.log('Alternatively, set ADMIN_EMAIL and ADMIN_PASSWORD in your environment or .env.local file:');
-    console.log('  ADMIN_EMAIL=admin@alhamdmobile.com');
-    console.log('  ADMIN_PASSWORD=AlHamd@Admin2026!');
-    console.log('  npm run setup:admin\n');
+    console.error('ERROR: Admin email and password must be provided.');
+    console.error('Usage: node scripts/setup-admin.js <email> <password>');
+    console.error('Or set ADMIN_EMAIL and ADMIN_PASSWORD environment variables.');
     process.exit(1);
   }
 
-  if (password.length < 6) {
-    console.error('ERROR: Admin password must be at least 6 characters long.');
+  const complexityError = validatePasswordComplexity(password);
+  if (complexityError) {
+    console.error(`ERROR: Password complexity requirements not met: ${complexityError}`);
     process.exit(1);
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
   const salt = generateSalt(16);
   const passwordHash = hashPassword(password, salt);
 
-  console.log('====================================================');
-  console.log('AL-HAMD MOBILE — CONFIGURING ADMIN CREDENTIALS');
-  console.log('====================================================');
-  console.log(`Target Email : ${normalizedEmail}`);
-  console.log('Hashing      : Salted SHA-256 Web Crypto Compatible');
-
-  // 2. Update lib/db/staff.ts constants so synchronous boot immediately recognizes the credentials
-  const staffTsPath = path.join(__dirname, '..', 'lib', 'db', 'staff.ts');
-  if (fs.existsSync(staffTsPath)) {
-    let staffContent = fs.readFileSync(staffTsPath, 'utf8');
-
-    // Replace SEED_SALT and SEED_HASH
-    staffContent = staffContent.replace(
-      /const SEED_SALT\s*=\s*['"][^'"]*['"];/,
-      `const SEED_SALT = '${salt}';`
-    );
-    staffContent = staffContent.replace(
-      /const SEED_HASH\s*=\s*['"][^'"]*['"];/,
-      `const SEED_HASH = '${passwordHash}';`
-    );
-
-    // Ensure INITIAL_STAFF_USERS has the target email for staff-owner-1
-    staffContent = staffContent.replace(
-      /id:\s*['"]staff-owner-1['"],\s*name:\s*['"][^'"]*['"],\s*email:\s*['"][^'"]*['"]/,
-      `id: 'staff-owner-1',\n    name: 'Chief Administrator',\n    email: '${normalizedEmail}'`
-    );
-
-    fs.writeFileSync(staffTsPath, staffContent, 'utf8');
-    console.log('Updated      : lib/db/staff.ts initial seed constants');
-  }
-
-  // 3. Update lib/db/seed.ts constants
-  const seedTsPath = path.join(__dirname, '..', 'lib', 'db', 'seed.ts');
-  if (fs.existsSync(seedTsPath)) {
-    let seedContent = fs.readFileSync(seedTsPath, 'utf8');
-    seedContent = seedContent.replace(
-      /salt:\s*['"][^'"]*['"],\s*passwordHash:\s*['"][^'"]*['"]/,
-      `salt: '${salt}',\n    passwordHash: '${passwordHash}'`
-    );
-    if (normalizedEmail !== 'admin@alhamd.com') {
-      seedContent = seedContent.replace(
-        /email:\s*['"]admin@alhamd\.com['"]/,
-        `email: '${normalizedEmail}'`
-      );
-    }
-    fs.writeFileSync(seedTsPath, seedContent, 'utf8');
-    console.log('Updated      : lib/db/seed.ts admin seed constants');
-  }
-
-  // 4. Update data/staff-users.json database file
+  // Update data/staff-users.json
   const staffJsonPath = path.join(__dirname, '..', 'data', 'staff-users.json');
   if (fs.existsSync(staffJsonPath)) {
     try {
@@ -149,14 +145,12 @@ async function main() {
           if (
             u.id === 'staff-owner-1' ||
             u.isOwner ||
-            (u.email && u.email.toLowerCase() === normalizedEmail) ||
-            (u.email && u.email.toLowerCase() === 'admin@alhamd.com') ||
-            (u.email && u.email.toLowerCase() === 'admin@alhamdmobile.com')
+            (u.email && u.email.toLowerCase() === email)
           ) {
             found = true;
             return {
               ...u,
-              email: normalizedEmail,
+              email: email,
               role: 'ADMIN',
               isOwner: true,
               status: 'active',
@@ -172,7 +166,7 @@ async function main() {
           updated.unshift({
             id: 'staff-owner-1',
             name: 'Chief Administrator',
-            email: normalizedEmail,
+            email: email,
             role: 'ADMIN',
             permissions: [],
             status: 'active',
@@ -185,22 +179,20 @@ async function main() {
         }
 
         fs.writeFileSync(staffJsonPath, JSON.stringify(updated, null, 2), 'utf8');
-        console.log('Updated      : data/staff-users.json database file');
+        console.log('[OK] data/staff-users.json updated');
       }
     } catch (e) {
-      console.warn('Could not update staff-users.json:', e.message);
+      console.warn('[WARN] Could not update staff-users.json:', e.message);
     }
   }
 
-  console.log('\n[SUCCESS] Administrator account successfully configured!');
-  console.log(`[INFO] Email    : ${normalizedEmail}`);
-  console.log('[INFO] Role     : SUPER_ADMIN (Owner)');
-  console.log('[INFO] Security : Password securely hashed and salted.');
-  console.log('[INFO] Status   : Active & Authorized for all /admin routes.');
-  console.log('====================================================\n');
+  // Update MySQL if configured
+  await updateDatabaseIfConfigured(email, passwordHash, salt);
+
+  console.log(`[SUCCESS] Admin account for ${email} has been configured.`);
 }
 
 main().catch((err) => {
-  console.error('Admin setup failed:', err);
+  console.error('Admin setup failed:', err.message);
   process.exit(1);
 });

@@ -131,7 +131,7 @@ export function getAdminLoginSettings(): AdminLoginSettings {
 
 export async function updateAdminLoginSettings(
   updates: Partial<AdminLoginSettings>,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; settings: AdminLoginSettings }> {
   const current = getAdminLoginSettings();
   const merged: AdminLoginSettings = {
@@ -192,7 +192,7 @@ export async function addAdminLoginImage(
     isActive?: boolean;
     displayOrder?: number;
   },
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; image?: AdminLoginImage; error?: string }> {
   const trimmedUrl = data.imageUrl?.trim();
   if (!trimmedUrl) {
@@ -235,7 +235,7 @@ export async function addAdminLoginImage(
 export async function updateAdminLoginImage(
   id: string,
   updates: Partial<Pick<AdminLoginImage, 'imageUrl' | 'caption' | 'isActive' | 'displayOrder'>>,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const images = getAdminLoginImages();
   const index = images.findIndex((img) => img.id === id);
@@ -272,7 +272,7 @@ export async function updateAdminLoginImage(
 
 export async function deleteAdminLoginImage(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const images = getAdminLoginImages();
   const filtered = images.filter((img) => img.id !== id);
@@ -292,7 +292,7 @@ export async function deleteAdminLoginImage(
 
 export async function toggleAdminLoginImageActive(
   id: string,
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; newStatus?: boolean; error?: string }> {
   const images = getAdminLoginImages();
   const target = images.find((img) => img.id === id);
@@ -312,7 +312,7 @@ export async function toggleAdminLoginImageActive(
 
 export async function reorderAdminLoginImages(
   orderedIds: string[],
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean }> {
   const images = getAdminLoginImages();
   const map = new Map(images.map((img) => [img.id, img]));
@@ -349,7 +349,7 @@ export async function reorderAdminLoginImages(
 }
 
 export async function resetAdminLoginImagesToDefault(
-  operatorEmail = 'admin@alhamd.com'
+  operatorEmail = 'system'
 ): Promise<{ success: boolean; images: AdminLoginImage[] }> {
   setLocal(IMAGES_INITIALIZED_KEY, true);
   setLocal(IMAGES_STORAGE_KEY, DEFAULT_ADMIN_LOGIN_IMAGES);

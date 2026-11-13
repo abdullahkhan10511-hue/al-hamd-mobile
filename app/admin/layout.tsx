@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import { getNotifications, markNotificationAsRead } from '@/lib/db/notifications';
-import { canAccessAdminRoute } from '@/lib/db/admins';
+import { canAccessAdminRoute } from '@/lib/permissions';
 
 interface NavItemConfig {
   label: string;
@@ -77,7 +77,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Wholesale Accounts', href: '/admin/wholesale', icon: Building2, permissions: ['wholesale.view', 'wholesale.manage'] },
   { label: 'Super Wholesale Accounts', href: '/admin/super-wholesale', icon: Crown, permissions: ['wholesale.view', 'wholesale.manage'] },
   { label: 'Sales & Reports', href: '/admin/sales', icon: TrendingUp, permissions: ['finance.view', 'orders.view'] },
-  { label: 'Home Page Videos', href: '/admin/homepage-videos', icon: Video, permissions: ['content.videos', 'content.homepage'] },
+  { label: 'Homepage Hero Media', href: '/admin/homepage-videos', icon: Video, permissions: ['content.videos', 'content.homepage'] },
   { label: 'Homepage Control', href: '/admin/homepage', icon: Sparkles, permission: 'content.homepage' },
   { label: 'Deals', href: '/admin/deals', icon: Zap, permissions: ['deals.view', 'deals.manage', 'promotions.view'] },
   { label: 'Promo Codes', href: '/admin/promo-codes', icon: TicketPercent, permissions: ['promotions.view', 'promotions.add', 'promotions.create', 'promotions.edit'] },

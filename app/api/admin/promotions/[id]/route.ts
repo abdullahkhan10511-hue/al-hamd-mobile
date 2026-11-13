@@ -7,7 +7,7 @@ import {
 } from '@/lib/db/repositories/promotions';
 import { isDbConfigured } from '@/lib/db/mysql';
 import {
-  getAdminSession,
+  getAdminSessionAsync,
   hasAdminPermission,
   unauthorizedResponse,
   forbiddenResponse,
@@ -21,7 +21,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }
@@ -57,7 +57,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }
@@ -104,7 +104,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse();
     }

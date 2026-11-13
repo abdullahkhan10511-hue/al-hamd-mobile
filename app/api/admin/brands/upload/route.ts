@@ -1,38 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
-import { saveMediaBuffer } from '@/lib/mediaStorage';
-
-const ALLOWED_LOGO_MIMES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/svg+xml',
-]);
-
-const ALLOWED_LOGO_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg']);
-
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe', '.sh', '.bat', '.cmd', '.php', '.phtml', '.js', '.jsx', '.ts', '.tsx',
-  '.pl', '.py', '.rb', '.cgi', '.jar', '.vbs', '.scr', '.msi', '.com'
-]);
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { saveMediaBuffer, validateUploadedFileBuffer } from '@/lib/mediaStorage';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
 
 const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, ['brands.add', 'brands.create', 'brands.edit', 'brands.manage', 'products.add', 'products.edit'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to upload brand assets.');
+    const auth = await requireAdmin(request, ['brands.add', 'brands.create', 'brands.edit', 'brands.manage', 'products.add', 'products.edit']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
+
+    // Task S10: Upload rate limiting
+    const rateLimit = await checkRateLimit(`upload_admin_${session.id || session.email}`, 100, 60 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      return createRateLimitResponse(rateLimit.retryAfterSeconds);
     }
 
     const formData = await request.formData();
@@ -46,44 +29,30 @@ export async function POST(request: NextRequest) {
     }
 
     const originalName = file.name || 'brand-logo';
-    const ext = path.extname(originalName).toLowerCase();
-    const mimeType = (file.type || '').toLowerCase();
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // Security check: ban script and executable files
-    if (DANGEROUS_EXTENSIONS.has(ext)) {
+    // Task S10: Validate buffer, reject SVG/HTML, check magic bytes
+    const validation = validateUploadedFileBuffer(buffer, originalName, file.type, {
+      allowVideo: false,
+      maxSizeBytes: MAX_IMAGE_SIZE_BYTES,
+    });
+
+    if (!validation.ok || !validation.format) {
       return NextResponse.json(
-        { success: false, error: `Upload rejected: executable and script files (${ext}) are strictly prohibited.` },
+        { success: false, error: validation.error || 'Invalid brand image file.' },
         { status: 400 }
       );
     }
 
-    const isAllowedLogo = ALLOWED_LOGO_MIMES.has(mimeType) || ALLOWED_LOGO_EXTS.has(ext);
-    if (!isAllowedLogo) {
-      return NextResponse.json(
-        { success: false, error: `Unsupported image format (${mimeType || ext}). Please upload JPG, PNG, WebP, or SVG logos.` },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Logo file is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed size is 15MB.`,
-        },
-        { status: 400 }
-      );
-    }
-
+    const format = validation.format;
     const safeBaseName = path
-      .basename(originalName, ext)
+      .basename(originalName, path.extname(originalName))
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .substring(0, 40);
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${ext || '.png'}`;
+    const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${format.ext}`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
     const saved = await saveMediaBuffer('brands', uniqueFileName, buffer);
 
     return NextResponse.json({
@@ -91,7 +60,7 @@ export async function POST(request: NextRequest) {
       url: saved.publicUrl,
       fileName: uniqueFileName,
       size: saved.size,
-      mimeType: file.type || 'image/png',
+      mimeType: format.mime,
     });
   } catch (error: any) {
     console.error('Failed to upload brand logo:', error);

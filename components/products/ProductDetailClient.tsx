@@ -26,29 +26,31 @@ import {
   ArrowLeft,
   ChevronRight as BreadcrumbChevron,
 } from 'lucide-react';
-import { getProductBySlug, getProducts, fetchProductBySlug, syncProductsFromApi } from '@/lib/db/products';
+import { getProductBySlug } from '@/lib/db/products';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { StarRating } from '@/components/ui/StarRating';
 import { Badge } from '@/components/ui/Badge';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice, DEFAULT_PRODUCT_IMAGE, getValidImageSrc } from '@/lib/utils';
+import { getCategoryPlaceholder, isPlaceholderImage } from '@/lib/placeholders';
 import { Product, ProductModelVariant } from '@/types';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
+import { Tilt3D } from '@/components/ui/motion/Tilt3D';
 
 function getProductMediaList(
   prod: Product | null,
   model?: ProductModelVariant | null
-): { url: string; type: 'image' | 'video' }[] {
+): { url: string; type: 'image' | 'video'; isPlaceholder?: boolean }[] {
   if (!prod) return [];
 
   // 1. If selected model has specific images/videos, show model media
   if (model) {
-    const modelMedia: { url: string; type: 'image' | 'video' }[] = [];
+    const modelMedia: { url: string; type: 'image' | 'video'; isPlaceholder?: boolean }[] = [];
     if (Array.isArray(model.images)) {
       model.images.forEach((img) => {
-        if (typeof img === 'string' && img.trim()) {
+        if (typeof img === 'string' && img.trim() && img.trim() !== DEFAULT_PRODUCT_IMAGE) {
           modelMedia.push({ url: img.trim(), type: 'image' });
         }
       });
@@ -68,7 +70,10 @@ function getProductMediaList(
   // 2. Fallback to main product media
   if (Array.isArray(prod.media) && prod.media.length > 0) {
     const list = (prod.media as any[])
-      .filter((m) => m && ((typeof m === 'string' && m.trim()) || (typeof m === 'object' && m.url && m.url.trim())))
+      .filter((m) => {
+        const u = typeof m === 'string' ? m.trim() : typeof m === 'object' && m?.url ? String(m.url).trim() : '';
+        return Boolean(u && u !== DEFAULT_PRODUCT_IMAGE);
+      })
       .map((m) => ({
         url: (typeof m === 'string' ? m : m.url).trim(),
         type: (typeof m === 'object' && m.type === 'video' ? 'video' : 'image') as 'image' | 'video',
@@ -76,10 +81,10 @@ function getProductMediaList(
     if (list.length > 0) return list;
   }
 
-  const list: { url: string; type: 'image' | 'video' }[] = [];
+  const list: { url: string; type: 'image' | 'video'; isPlaceholder?: boolean }[] = [];
   if (Array.isArray(prod.images)) {
     prod.images.forEach((img) => {
-      if (typeof img === 'string' && img.trim()) {
+      if (typeof img === 'string' && img.trim() && img.trim() !== DEFAULT_PRODUCT_IMAGE) {
         list.push({ url: img.trim(), type: 'image' });
       }
     });
@@ -92,7 +97,11 @@ function getProductMediaList(
     });
   }
   if (list.length === 0) {
-    list.push({ url: DEFAULT_PRODUCT_IMAGE, type: 'image' });
+    list.push({
+      url: getCategoryPlaceholder(prod.categorySlug || prod.category, prod.name),
+      type: 'image',
+      isPlaceholder: true,
+    });
   }
   return list;
 }
@@ -170,6 +179,18 @@ export function ProductDetailClient({
     return getProductMediaList(product, selectedModelObj);
   }, [product, selectedModelObj]);
   const activeMedia = mediaList[activeMediaIndex] || mediaList[0];
+  const [mainImgFailed, setMainImgFailed] = useState(false);
+  const placeholderUrl = useMemo(
+    () => getCategoryPlaceholder(product?.categorySlug || product?.category, product?.name),
+    [product?.categorySlug, product?.category, product?.name]
+  );
+  const displayMediaUrl =
+    !mainImgFailed && activeMedia?.url && activeMedia.url !== DEFAULT_PRODUCT_IMAGE
+      ? activeMedia.url
+      : placeholderUrl;
+  const showingPlaceholder = Boolean(
+    activeMedia?.isPlaceholder || mainImgFailed || isPlaceholderImage(displayMediaUrl)
+  );
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxZoom, setLightboxZoom] = useState(1);
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
@@ -575,27 +596,41 @@ export function ProductDetailClient({
                   />
                 </div>
               ) : (
-                <div
-                  className="relative w-full h-full cursor-zoom-in"
-                  onClick={() => {
-                    setIsLightboxOpen(true);
-                    setLightboxZoom(1);
-                    setPanPosition({ x: 0, y: 0 });
-                  }}
-                >
-                  <Image
-                    src={activeMedia?.url || DEFAULT_PRODUCT_IMAGE}
-                    alt={product.name}
-                    fill
-                    priority
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    className="object-contain p-6 sm:p-10 transition-transform duration-300 group-hover:scale-105"
-                  />
-                  <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-semibold text-neutral-800 shadow-sm flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <ZoomIn className="w-3.5 h-3.5" />
-                    <span>Click to zoom</span>
+                <Tilt3D maxTilt={6} glare liftChild className="w-full h-full">
+                  <div
+                    className="relative w-full h-full cursor-zoom-in"
+                    onClick={() => {
+                      setIsLightboxOpen(true);
+                      setLightboxZoom(1);
+                      setPanPosition({ x: 0, y: 0 });
+                    }}
+                  >
+                    <Image
+                      src={displayMediaUrl}
+                      alt={product.name}
+                      fill
+                      priority
+                      unoptimized={Boolean(
+                        displayMediaUrl.startsWith('http://') ||
+                        displayMediaUrl.startsWith('https://') ||
+                        displayMediaUrl.toLowerCase().endsWith('.svg') ||
+                        displayMediaUrl.startsWith('data:')
+                      )}
+                      onError={() => setMainImgFailed(true)}
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-contain p-6 sm:p-10 transition-transform duration-300 group-hover:scale-105"
+                    />
+                    {showingPlaceholder && (
+                      <span className="absolute bottom-3 left-3 bg-white/90 text-neutral-500 text-[10px] font-medium px-2.5 py-1 rounded-full border border-neutral-200/70">
+                        Photo coming soon
+                      </span>
+                    )}
+                    <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-semibold text-neutral-800 shadow-sm flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-3.5 h-3.5" />
+                      <span>Click to zoom</span>
+                    </div>
                   </div>
-                </div>
+                </Tilt3D>
               )}
 
               {/* Prev/Next arrows on main view */}
@@ -653,6 +688,12 @@ export function ProductDetailClient({
                         src={m.url}
                         alt={`Thumbnail ${idx + 1}`}
                         fill
+                        unoptimized={Boolean(
+                          m.url.startsWith('http://') ||
+                          m.url.startsWith('https://') ||
+                          m.url.toLowerCase().endsWith('.svg') ||
+                          m.url.startsWith('data:')
+                        )}
                         sizes="80px"
                         className="object-contain p-2"
                       />
@@ -701,13 +742,32 @@ export function ProductDetailClient({
               )}
 
               {/* Rating */}
-              <div className="flex items-center gap-3 pt-1">
-                <StarRating rating={product.rating || 5} reviewCount={product.reviewCount || 1} />
-                <span className="text-xs text-neutral-400">·</span>
-                <span className="text-xs text-neutral-500 font-medium">
-                  SKU: {product.sku || `ALH-${product.id}`}
-                </span>
-              </div>
+              {(() => {
+                const approvedReviews = reviewsList.filter((r) => r && r.verified !== false);
+                const approvedCount = approvedReviews.length;
+                const approvedAvg =
+                  approvedCount > 0
+                    ? Number(
+                        (
+                          approvedReviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0) /
+                          approvedCount
+                        ).toFixed(1)
+                      )
+                    : 0;
+                return (
+                  <div className="flex items-center gap-3 pt-1">
+                    {approvedCount > 0 && (
+                      <>
+                        <StarRating rating={approvedAvg} reviewCount={approvedCount} hideWhenEmpty />
+                        <span className="text-xs text-neutral-400">·</span>
+                      </>
+                    )}
+                    <span className="text-xs text-neutral-500 font-medium">
+                      SKU: {product.sku || `ALH-${product.id}`}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Pricing Section */}
@@ -893,7 +953,7 @@ export function ProductDetailClient({
                   type="button"
                   onClick={handleAddToCart}
                   disabled={!canAddToCart}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold tracking-wider uppercase transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>Add to Cart</span>
@@ -903,7 +963,7 @@ export function ProductDetailClient({
                 <button
                   type="button"
                   onClick={() => product && toggleWishlist(product.id)}
-                  className={`w-12 h-12 rounded-full border flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                  className={`w-12 h-12 rounded-full border flex items-center justify-center btn-motion-depth transition-colors cursor-pointer shrink-0 ${
                     isFavorited
                       ? 'border-rose-200 bg-rose-50 text-rose-600'
                       : 'border-neutral-300 hover:border-neutral-400 text-neutral-700 bg-white'
@@ -919,7 +979,7 @@ export function ProductDetailClient({
                 type="button"
                 onClick={handleBuyNow}
                 disabled={!canAddToCart}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs sm:text-sm font-bold tracking-wider uppercase transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <Zap className="w-4 h-4 fill-neutral-950" />
                 <span>Buy Now</span>
@@ -1156,7 +1216,7 @@ export function ProductDetailClient({
               )}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
               {relatedProducts.map((p) => (
                 <ProductCard key={p.id} product={p} />
               ))}
@@ -1248,6 +1308,12 @@ export function ProductDetailClient({
                   src={activeMedia?.url || DEFAULT_PRODUCT_IMAGE}
                   alt={product.name}
                   fill
+                  unoptimized={Boolean(
+                    (activeMedia?.url || DEFAULT_PRODUCT_IMAGE).startsWith('http://') ||
+                    (activeMedia?.url || DEFAULT_PRODUCT_IMAGE).startsWith('https://') ||
+                    (activeMedia?.url || DEFAULT_PRODUCT_IMAGE).toLowerCase().endsWith('.svg') ||
+                    (activeMedia?.url || DEFAULT_PRODUCT_IMAGE).startsWith('data:')
+                  )}
                   sizes="100vw"
                   className="object-contain p-4 select-none pointer-events-none"
                   priority

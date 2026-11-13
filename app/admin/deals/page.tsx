@@ -67,7 +67,7 @@ interface FlattenedInventoryItem {
 
 export default function AdminDealsPage() {
   const { admin } = useAdminAuth();
-  const userEmail = admin?.email || 'admin@alhamd.com';
+  const userEmail = admin?.email || 'system';
 
   // Deals state
   const [deals, setDeals] = useState<Deal[]>([]);

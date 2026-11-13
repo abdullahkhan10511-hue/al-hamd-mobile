@@ -25,7 +25,7 @@ import {
 
 export default function AdminCustomersPage() {
   const { admin } = useAdminAuth();
-  const userEmail = admin?.email || 'admin@alhamd.com';
+  const userEmail = admin?.email || 'system';
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

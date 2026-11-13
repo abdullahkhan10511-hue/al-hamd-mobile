@@ -1,31 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { saveMediaBuffer } from '@/lib/mediaStorage';
-import { getAdminSession } from '@/lib/db/adminAuth';
+import { saveMediaBuffer, validateUploadedFileBuffer } from '@/lib/mediaStorage';
+import { getAdminSessionAsync } from '@/lib/db/adminAuth';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
 
-const ALLOWED_IMAGE_MIMES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/x-icon',
-  'image/vnd.microsoft.icon',
-  'image/ico',
-  'image/svg+xml',
-]);
-
-const ALLOWED_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.ico', '.svg']);
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
-
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe', '.sh', '.bat', '.cmd', '.php', '.phtml', '.js', '.jsx', '.ts', '.tsx',
-  '.pl', '.py', '.rb', '.cgi', '.jar', '.vbs', '.scr', '.msi', '.com'
-]);
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Admin credentials required to upload site branding.' },
@@ -33,10 +16,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Task S10: Upload rate limiting
+    const rateLimit = await checkRateLimit(`upload_admin_${session.id || session.email}`, 100, 60 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      return createRateLimitResponse(rateLimit.retryAfterSeconds);
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
-    if (!file) {
+    if (!file || typeof file.size !== 'number' || file.size === 0) {
       return NextResponse.json(
         { success: false, error: 'No image file provided.' },
         { status: 400 }
@@ -44,71 +33,44 @@ export async function POST(request: NextRequest) {
     }
 
     const originalName = file.name || 'unnamed-logo';
-    const ext = path.extname(originalName).toLowerCase();
-    const mimeType = (file.type || '').toLowerCase();
-
-    // Security check: ban executable / script files
-    if (DANGEROUS_EXTENSIONS.has(ext)) {
-      return NextResponse.json(
-        { success: false, error: `Upload rejected: executable and script files (${ext}) are strictly prohibited.` },
-        { status: 400 }
-      );
-    }
-
-    const isAllowedExt = ALLOWED_IMAGE_EXTS.has(ext);
-    const isAllowedMime = ALLOWED_IMAGE_MIMES.has(mimeType);
-
-    if (!isAllowedExt && !isAllowedMime) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Unsupported image format. Allowed formats: PNG, JPG, JPEG, WEBP, ICO, SVG.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum allowed logo size is 5MB.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const uploadType = (formData.get('type') as string) || 'logo';
-    const prefix =
-      uploadType === 'favicon'
-        ? 'favicon'
-        : uploadType === 'ogImage' || uploadType === 'og'
-        ? 'og'
-        : 'logo';
-
-    // Clean filename
-    const safeBaseName = path
-      .basename(originalName, ext)
-      .replace(/[^a-zA-Z0-9_-]/g, '_')
-      .substring(0, 40);
-    const uniqueFileName = `${prefix}_${Date.now()}_${safeBaseName}${ext || '.png'}`;
-
-    // Write file via persistent storage manager
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Task S10: Validate buffer, strictly reject SVG/HTML, check magic bytes, allow ICO for favicon
+    const validation = validateUploadedFileBuffer(buffer, originalName, file.type, {
+      allowVideo: false,
+      allowIco: true,
+      maxSizeBytes: MAX_IMAGE_SIZE_BYTES,
+    });
+
+    if (!validation.ok || !validation.format) {
+      return NextResponse.json(
+        { success: false, error: validation.error || 'Invalid branding image file.' },
+        { status: 400 }
+      );
+    }
+
+    const format = validation.format;
+    const safeBaseName = path
+      .basename(originalName, path.extname(originalName))
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .substring(0, 40);
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const uniqueFileName = `${uniqueSuffix}_${safeBaseName}${format.ext}`;
+
     const saved = await saveMediaBuffer('branding', uniqueFileName, buffer);
 
     return NextResponse.json({
       success: true,
       url: saved.publicUrl,
       fileName: uniqueFileName,
-      originalName,
       size: saved.size,
+      mimeType: format.mime,
     });
   } catch (error: any) {
-    console.error('Failed to upload site logo/favicon:', error);
+    console.error('Failed to upload branding image:', error);
     return NextResponse.json(
-      { success: false, error: error?.message || 'Server error while uploading image.' },
+      { success: false, error: error?.message || 'Server error while uploading site branding.' },
       { status: 500 }
     );
   }

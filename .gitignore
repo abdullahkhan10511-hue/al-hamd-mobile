@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -24,7 +22,9 @@
 .DS_Store
 *.pem
 
-# debug
+# debug & logs
+*.log
+*.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -42,12 +42,8 @@ yarn-error.log*
 next-env.d.ts
 
 # development, mock & test data files
-data/dev-*.json
-data/test-*.json
-data/mock-*.json
-data/*.local.json
-data/customers.json
-data/staff-users.json
+data/*.json
+!data/README.md
 
 # database dumps & test SQL
 *.sql
@@ -56,13 +52,18 @@ data/staff-users.json
 !scripts/migrations/*.sql
 
 # test & scratch scripts
-scripts/test-*.js
-scripts/test-*.ts
-scripts/test-*.mjs
+scripts/test-*
+scripts/patch-*
+scripts/fix-*
 scratch/
 _security_backups/
-data/password-reset-tokens.json
 
 # persistent uploaded media (keep directories, ignore user uploaded files)
-/public/uploads/*/*
+uploads/
+/public/uploads/*
+!/public/uploads/.gitkeep
 !/public/uploads/**/.gitkeep
+
+# Security reports & verification scripts
+STEP*-REPORT.md
+scripts/verify-*

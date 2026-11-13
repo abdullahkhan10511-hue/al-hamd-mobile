@@ -1,20 +1,17 @@
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 import { NextRequest, NextResponse } from 'next/server';
 import { createPosSale, getPosDailySummary, getPosOrders } from '@/lib/db/pos';
 import { createPosSaleInDb, getPosDailySummaryFromDb } from '@/lib/db/repositories/pos';
 import { getAllOrdersFromDb } from '@/lib/db/repositories/orders';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { getAdminSession, unauthorizedResponse, forbiddenResponse, hasAdminPermission } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { getAdminSessionAsync, unauthorizedResponse, forbiddenResponse, hasAdminPermission } from '@/lib/db/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Staff session required.');
-    }
-
-    if (!hasAdminPermission(session, ['pos.create_sale', 'pos.view'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to process POS sales.');
-    }
+    const auth = await requireAdmin(request, ['pos.create_sale', 'pos.view']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     const {
@@ -85,7 +82,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized: Staff session required.');
     }

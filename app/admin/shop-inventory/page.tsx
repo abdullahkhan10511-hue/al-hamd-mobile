@@ -7,7 +7,7 @@ import { Product } from '@/types';
 import { ShopBill } from '@/types/admin';
 import { getProducts, updateProduct, syncProductsFromApi } from '@/lib/db/products';
 import { useAdminAuth } from '@/context/AdminAuthContext';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import { CreateShopBillModal } from '@/components/admin/CreateShopBillModal';
 import { ShopBillModal } from '@/components/admin/ShopBillModal';
 import {
@@ -235,7 +235,7 @@ export default function ShopInventoryPage() {
       const res = await updateProduct(
         product.id,
         { isShopActive: nextActive },
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
 
       if (res.success) {
@@ -279,7 +279,7 @@ export default function ShopInventoryPage() {
       const res = await updateProduct(
         editingWarningProduct.id,
         { shopLowStockThreshold: parsed },
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
 
       if (res.success) {
@@ -324,7 +324,7 @@ export default function ShopInventoryPage() {
       const res = await updateProduct(
         deletingShopProduct.id,
         { inShopInventory: false, isShopActive: false },
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
 
       if (res.success) {
@@ -350,7 +350,7 @@ export default function ShopInventoryPage() {
       const res = await updateProduct(
         product.id,
         { inShopInventory: true, isShopActive: true },
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
 
       if (res.success) {

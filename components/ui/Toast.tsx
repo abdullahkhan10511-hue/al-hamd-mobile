@@ -48,6 +48,12 @@ export function CartToast() {
                       src={validImage}
                       alt={lastAddedProduct.name}
                       fill
+                      unoptimized={
+                        validImage.startsWith('http://') ||
+                        validImage.startsWith('https://') ||
+                        validImage.toLowerCase().endsWith('.svg') ||
+                        validImage.startsWith('data:')
+                      }
                       className="object-cover"
                     />
                   ) : (

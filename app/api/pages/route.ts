@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllPagesFromDb } from '@/lib/db/repositories/pages';
 import { readPersistentPages } from '@/lib/db/pagesStorage';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     let pages: any[] = [];
 
@@ -21,9 +22,7 @@ export async function GET() {
     return NextResponse.json(
       { success: true, count: pages.length, pages },
       {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err: any) {

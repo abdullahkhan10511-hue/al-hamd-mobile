@@ -4,51 +4,15 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
   hasAdminPermission,
-  verifyCsrfOrigin,
 } from '@/lib/db/adminAuth';
+import { getCustomerSession } from '@/lib/db/customerSession';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getOrderByIdFromDb, updateOrderStatusInDb, updatePaymentStatusInDb } from '@/lib/db/repositories/orders';
 import { OrderStatus, PaymentStatus } from '@/types/admin';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
-
-function getCustomerSession(request: NextRequest): { id?: string; email?: string; shopName?: string } | null {
-  const cookieVal = request.cookies.get(CUSTOMER_COOKIE_NAME)?.value;
-  if (!cookieVal) return null;
-  let curr = cookieVal.trim();
-  if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
-    curr = curr.slice(1, -1);
-  }
-  for (let i = 0; i < 4; i++) {
-    try {
-      const parsed = JSON.parse(curr);
-      if (typeof parsed === 'string') {
-        curr = parsed;
-        continue;
-      }
-      if (parsed && typeof parsed === 'object' && (parsed.id || parsed.email || parsed.shopName)) {
-        return parsed;
-      }
-      return null;
-    } catch {
-      if (curr.includes('\\"')) {
-        curr = curr.replace(/\\"/g, '"');
-        continue;
-      }
-      try {
-        const decoded = decodeURIComponent(curr);
-        if (decoded === curr) break;
-        curr = decoded;
-      } catch {
-        break;
-      }
-    }
-  }
-  return null;
-}
 
 const VALID_ORDER_STATUSES: OrderStatus[] = [
   'Pending',
@@ -80,7 +44,7 @@ export async function GET(
     }
 
     const admin = await getAdminSessionAsync(request);
-    const customer = getCustomerSession(request);
+    const customer = await getCustomerSession(request);
 
     if (!admin && !customer) {
       return unauthorizedResponse();
@@ -102,20 +66,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Order not found.' }, { status: 404 });
     }
 
-    // Ownership check for customer accounts (prevents IDOR)
+    // Task S5.6: Strict ownership check strictly matching verified customer.id (removes IDOR matching by email or shopName)
     if (!admin && customer) {
-      const custId = (customer.id || '').toLowerCase();
-      const custEmail = (customer.email || '').toLowerCase();
-      const shopName = (customer.shopName || '').toLowerCase();
+      const custId = customer.id.toLowerCase();
+      const orderCustId = ((order.customer?.id || (order as any).customerId) || '').toLowerCase();
 
-      const orderCustId = (order.customer?.id || '').toLowerCase();
-      const orderCustEmail = (order.customer?.email || '').toLowerCase();
-      const orderShopName = (order.shopName || '').toLowerCase();
-
-      const isOwner =
-        (custId && orderCustId && custId === orderCustId) ||
-        (custEmail && orderCustEmail && custEmail === orderCustEmail) ||
-        (shopName && orderShopName && shopName === orderShopName);
+      const isOwner = Boolean(custId && orderCustId && custId === orderCustId);
 
       if (!isOwner) {
         return forbiddenResponse('Forbidden: You do not have permission to view this order.');
@@ -133,9 +89,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. CSRF Verification for state-changing requests
-    if (!verifyCsrfOrigin(request)) {
-      return forbiddenResponse('Forbidden: Invalid request origin.');
+    // 1. CSRF Verification for state-changing requests (Task S13)
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
     }
 
     // 2. Authoritative server-side cryptographic authentication

@@ -1,3 +1,4 @@
+import 'server-only';
 import { Order, OrderItem } from '@/types/admin';
 import { Product } from '@/types';
 import { getProductByIdFromDb } from '@/lib/db/repositories/products';

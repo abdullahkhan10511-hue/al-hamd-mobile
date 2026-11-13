@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getStoreSettings, resolveFaviconUrl } from '@/lib/db/settings';
+import { getServerStoreSettings as getStoreSettings, resolveFaviconUrl } from '@/lib/db/settingsServer';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { resolveMediaFilePath } from '@/lib/mediaStorage';

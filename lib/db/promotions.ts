@@ -3,7 +3,7 @@ import { getStoredCollection, persistCollection } from './storage';
 import { getOrders } from './orders';
 import { getProducts } from './products';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const PROMO_CODES_KEY = 'promo_codes';
 const PROMO_USAGES_KEY = 'promo_code_usages';

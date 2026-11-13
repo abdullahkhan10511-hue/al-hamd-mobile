@@ -1,3 +1,4 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { StaffUser } from '@/types/admin';
@@ -6,6 +7,7 @@ import { isDbConfigured } from './mysql';
 import {
   getAllStaffFromDb,
   getStaffByEmailFromDb,
+  getStaffByIdFromDb,
   hashStaffPassword,
   generateStaffSalt,
   verifyStaffPassword,
@@ -13,14 +15,23 @@ import {
   updateStaffInDb,
   deleteStaffInDb,
 } from './repositories/staff';
+import { getDataDir } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const STAFF_FILE = path.join(DATA_DIR, 'staff-users.json');
 
 let memoryStaffUsers: StaffUser[] | null = null;
 let lastStaffFileMtime: number = 0;
 
+/**
+ * Loads staff users from data/staff-users.json.
+ * Strict Security Policy: The JSON file may be used only when MySQL is NOT configured
+ * and NODE_ENV !== 'production'. In production or when MySQL is configured, returns [].
+ */
 function loadLocalFileStaff(): StaffUser[] {
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') {
+    return [];
+  }
   try {
     if (fs.existsSync(STAFF_FILE)) {
       const stat = fs.statSync(STAFF_FILE);
@@ -37,7 +48,14 @@ function loadLocalFileStaff(): StaffUser[] {
   return [...INITIAL_STAFF_USERS];
 }
 
+/**
+ * Saves staff users to local fallback JSON file.
+ * The JSON file may be used only when MySQL is NOT configured and NODE_ENV !== 'production'.
+ */
 function saveLocalFileStaff(users: StaffUser[]): void {
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') {
+    return;
+  }
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -52,6 +70,7 @@ function saveLocalFileStaff(users: StaffUser[]): void {
 }
 
 function shouldReloadFromFile(): boolean {
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') return false;
   if (!memoryStaffUsers || memoryStaffUsers.length === 0) return true;
   try {
     if (fs.existsSync(STAFF_FILE)) {
@@ -65,21 +84,23 @@ function shouldReloadFromFile(): boolean {
 }
 
 /**
- * Returns all staff users. Queries MySQL database when configured.
+ * Returns all staff users. Queries MySQL database with async query when configured.
+ * Never reads from data/staff-users.json in production or when MySQL is configured.
  */
 export async function getServerStaffUsers(): Promise<StaffUser[]> {
   if (isDbConfigured()) {
     try {
       const users = await getAllStaffFromDb();
       memoryStaffUsers = users;
-      if (users.length > 0) {
-        saveLocalFileStaff(users);
-      }
       return users;
     } catch (err) {
       console.warn('MySQL error in getServerStaffUsers:', err);
       return [];
     }
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return memoryStaffUsers || [];
   }
 
   if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
@@ -91,16 +112,13 @@ export async function getServerStaffUsers(): Promise<StaffUser[]> {
   return loaded;
 }
 
+/**
+ * Synchronous staff users getter.
+ * The JSON file may be used only when MySQL is NOT configured and NODE_ENV !== 'production'.
+ */
 export function getServerStaffUsersSync(): StaffUser[] {
-  if (isDbConfigured()) {
-    if (memoryStaffUsers && memoryStaffUsers.length > 0) {
-      return memoryStaffUsers;
-    }
-    const fallback = loadLocalFileStaff();
-    if (fallback.length > 0) {
-      memoryStaffUsers = fallback;
-    }
-    return fallback;
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') {
+    return memoryStaffUsers || [];
   }
   if (!shouldReloadFromFile() && memoryStaffUsers && memoryStaffUsers.length > 0) {
     return memoryStaffUsers;
@@ -112,9 +130,15 @@ export function getServerStaffUsersSync(): StaffUser[] {
 
 export async function saveServerStaffUsers(users: StaffUser[]): Promise<void> {
   memoryStaffUsers = users;
-  saveLocalFileStaff(users);
+  if (!isDbConfigured() && process.env.NODE_ENV !== 'production') {
+    saveLocalFileStaff(users);
+  }
 }
 
+/**
+ * Async lookup by email.
+ * When MySQL is configured, queries MySQL with an async query, never reading data/staff-users.json.
+ */
 export async function getServerStaffByEmail(email: string): Promise<StaffUser | undefined> {
   if (!email) return undefined;
   const normalized = email.trim().toLowerCase();
@@ -135,34 +159,70 @@ export async function getServerStaffByEmail(email: string): Promise<StaffUser | 
     }
   }
 
-  const allUsers = getServerStaffUsersSync();
-  const directMatch = allUsers.find((u) => u.email.toLowerCase() === normalized);
-  if (directMatch) return directMatch;
-
-  if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
-    return allUsers.find(
-      (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
-    );
+  if (process.env.NODE_ENV === 'production') {
+    return (memoryStaffUsers || []).find((u) => u.email.toLowerCase() === normalized);
   }
 
-  return undefined;
+  const allUsers = getServerStaffUsersSync();
+  return allUsers.find((u) => u.email.toLowerCase() === normalized);
 }
 
+/**
+ * Async lookup by id.
+ * When MySQL is configured, queries MySQL with an async query, never reading data/staff-users.json.
+ */
+export async function getServerStaffById(id: string): Promise<StaffUser | undefined> {
+  if (!id) return undefined;
+
+  if (isDbConfigured()) {
+    try {
+      const found = await getStaffByIdFromDb(id);
+      if (found) {
+        if (!memoryStaffUsers) memoryStaffUsers = [];
+        const idx = memoryStaffUsers.findIndex((u) => u.id === id);
+        if (idx >= 0) memoryStaffUsers[idx] = found;
+        else memoryStaffUsers.push(found);
+      }
+      return found || undefined;
+    } catch (err) {
+      console.warn('MySQL error in getServerStaffById:', err);
+      throw err;
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return (memoryStaffUsers || []).find((u) => u.id === id);
+  }
+
+  const allUsers = getServerStaffUsersSync();
+  return allUsers.find((u) => u.id === id);
+}
+
+/**
+ * Synchronous lookup by id.
+ * Uses in-memory state when DB is configured or in production.
+ */
+export function getServerStaffByIdSync(id: string): StaffUser | undefined {
+  if (!id) return undefined;
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') {
+    return (memoryStaffUsers || []).find((u) => u.id === id);
+  }
+  const allUsers = getServerStaffUsersSync();
+  return allUsers.find((u) => u.id === id);
+}
+
+/**
+ * Synchronous lookup by email.
+ * Uses in-memory state when DB is configured or in production.
+ */
 export function getServerStaffByEmailSync(email: string): StaffUser | undefined {
   if (!email) return undefined;
   const normalized = email.trim().toLowerCase();
-  const allUsers = getServerStaffUsersSync();
-
-  const directMatch = allUsers.find((u) => u.email.toLowerCase() === normalized);
-  if (directMatch) return directMatch;
-
-  if (normalized === 'admin@alhamdmobile.com' || normalized === 'admin@alhamd.com') {
-    return allUsers.find(
-      (u) => u.isOwner || u.id === 'staff-owner-1' || u.email.toLowerCase() === 'admin@alhamdmobile.com'
-    );
+  if (isDbConfigured() || process.env.NODE_ENV === 'production') {
+    return (memoryStaffUsers || []).find((u) => u.email.toLowerCase() === normalized);
   }
-
-  return undefined;
+  const allUsers = getServerStaffUsersSync();
+  return allUsers.find((u) => u.email.toLowerCase() === normalized);
 }
 
 export function hashServerPassword(password: string, salt: string): string {

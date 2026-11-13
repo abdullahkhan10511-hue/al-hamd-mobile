@@ -3,12 +3,13 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getBillSettingsFromDb, updateBillSettingsInDb } from '@/lib/db/repositories/settings';
 import { defaultBillSettings } from '@/lib/db/billSettings';
 import { BillSettings } from '@/types/admin';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 
 import fs from 'fs';
 import path from 'path';
+import { getDataFilePath } from '@/lib/storage/dataDir';
 
-const DEV_BILL_SETTINGS_FILE = path.join(process.cwd(), 'data', 'dev-bill-settings.json');
+const DEV_BILL_SETTINGS_FILE = getDataFilePath('dev-bill-settings.json');
 
 function getDevBillSettings(): BillSettings {
   try {
@@ -57,7 +58,7 @@ function saveDevBillSettings(settings: BillSettings): void {
 }
 
 export async function GET(request: NextRequest) {
-  const session = getAdminSession(request);
+  const session = await getAdminSessionAsync(request);
   if (!session) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
 
     if (!session) {
       return NextResponse.json(
@@ -116,7 +117,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
 
     if (isDbConfigured()) {
-      const updated = await updateBillSettingsInDb(body, session?.email || 'admin@alhamd.com');
+      const updated = await updateBillSettingsInDb(body, session?.email || 'system');
       return NextResponse.json({ success: true, settings: updated });
     }
 
@@ -145,7 +146,7 @@ export async function PUT(request: NextRequest) {
         thermalCustomWidth: customWidth,
       },
       updatedAt: new Date().toISOString(),
-      updatedBy: session?.email || 'admin@alhamd.com',
+      updatedBy: session?.email || 'system',
     };
     saveDevBillSettings(updated);
 

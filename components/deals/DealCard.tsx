@@ -213,7 +213,7 @@ export function DealCard({ deal, onViewDetails: _onViewDetails, index = 0 }: Dea
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 1, y: 6 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.35, delay: index * 0.05 }}

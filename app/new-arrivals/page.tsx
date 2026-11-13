@@ -15,7 +15,7 @@ import {
 import { getProducts, syncProductsFromApi } from '@/lib/db/products';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { ProductCard } from '@/components/products/ProductCard';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, isStorefrontVisibleProduct } from '@/lib/utils';
 import { Product, Category } from '@/types';
 import {
   getSavedListingState,
@@ -38,24 +38,8 @@ function NewArrivalsContent() {
     return getSavedListingState('/new-arrivals');
   }, []);
 
-  const [productsList, setProductsList] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      return getProducts().filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false &&
-          (p.isNewArrival || p.isNew)
-      );
-    }
-    return [];
-  });
-  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
-    if (typeof window !== 'undefined') {
-      return deduplicateCategoriesById(getActiveCategories());
-    }
-    return [];
-  });
+  const [productsList, setProductsList] = useState<Product[]>([]);
+  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
@@ -107,22 +91,14 @@ function NewArrivalsContent() {
       all = await syncProductsFromApi().catch(() => []);
     }
     const newItems = all.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false &&
-        (p.isNewArrival || p.isNew)
+      (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
     );
     setProductsList(newItems);
 
     syncProductsFromApi().then((fresh) => {
       if (fresh && fresh.length > 0) {
         const freshNewItems = fresh.filter(
-          (p) =>
-            (p as any).status !== 'archived' &&
-            (p as any).status !== 'inactive' &&
-            (p as any).isActive !== false &&
-            (p.isNewArrival || p.isNew)
+          (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
         );
         setProductsList(freshNewItems);
       }
@@ -138,11 +114,7 @@ function NewArrivalsContent() {
   const refreshFromCache = () => {
     const prods = getProducts();
     const newItems = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false &&
-        (p.isNewArrival || p.isNew)
+      (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
     );
     setProductsList(newItems);
     setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
@@ -567,7 +539,7 @@ function NewArrivalsContent() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
                   {filteredProducts.slice(0, visibleCount).map((prod) => (
                     <ProductCard key={prod.id} product={prod} />
                   ))}

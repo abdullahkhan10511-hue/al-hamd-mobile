@@ -34,7 +34,7 @@ import Link from 'next/link';
 
 export default function AdminBrandsPage() {
   const { admin } = useAdminAuth();
-  const userEmail = admin?.email || 'admin@alhamd.com';
+  const userEmail = admin?.email || 'system';
 
   const [brands, setBrands] = useState<Brand[]>(getBrands());
   const [searchQuery, setSearchQuery] = useState('');

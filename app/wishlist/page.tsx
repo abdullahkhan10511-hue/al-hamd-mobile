@@ -2,79 +2,20 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
+import { Heart, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useWishlist } from '@/context/WishlistContext';
 import { useCart } from '@/context/CartContext';
-import { StarRating } from '@/components/ui/StarRating';
-import { formatPrice, getProductImage } from '@/lib/utils';
-import { Product } from '@/types';
-
-function WishlistItemCard({
-  product,
-  onRemove,
-  onAddToCart,
-}: {
-  product: Product;
-  onRemove: () => void;
-  onAddToCart: () => void;
-}) {
-  return (
-    <div className="group relative bg-white rounded-2xl border border-neutral-200/80 p-4 flex flex-col justify-between hover:shadow-lg transition-all">
-      <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-neutral-100">
-        <Image
-          src={getProductImage(product)}
-          alt={product.name}
-          fill
-          className="object-cover group-hover:scale-104 transition-transform duration-300"
-        />
-        <button
-          onClick={onRemove}
-          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 backdrop-blur-xs text-rose-500 flex items-center justify-center hover:scale-105 transition-transform shadow-xs cursor-pointer z-10"
-          aria-label="Remove from wishlist"
-        >
-          <Trash2 className="w-4 h-4 text-neutral-500 hover:text-rose-600" />
-        </button>
-      </div>
-
-      <div className="pt-4 flex-1 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
-            <span>{product.brand}</span>
-            <StarRating rating={product.rating} reviewCount={product.reviewCount} size="sm" />
-          </div>
-          <Link href={`/product/${product.slug}`}>
-            <h3 className="text-sm font-semibold text-neutral-900 line-clamp-1 hover:text-neutral-600">
-              {product.name}
-            </h3>
-          </Link>
-          <p className="text-sm font-bold font-mono text-neutral-950 mt-1">
-            {formatPrice(product.price)}
-          </p>
-        </div>
-
-        <div className="mt-4 pt-3 border-t border-neutral-100">
-          <button
-            type="button"
-            onClick={onAddToCart}
-            className="w-full py-2.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-neutral-950 hover:bg-neutral-800 text-white"
-            aria-label={`Move ${product.name} to bag`}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Move to Bag</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { ProductCard } from '@/components/products/ProductCard';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 
 export default function WishlistPage() {
-  const { wishlistProducts, toggleWishlist } = useWishlist();
+  const { wishlistProducts } = useWishlist();
   const { addToCart } = useCart();
 
+  const visibleWishlist = wishlistProducts.filter(isStorefrontVisibleProduct);
+
   const handleAddAll = () => {
-    wishlistProducts.forEach((p) => addToCart(p, 1));
+    visibleWishlist.forEach((p) => addToCart(p, 1));
   };
 
   return (
@@ -86,11 +27,11 @@ export default function WishlistPage() {
               Saved Items
             </span>
             <h1 className="text-3xl font-extrabold tracking-tight text-neutral-950 mt-1">
-              Your Wishlist ({wishlistProducts.length})
+              Your Wishlist ({visibleWishlist.length})
             </h1>
           </div>
 
-          {wishlistProducts.length > 0 && (
+          {visibleWishlist.length > 0 && (
             <button
               onClick={handleAddAll}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-neutral-950 text-white text-xs font-semibold hover:bg-neutral-800 transition-colors cursor-pointer"
@@ -101,7 +42,7 @@ export default function WishlistPage() {
           )}
         </div>
 
-        {wishlistProducts.length === 0 ? (
+        {visibleWishlist.length === 0 ? (
           <div className="py-24 text-center max-w-md mx-auto">
             <div className="w-16 h-16 rounded-full bg-neutral-100 text-neutral-400 mx-auto flex items-center justify-center mb-4">
               <Heart className="w-8 h-8 stroke-1" />
@@ -121,14 +62,9 @@ export default function WishlistPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {wishlistProducts.map((product) => (
-              <WishlistItemCard
-                key={product.id}
-                product={product}
-                onRemove={() => toggleWishlist(product.id)}
-                onAddToCart={() => addToCart(product, 1)}
-              />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
+            {visibleWishlist.map((product) => (
+              <ProductCard key={product.id} product={product} />
             ))}
           </div>
         )}

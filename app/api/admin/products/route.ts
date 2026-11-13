@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminSession, hasAdminPermission, unauthorizedResponse, forbiddenResponse } from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { forbiddenResponse } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { insertProductToDb, getAllProductsFromDb } from '@/lib/db/repositories/products';
 import { allowDevMockFallback } from '@/lib/env';
@@ -15,14 +16,19 @@ export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Admin session required.');
-    }
-
-    if (!hasAdminPermission(session, ['products.view', 'products.manage'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to view products.');
-    }
+    const auth = await requireAdmin(request, [
+      'products.view',
+      'products.manage',
+      'pos.view',
+      'pos.create_sale',
+      'deals.view',
+      'deals.manage',
+      'shop_bills.view',
+      'shop_bills.manage',
+      'inventory.view',
+    ]);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     let rawProducts: any[] = [];
     if (isDbConfigured()) {
@@ -50,14 +56,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse('Unauthorized: Admin credentials required to add products.');
-    }
-
-    if (!hasAdminPermission(session, ['products.add', 'products.create', 'products.manage'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to add products.');
-    }
+    const auth = await requireAdmin(request, ['products.add', 'products.create', 'products.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     if (!body.name || !body.name.trim()) {

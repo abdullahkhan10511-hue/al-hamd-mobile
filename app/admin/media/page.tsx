@@ -69,7 +69,7 @@ export default function AdminMediaPage() {
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Media & Asset Library</h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Centralized repository stored in Firebase Storage for banners, products, and categories
+            Centralized repository stored for banners, products, and categories
           </p>
         </div>
 

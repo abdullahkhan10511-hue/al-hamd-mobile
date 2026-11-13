@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getAdminSessionAsync,
-  unauthorizedResponse,
-  forbiddenResponse,
-  hasAdminPermission,
-  verifyCsrfOrigin,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
+import { hasAdminPermission, forbiddenResponse } from '@/lib/db/adminAuth';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getOrderByIdFromDb, updateOrderStatusInDb, updatePaymentStatusInDb } from '@/lib/db/repositories/orders';
 import { OrderStatus, PaymentStatus } from '@/types/admin';
@@ -34,14 +29,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getAdminSessionAsync(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-
-    if (!hasAdminPermission(session, ['orders.view', 'orders.manage'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to view order details.');
-    }
+    const auth = await requireAdmin(request, ['orders.view', 'orders.manage']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     if (!id || typeof id !== 'string' || id.length > 100) {
@@ -68,16 +58,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. CSRF Verification for state-changing requests
-    if (!verifyCsrfOrigin(request)) {
-      return forbiddenResponse('Forbidden: Invalid request origin.');
-    }
-
-    // 2. Authoritative server-side cryptographic authentication
-    const session = await getAdminSessionAsync(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     if (!id || typeof id !== 'string' || id.length > 100) {

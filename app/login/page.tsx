@@ -315,7 +315,9 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense
+    <>
+      <h1 className="sr-only">AL-HAMD SHOP Customer Account Login & Registration</h1>
+      <Suspense
       fallback={
         <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-white text-xs">
           Loading AL-HAMD Customer Portal...
@@ -324,5 +326,6 @@ export default function LoginPage() {
     >
       <LoginContent />
     </Suspense>
+    </>
   );
 }

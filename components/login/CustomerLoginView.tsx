@@ -246,12 +246,12 @@ export default function CustomerLoginView({
             {activeTab === 'login' && (
               <div className="space-y-5">
                 <div>
-                  <h2
+                  <h1
                     className="text-2xl font-black tracking-tight"
                     style={{ color: headingColor }}
                   >
                     {settings.mainHeading || 'Welcome to AL-HAMD'}
-                  </h2>
+                  </h1>
                   <p className="text-xs mt-1 leading-relaxed" style={{ color: textColor }}>
                     {settings.subtitle ||
                       'Sign in to track orders, manage your wishlist, and submit verified reviews.'}

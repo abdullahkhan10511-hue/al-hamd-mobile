@@ -10,11 +10,12 @@ import {
   Search,
   RotateCcw,
 } from 'lucide-react';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { getProducts } from '@/lib/db/products';
 import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
-import { formatPrice } from '@/lib/utils';
+import { ScrollReveal } from '@/components/ui/ScrollReveal';
+import { formatPrice, isStorefrontVisibleProduct } from '@/lib/utils';
 import { Product, Category } from '@/types';
 import { Brand } from '@/types/admin';
 import {
@@ -26,9 +27,12 @@ import {
 
 export default function ShopPage() {
   return (
-    <Suspense fallback={<div className="py-24 text-center">Loading collection...</div>}>
-      <ShopContent />
-    </Suspense>
+    <>
+      <h1 className="sr-only">AL-HAMD SHOP — Mobile Accessories Store Catalog</h1>
+      <Suspense fallback={<div className="py-24 text-center">Loading collection...</div>}>
+        <ShopContent />
+      </Suspense>
+    </>
   );
 }
 
@@ -52,29 +56,10 @@ function ShopContent() {
   const initialFilter = searchParams.get('filter') || '';
   const initialSearch = searchParams.get('search') || '';
 
-  const [productsList, setProductsList] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      return getProducts().filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false
-      );
-    }
-    return [];
-  });
-  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
-    if (typeof window !== 'undefined') {
-      return deduplicateCategoriesById(getActiveCategories());
-    }
-    return [];
-  });
-  const [brandsList, setBrandsList] = useState<Brand[]>(() => {
-    if (typeof window !== 'undefined') {
-      return getBrands().filter((b) => b.status === 'active');
-    }
-    return [];
-  });
+  const [productsList, setProductsList] = useState<Product[]>([]);
+  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const [brandsList, setBrandsList] = useState<Brand[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(
@@ -130,15 +115,11 @@ function ShopContent() {
   }, [savedState]);
 
   const applyData = (prods: Product[], cats: Category[], brands: Brand[]) => {
-    const activeProds = prods.filter(
-      (p) =>
-        (p as any).status !== 'archived' &&
-        (p as any).status !== 'inactive' &&
-        (p as any).isActive !== false
-    );
+    const activeProds = prods.filter(isStorefrontVisibleProduct);
     setProductsList(activeProds);
     setCategoriesList(deduplicateCategoriesById(cats));
     setBrandsList(brands.filter((b) => b.status === 'active'));
+    setHasLoaded(true);
   };
 
   const loadData = async () => {
@@ -148,13 +129,18 @@ function ShopContent() {
     const initialBrands = getBrands().filter((b) => b.status === 'active');
     applyData(initialProds, initialCats, initialBrands);
 
-    // 2. Network sync: ALWAYS fetch fresh data from API
+    // 2. Network sync: fetch bounded storefront products without downloading full catalogue
     try {
-      const [freshProds, freshCats, freshBrands] = await Promise.all([
-        syncProductsFromApi().catch(() => initialProds),
+      const [freshProdsData, freshCats, freshBrands] = await Promise.all([
+        fetch('/api/products?limit=60&minimal=true')
+          .then((r) => r.json())
+          .catch(() => null),
         syncCategoriesFromApi().catch(() => initialCats),
         syncBrandsFromApi().catch(() => initialBrands),
       ]);
+      const freshProds = freshProdsData && Array.isArray(freshProdsData.products)
+        ? freshProdsData.products
+        : initialProds;
       applyData(freshProds, freshCats, freshBrands);
     } catch {
       // Keep initial cached state
@@ -816,7 +802,13 @@ function ShopContent() {
 
           {/* Product Grid Area (lg:col-span-3) */}
           <div className="lg:col-span-3">
-            {sortedProducts.length === 0 ? (
+            {!hasLoaded ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
+                {Array.from({ length: 8 }).map((_, idx) => (
+                  <div key={idx} className="rounded-2xl border border-neutral-200/70 bg-neutral-50 aspect-[3/4] animate-pulse" />
+                ))}
+              </div>
+            ) : sortedProducts.length === 0 ? (
               <div className="py-24 text-center bg-neutral-50 rounded-3xl border border-neutral-100 p-8">
                 <h3 className="text-lg font-bold text-neutral-900">No products found</h3>
                 <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
@@ -830,16 +822,15 @@ function ShopContent() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-5">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
                 {sortedProducts.slice(0, visibleCount).map((product, idx) => (
-                  <motion.div
+                  <ScrollReveal
                     key={product.id}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: (idx % 6) * 0.05 }}
+                    delayMs={Math.min((idx % 6) * 25, 100)}
+                    className="h-full"
                   >
                     <ProductCard product={product} />
-                  </motion.div>
+                  </ScrollReveal>
                 ))}
               </div>
             )}

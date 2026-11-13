@@ -1,9 +1,11 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { AnnouncementItem } from '@/types/admin';
 import { seedAnnouncements } from './seed';
+import { getDataDir } from '@/lib/storage/dataDir';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const ANNOUNCEMENTS_FILE = path.join(DATA_DIR, 'announcements.json');
 
 function ensureDataDir() {

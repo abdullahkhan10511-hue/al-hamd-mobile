@@ -1,5 +1,7 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 export interface StoredPasswordResetToken {
   id: string;
@@ -15,7 +17,7 @@ export interface StoredPasswordResetToken {
   created_at: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const TOKENS_FILE = path.join(DATA_DIR, 'password-reset-tokens.json');
 
 let memoryTokens: StoredPasswordResetToken[] | null = null;

@@ -5,11 +5,13 @@ import { seedStoreSettings } from '@/lib/db/seed';
 import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
+import { getDataFilePath } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
+const SETTINGS_FILE_PATH = getDataFilePath('store-settings.json');
 
 function readLocalFileSettings(): StoreSettings {
   try {
@@ -47,15 +49,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const settings = await readServerSettings();
-    const cacheControl = 'no-cache, no-store, must-revalidate, max-age=0';
-    return NextResponse.json(
-      { success: true, settings },
-      {
-        headers: {
-          'Cache-Control': cacheControl,
-        },
-      }
-    );
+    return NextResponse.json({ success: true, settings }, { headers: getPublicCacheHeaders(request) });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || 'Error fetching store settings' },

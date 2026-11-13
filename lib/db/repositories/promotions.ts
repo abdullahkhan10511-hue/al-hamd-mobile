@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { PromoCode, PromoCodeUsage } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';

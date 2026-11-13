@@ -5,13 +5,9 @@ import {
   updateBrandInDb,
   deleteBrandInDb,
 } from '@/lib/db/repositories/brands';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import { allowDevMockFallback } from '@/lib/env';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -37,7 +33,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Brand not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, brand });
+    return NextResponse.json({ success: true, brand }, { headers: getPublicCacheHeaders(request) });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
   }
@@ -48,13 +44,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to edit brands.');
-    }
+    const auth = await requireAdmin(request, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     const body = await request.json();
@@ -80,13 +72,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, ['brands.delete', 'brands.manage', 'products.delete', 'categories.delete'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to delete brands.');
-    }
+    const auth = await requireAdmin(request, ['brands.delete', 'brands.manage', 'products.delete', 'categories.delete']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { id } = await params;
     let ok = false;

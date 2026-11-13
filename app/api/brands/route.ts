@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllBrandsFromDb, insertBrandToDb } from '@/lib/db/repositories/brands';
-import {
-  getAdminSession,
-  hasAdminPermission,
-  unauthorizedResponse,
-  forbiddenResponse,
-} from '@/lib/db/adminAuth';
+import { requireAdmin } from '@/lib/db/requireAdmin';
 import { allowDevMockFallback } from '@/lib/env';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,9 +38,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { success: true, count: brands.length, brands },
       {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err: any) {
@@ -54,13 +48,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, ['brands.add', 'brands.create', 'brands.manage', 'products.add', 'categories.add'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to create brands.');
-    }
+    const auth = await requireAdmin(request, ['brands.add', 'brands.create', 'brands.manage', 'products.add', 'categories.add']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     if (!body.name || !body.name.trim()) {
@@ -90,13 +80,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-    if (!hasAdminPermission(session, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit'])) {
-      return forbiddenResponse('Forbidden: Insufficient permissions to reorder brands.');
-    }
+    const auth = await requireAdmin(request, ['brands.edit', 'brands.manage', 'products.edit', 'categories.edit']);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await request.json();
     if (body.action === 'reorder' && Array.isArray(body.orderedIds)) {

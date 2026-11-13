@@ -1,7 +1,9 @@
+import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { CustomPage } from '@/types/admin';
 import { seedPages } from './pages';
+import { getDataDir } from '@/lib/storage/dataDir';
 
 /**
  * Server Disk Storage & Fallback Cache for Custom Pages.
@@ -9,7 +11,7 @@ import { seedPages } from './pages';
  * PRIMARY / PRODUCTION STORE: MySQL `custom_pages` table via `lib/db/repositories/pages.ts`.
  * SECONDARY / FALLBACK STORE: `data/custom-pages.json` for offline resilience and local dev caching.
  */
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = getDataDir();
 const PAGES_FILE = path.join(DATA_DIR, 'custom-pages.json');
 
 function ensureDataDir() {

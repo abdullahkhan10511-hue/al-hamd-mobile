@@ -2,7 +2,7 @@ import { Brand } from '@/types/admin';
 import { seedBrands } from './seed';
 import { getStoredCollection, persistCollection } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import { allowDevMockFallback } from '../env';
 
 const COLLECTION_KEY = 'brands';
@@ -46,26 +46,7 @@ export async function syncBrandsFromApi(force = false): Promise<Brand[]> {
 }
 
 export function getBrands(): Brand[] {
-  let fallback = allowDevMockFallback() ? seedBrands : [];
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const path = require('path');
-      const devFile = path.join(process.cwd(), 'data', 'dev-brands.json');
-      if (fs.existsSync(devFile)) {
-        const parsed = JSON.parse(fs.readFileSync(devFile, 'utf8'));
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          fallback = parsed.map((b: any) => {
-            if (b.productCount !== undefined && b.productCount !== null) return b;
-            const seed = seedBrands.find((s) => s.id === b.id || s.slug === b.slug);
-            return { ...b, productCount: seed?.productCount ?? 0 };
-          });
-        }
-      }
-    } catch {}
-  }
+  const fallback = allowDevMockFallback() ? seedBrands : [];
   if (typeof window !== 'undefined' && !hasSyncedBrandsFromApi) {
     hasSyncedBrandsFromApi = true;
     syncBrandsFromApi().catch(() => {});
@@ -105,7 +86,7 @@ export function getBrandBySlug(slug: string): Brand | undefined {
 
 export async function createBrand(
   data: Omit<Brand, 'id'>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; brand?: Brand; error?: string }> {
   const brands = getBrands();
   const slug = (data.slug || data.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -165,7 +146,7 @@ export async function createBrand(
 export async function updateBrand(
   id: string,
   updates: Partial<Brand>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<{ success: boolean; error?: string }> {
   const brands = getBrands();
   const index = brands.findIndex((b) => b.id === id);
@@ -219,7 +200,7 @@ export async function updateBrand(
   return { success: true };
 }
 
-export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): Promise<boolean> {
+export async function deleteBrand(id: string, adminEmail = 'system'): Promise<boolean> {
   const brands = getBrands();
   const target = brands.find((b) => b.id === id);
   if (!target) return false;
@@ -264,7 +245,7 @@ export async function deleteBrand(id: string, adminEmail = 'admin@alhamd.com'): 
 
 export async function reorderBrands(
   orderedIds: string[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<boolean> {
   const brands = getBrands();
   const map = new Map(brands.map((b) => [b.id, b]));

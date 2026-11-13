@@ -33,7 +33,7 @@ import { useAdminAuth } from '@/context/AdminAuthContext';
 
 export default function AdminShopLocationPage() {
   const { admin } = useAdminAuth();
-  const adminEmail = admin?.email || 'admin@alhamd.com';
+  const adminEmail = admin?.email || 'system';
 
   const [locations, setLocations] = useState<ShopLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);

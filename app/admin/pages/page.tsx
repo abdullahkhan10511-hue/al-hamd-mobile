@@ -196,7 +196,7 @@ export default function AdminPagesManager() {
       setSaveStatus('saving');
       const updated = await savePage(
         { ...page, status: nextStatus },
-        admin?.email || 'admin@alhamd.com'
+        admin?.email || 'system'
       );
       setPages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       if (editingPage?.id === page.id) {
@@ -221,7 +221,7 @@ export default function AdminPagesManager() {
 
     try {
       setSaveStatus('saving');
-      const copy = await duplicatePage(page.id, admin?.email || 'admin@alhamd.com');
+      const copy = await duplicatePage(page.id, admin?.email || 'system');
       await loadData();
       setSaveStatus('saved');
       setStatusMessage(`Duplicated page: "${copy.title}"`);
@@ -245,7 +245,7 @@ export default function AdminPagesManager() {
 
     const orderedIds = newPages.map((p) => p.id);
     try {
-      const updated = await reorderPages(orderedIds, admin?.email || 'admin@alhamd.com');
+      const updated = await reorderPages(orderedIds, admin?.email || 'system');
       setPages(updated);
     } catch (err: any) {
       console.error('Reorder error:', err);
@@ -262,7 +262,7 @@ export default function AdminPagesManager() {
 
     try {
       setSaveStatus('saving');
-      await deletePage(pageToDelete.id, admin?.email || 'admin@alhamd.com');
+      await deletePage(pageToDelete.id, admin?.email || 'system');
       setPages((prev) => prev.filter((p) => p.id !== pageToDelete.id));
       if (editingPage?.id === pageToDelete.id) {
         setEditingPage(null);
@@ -328,7 +328,7 @@ export default function AdminPagesManager() {
 
     try {
       setSaveStatus('saving');
-      const saved = await savePage(pageToSave, admin?.email || 'admin@alhamd.com');
+      const saved = await savePage(pageToSave, admin?.email || 'system');
       setEditingPage(saved);
       setIsCreating(false);
       await loadData();

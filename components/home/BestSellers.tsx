@@ -1,234 +1,62 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, Check, Loader2, ArrowRight } from 'lucide-react';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
+import { ArrowRight } from 'lucide-react';
+import { getProducts } from '@/lib/db/products';
 import { Product } from '@/types';
-import { useCart } from '@/context/CartContext';
-import { useWishlist } from '@/context/WishlistContext';
-import { StarRating } from '@/components/ui/StarRating';
-import { Badge } from '@/components/ui/Badge';
-import { formatPrice, getProductImage } from '@/lib/utils';
+import { ProductCard } from '@/components/products/ProductCard';
+import { Reveal3D } from '@/components/ui/motion/Reveal3D';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 
-export function BestSellers() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  const loadData = () => {
-    const list = getProducts()
-      .filter(
-        (p) =>
-          (p as any).status !== 'archived' &&
-          (p as any).status !== 'inactive' &&
-          (p as any).isActive !== false &&
-          p.isBestSeller
-      )
-      .slice(0, 3);
-    setProducts(list);
-    setIsLoaded(true);
-  };
-
-  useEffect(() => {
-    loadData();
-    syncProductsFromApi().then(() => loadData()).catch(() => {
-      setIsLoaded(true);
-    });
-
-    const handleUpdate = (e: Event) => {
-      const key = (e as CustomEvent)?.detail?.key;
-      if (key && key !== 'products') return;
-      loadData();
-    };
-    window.addEventListener('alhamd:data-updated', handleUpdate);
-    return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
-
-  if (!isLoaded) {
-    return (
-      <section className="py-16 sm:py-20 bg-white border-b border-neutral-100 min-h-[480px]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-end justify-between mb-8 sm:mb-12">
-            <div>
-              <div className="h-3 w-28 bg-neutral-200/80 rounded-full animate-pulse mb-2" />
-              <div className="h-7 w-44 bg-neutral-200/80 rounded-lg animate-pulse" />
-            </div>
-            <div className="h-4 w-32 bg-neutral-200/60 rounded-full animate-pulse" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="aspect-[4/5] bg-neutral-100 rounded-3xl animate-pulse" />
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
+export function BestSellers({ initialProducts }: { initialProducts?: Product[] }) {
+  const [products] = useState<Product[]>(() => {
+    if (initialProducts && initialProducts.length > 0) {
+      return initialProducts
+        .filter((p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller))
+        .slice(0, 8);
+    }
+    return getProducts()
+      .filter((p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller))
+      .slice(0, 8);
+  });
 
   if (products.length === 0) return null;
 
   return (
-    <section className="py-16 sm:py-20 bg-white border-b border-neutral-100">
+    <section className="py-12 sm:py-16 bg-white border-b border-neutral-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex items-end justify-between mb-8 sm:mb-12">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
-              Customer Favorites
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 mt-1">
-              Best Sellers
-            </h2>
-          </div>
+        <Reveal3D className="mb-8 sm:mb-10">
+          <div className="flex items-end justify-between">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                Customer Favorites
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 mt-1">
+                Best Sellers
+              </h2>
+            </div>
 
-          <Link
-            href="/best-sellers"
-            className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-900 hover:text-neutral-600 transition-colors"
-          >
-            <span>View All Best Sellers</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        </div>
-
-        {/* Large Product Cards Grid (3 Columns) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-          {products.map((product, index) => (
-            <motion.div
-              key={product.id}
-              initial={{ opacity: 0, y: 25 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
+            <Link
+              href="/best-sellers"
+              className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-neutral-900 hover:text-neutral-600 transition-colors"
             >
-              <LargeBestSellerCard product={product} />
-            </motion.div>
+              <span>View All Best Sellers</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+        </Reveal3D>
+
+        {/* Shared ProductCard Grid with 40ms stagger */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
+          {products.map((product, index) => (
+            <Reveal3D key={product.id} delayMs={index * 40} className="h-full">
+              <ProductCard product={product} />
+            </Reveal3D>
           ))}
         </div>
       </div>
     </section>
   );
 }
-
-const LargeBestSellerCard = React.memo(function LargeBestSellerCard({ product }: { product: Product }) {
-  const { addToCart } = useCart();
-  const { isInWishlist, toggleWishlist } = useWishlist();
-  const [isAdding, setIsAdding] = useState(false);
-  const [justAdded, setJustAdded] = useState(false);
-  const isFavorited = isInWishlist(product.id);
-
-  const handleQuickAdd = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (isAdding || justAdded) return;
-    setIsAdding(true);
-    addToCart(product, 1);
-    setIsAdding(false);
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 1800);
-  };
-
-  return (
-    <div className="group relative bg-white rounded-3xl border border-neutral-200/90 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between h-full p-5">
-      {/* Media with Badges */}
-      <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-neutral-100">
-        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 items-start">
-          <Badge variant="bestseller">BESTSELLER</Badge>
-        </div>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            toggleWishlist(product.id);
-          }}
-          className={`absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center transition-all shadow-xs cursor-pointer ${
-            isFavorited ? 'text-rose-600' : 'text-neutral-500 hover:text-rose-600 hover:scale-105'
-          }`}
-          aria-label={isFavorited ? 'Remove from wishlist' : 'Add to wishlist'}
-        >
-          <Heart className={`w-4 h-4 ${isFavorited ? 'fill-rose-500 text-rose-500' : ''}`} />
-        </button>
-
-        <Link href={`/product/${product.slug}`} className="relative block w-full h-full">
-          <Image
-            src={getProductImage(product)}
-            alt={product.name}
-            fill
-            sizes="(max-width: 768px) 100vw, 33vw"
-            className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-          />
-        </Link>
-      </div>
-
-      {/* Product Information */}
-      <div className="pt-5 flex flex-col flex-1 justify-between">
-        <div>
-          <div className="flex items-center justify-between text-xs text-neutral-400 uppercase tracking-wider mb-1.5">
-            {product.brand ? (
-              <Link
-                href={`/brand/${product.brandSlug || product.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
-                className="hover:text-neutral-900 transition-colors font-semibold truncate max-w-[150px]"
-                title={`View ${product.brand} products`}
-              >
-                {product.brand}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <StarRating rating={product.rating} reviewCount={product.reviewCount} size="sm" />
-          </div>
-
-          <Link href={`/product/${product.slug}`}>
-            <h3 className="text-lg font-bold text-neutral-950 group-hover:text-neutral-600 transition-colors">
-              {product.name}
-            </h3>
-          </Link>
-
-          <p className="text-xs sm:text-sm text-neutral-500 mt-2 line-clamp-2 leading-relaxed">
-            {product.description}
-          </p>
-        </div>
-
-        {/* Price & Action */}
-        <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold font-mono text-neutral-950">
-              {formatPrice(product.price)}
-            </span>
-            {product.compareAtPrice && (
-              <span className="text-xs text-neutral-400 line-through font-mono">
-                {formatPrice(product.compareAtPrice)}
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleQuickAdd}
-            disabled={isAdding}
-            className={`px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
-              justAdded
-                ? 'bg-emerald-600 text-white'
-                : 'bg-neutral-950 text-white hover:bg-neutral-800'
-            }`}
-          >
-            {isAdding ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : justAdded ? (
-              <>
-                <Check className="w-4 h-4 stroke-[2.5]" />
-                <span>Added</span>
-              </>
-            ) : (
-              <>
-                <ShoppingBag className="w-4 h-4" />
-                <span>Quick Add</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-});

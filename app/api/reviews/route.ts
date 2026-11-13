@@ -7,8 +7,8 @@ import {
 } from '@/lib/db/repositories/reviews';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { allowDevMockFallback } from '@/lib/env';
-import { getAdminSession } from '@/lib/db/adminAuth';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { getAdminSessionAsync } from '@/lib/db/adminAuth';
+import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get('productId');
     const email = searchParams.get('email');
-    const isAdmin = Boolean(getAdminSession(request));
+    const isAdmin = Boolean(await getAdminSessionAsync(request));
 
     if (!isDbConfigured()) {
       if (!allowDevMockFallback()) {
@@ -69,15 +69,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`review_submit_${ip}`, 10, 60000); // 10 reviews/min per IP
+    const rateCheck = await checkRateLimit(`review_submit_${ip}`, 10, 3600000); // 10 reviews/hr per IP
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Too many review submissions. Please wait ${rateCheck.retryAfterSeconds} seconds before submitting again.`,
-        },
-        { status: 429 }
-      );
+      return createRateLimitResponse(rateCheck.retryAfterSeconds, 'Too many review submissions.');
     }
 
     const body = await request.json().catch(() => ({}));

@@ -1,7 +1,7 @@
 import { CustomPage, PageBlock, PageStatus } from '@/types/admin';
 import { getStoredData, setStoredData } from './storage';
 import { logActivity } from './activity';
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const STORAGE_KEY = 'static_pages';
 
@@ -614,16 +614,19 @@ let hasSyncedPagesFromApi = false;
 export async function syncPagesFromApi(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    const res = await fetch('/api/admin/pages', {
-      cache: 'no-store',
-      headers: getAdminAuthHeaders(),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.pages) && data.pages.length > 0) {
-        await setStoredData(STORAGE_KEY, data.pages);
-        window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
-        return;
+    const isAdminPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+    if (isAdminPath) {
+      const res = await fetch('/api/admin/pages', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.pages) && data.pages.length > 0) {
+          await setStoredData(STORAGE_KEY, data.pages);
+          window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
+          return;
+        }
       }
     }
     // Fall back to public pages if admin endpoint is unauthorized
@@ -635,24 +638,14 @@ export async function syncPagesFromApi(): Promise<void> {
         window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
       }
     }
-  } catch {}
+  } catch { }
 }
 
 export async function getPages(): Promise<CustomPage[]> {
-  let fallback = seedPages;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentPages } = require('./pagesStorage');
-      const saved = readPersistentPages();
-      if (Array.isArray(saved) && saved.length > 0) {
-        fallback = saved;
-      }
-    } catch {}
-  }
+  const fallback = seedPages;
   if (typeof window !== 'undefined' && !hasSyncedPagesFromApi) {
     hasSyncedPagesFromApi = true;
-    syncPagesFromApi().catch(() => {});
+    syncPagesFromApi().catch(() => { });
   }
   const rawList = await getStoredData<any[]>(STORAGE_KEY, fallback);
   const normalized = rawList.map((item, idx) => normalizePage(item, idx));
@@ -685,7 +678,7 @@ export async function isSlugUnique(slug: string, currentId?: string): Promise<bo
 
 export async function savePage(
   page: CustomPage,
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<CustomPage> {
   const pages = await getPages();
   const existingIndex = pages.findIndex((p) => p.id === page.id);
@@ -753,7 +746,7 @@ export async function savePage(
       method: 'POST',
       headers: authHeaders,
       body: JSON.stringify(updatedPage),
-    }).catch(() => {});
+    }).catch(() => { });
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
   }
 
@@ -762,7 +755,7 @@ export async function savePage(
 
 export async function duplicatePage(
   id: string,
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<CustomPage> {
   const pages = await getPages();
   const target = pages.find((p) => p.id === id);
@@ -798,7 +791,7 @@ export async function duplicatePage(
 
 export async function deletePage(
   id: string,
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<boolean> {
   const pages = await getPages();
   const target = pages.find((p) => p.id === id);
@@ -814,7 +807,7 @@ export async function deletePage(
     fetch(`/api/admin/pages/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: getAdminAuthHeaders(adminEmail),
-    }).catch(() => {});
+    }).catch(() => { });
     window.dispatchEvent(new CustomEvent('alhamd:data-updated'));
   }
 
@@ -830,7 +823,7 @@ export async function deletePage(
 
 export async function reorderPages(
   orderedIds: string[],
-  adminEmail: string = 'admin@alhamd.com'
+  adminEmail: string = 'system'
 ): Promise<CustomPage[]> {
   const pages = await getPages();
   const pageMap = new Map(pages.map((p) => [p.id, p]));

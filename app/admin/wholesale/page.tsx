@@ -12,7 +12,7 @@ import {
   getCustomerOrders,
 } from '@/lib/db/customers';
 import { useAdminAuth } from '@/context/AdminAuthContext';
-import { getAdminAuthHeaders } from '@/lib/db/staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 import { formatPrice } from '@/lib/utils';
 import {
   Building2,
@@ -40,7 +40,7 @@ import {
 
 export default function WholesaleManagementPage() {
   const { admin, hasPermission, isSuperAdmin } = useAdminAuth();
-  const operatorEmail = admin?.email || 'admin@alhamd.com';
+  const operatorEmail = admin?.email || 'system';
   const canManage = isSuperAdmin || hasPermission('wholesale.manage');
 
   const [accounts, setAccounts] = useState<Customer[]>([]);
@@ -90,11 +90,9 @@ export default function WholesaleManagementPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
       const res = await fetch(`/api/admin/wholesale?t=${Date.now()}`, {
         credentials: 'include',
-        headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
+        headers: { },
       });
       if (res.ok) {
         const data = await res.json();
@@ -201,16 +199,13 @@ export default function WholesaleManagementPage() {
     try {
       const cleanShopName = createShopName.trim();
       const cleanPassword = createPassword.trim();
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale?t=${Date.now()}`, {
         credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({
           shopName: cleanShopName,
           password: cleanPassword,
@@ -294,16 +289,13 @@ export default function WholesaleManagementPage() {
 
     setIsSavingEdit(true);
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(editingAccount.id)}`, {
         credentials: 'include',
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({
           shopName: editShopName.trim(),
           phone: editPhone.trim(),
@@ -347,16 +339,13 @@ export default function WholesaleManagementPage() {
     if (!pendingStatusToggle) return;
     const { account, newStatus } = pendingStatusToggle;
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(account.id)}`, {
         credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -385,15 +374,12 @@ export default function WholesaleManagementPage() {
   const handleConfirmDelete = async () => {
     if (!pendingDelete) return;
     try {
-      const adminRaw = typeof window !== 'undefined' ? localStorage.getItem('alhamd_current_admin') : null;
-      const authHeader = adminRaw ? `Bearer ${encodeURIComponent(adminRaw)}` : undefined;
 
       const res = await fetch(`/api/admin/wholesale/${encodeURIComponent(pendingDelete.id)}`, {
         credentials: 'include',
         method: 'DELETE',
         headers: {
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
+          },
       });
 
       const data = await res.json();

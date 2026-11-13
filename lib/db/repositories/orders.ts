@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, withTransaction, isDbConfigured } from '../mysql';
 import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, CustomerType } from '@/types/admin';
 import { RowDataPacket } from 'mysql2/promise';
@@ -835,7 +836,7 @@ export async function createOrderInDb(
 export async function updateOrderStatusInDb(
   id: string,
   status: OrderStatus,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<Order> {
   const existing = await getOrderByIdFromDb(id);
   if (!existing) {
@@ -861,7 +862,7 @@ export async function updatePaymentStatusInDb(
   id: string,
   paymentStatus: PaymentStatus,
   note?: string,
-  verifiedBy = 'admin@alhamd.com'
+  verifiedBy = 'system'
 ): Promise<Order> {
   const verification = {
     verifiedBy,

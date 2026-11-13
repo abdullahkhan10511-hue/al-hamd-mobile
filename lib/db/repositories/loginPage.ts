@@ -1,3 +1,4 @@
+import 'server-only';
 import { query, execute, isDbConfigured } from '../mysql';
 import { LoginPageSettings, LoginPageMediaItem, DEFAULT_LOGIN_PAGE_SETTINGS, DEFAULT_LOGIN_PAGE_MEDIA } from '../loginPage';
 import { RowDataPacket } from 'mysql2/promise';

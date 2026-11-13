@@ -272,7 +272,7 @@ function WholesaleLoginContent() {
                         required
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
-                        placeholder="shopowner@example.com"
+                        placeholder="store@example.com"
                         className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-950 text-xs font-medium"
                       />
                     </div>

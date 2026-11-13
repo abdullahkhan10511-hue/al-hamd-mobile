@@ -17,7 +17,7 @@ import { getStoredCollection, getLocal, setLocal, persistCollection } from './st
 import { logActivity } from './activity';
 import { allowDevMockFallback } from '../env';
 
-import { getAdminAuthHeaders } from './staff';
+import { getAdminAuthHeaders } from '@/lib/permissions';
 
 const SECTIONS_KEY = 'homepage_sections';
 const HERO_KEY = 'homepage_hero';
@@ -117,7 +117,7 @@ export async function updateAllHomepageSettings(
     allProducts?: AllProductsConfig;
     trustBenefits?: TrustBenefitItem[];
   },
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   if (payload.sections) await persistCollection(SECTIONS_KEY, payload.sections);
   if (payload.hero) setLocal(HERO_KEY, payload.hero);
@@ -217,7 +217,7 @@ export function getHomepageSections(): HomepageSection[] {
 
 export async function updateHomepageSections(
   sections: HomepageSection[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   await persistCollection(SECTIONS_KEY, sections);
   await saveHomepageSettingsToServer({ sections });
@@ -236,17 +236,6 @@ export function getHeroConfig(): HeroConfig {
         ...seedHeroConfig,
         floatingProducts: [],
       };
-
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageSettings } = require('./homepageSettingsStorage');
-      const saved = readPersistentHomepageSettings();
-      if (saved.hero && typeof saved.hero === 'object') {
-        fallbackHero = { ...fallbackHero, ...saved.hero };
-      }
-    } catch {}
-  }
 
   const hero = getLocal<HeroConfig>(HERO_KEY, fallbackHero);
   let changed = false;
@@ -297,7 +286,7 @@ export function getHeroConfig(): HeroConfig {
 
 export async function updateHeroConfig(
   config: Partial<HeroConfig>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   const current = getHeroConfig();
   const updated = { ...current, ...config };
@@ -319,7 +308,7 @@ export function getFloatingProducts(): FloatingProductConfig[] {
 
 export async function updateFloatingProducts(
   cards: FloatingProductConfig[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   const hero = getHeroConfig();
   hero.floatingProducts = cards.slice(0, 4);
@@ -334,17 +323,6 @@ export function getFlashSaleConfig(): FlashSaleConfig {
         ...seedFlashSaleConfig,
         productIds: [],
       };
-
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageSettings } = require('./homepageSettingsStorage');
-      const saved = readPersistentHomepageSettings();
-      if (saved.flashSale && typeof saved.flashSale === 'object') {
-        fallbackFlash = { ...fallbackFlash, ...saved.flashSale };
-      }
-    } catch {}
-  }
 
   const flash = getLocal<FlashSaleConfig>(FLASH_SALE_KEY, fallbackFlash);
   let changed = false;
@@ -388,7 +366,7 @@ export function getFlashSaleConfig(): FlashSaleConfig {
 
 export async function updateFlashSaleConfig(
   config: Partial<FlashSaleConfig>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   const current = getFlashSaleConfig();
   const updated = { ...current, ...config };
@@ -402,17 +380,7 @@ export async function updateFlashSaleConfig(
 }
 
 export function getTrustBenefits(): TrustBenefitItem[] {
-  let baseBenefits = seedTrustBenefits;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageSettings } = require('./homepageSettingsStorage');
-      const saved = readPersistentHomepageSettings();
-      if (Array.isArray(saved.trustBenefits) && saved.trustBenefits.length > 0) {
-        baseBenefits = saved.trustBenefits;
-      }
-    } catch {}
-  }
+  const baseBenefits = seedTrustBenefits;
   const items = getStoredCollection(TRUST_BENEFITS_KEY, baseBenefits).map((tb) => {
     // Migrate legacy or exaggerated claims to truthful copy if detected
     if (
@@ -471,7 +439,7 @@ export function getTrustBenefits(): TrustBenefitItem[] {
 
 export async function updateTrustBenefits(
   items: TrustBenefitItem[],
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   await persistCollection(TRUST_BENEFITS_KEY, items);
   await saveHomepageSettingsToServer({ trustBenefits: items });
@@ -484,23 +452,13 @@ export async function updateTrustBenefits(
 
 // All Products Section Config
 export function getAllProductsConfig(): AllProductsConfig {
-  let baseConfig = seedAllProductsConfig;
-  if (typeof window === 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { readPersistentHomepageSettings } = require('./homepageSettingsStorage');
-      const saved = readPersistentHomepageSettings();
-      if (saved.allProducts) {
-        baseConfig = saved.allProducts;
-      }
-    } catch {}
-  }
+  const baseConfig = seedAllProductsConfig;
   return getLocal<AllProductsConfig>(ALL_PRODUCTS_CONFIG_KEY, baseConfig);
 }
 
 export async function updateAllProductsConfig(
   config: Partial<AllProductsConfig>,
-  adminEmail = 'admin@alhamd.com'
+  adminEmail = 'system'
 ): Promise<void> {
   const current = getAllProductsConfig();
   const updated = { ...current, ...config };

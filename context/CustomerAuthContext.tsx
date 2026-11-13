@@ -5,8 +5,6 @@ import {
   SanitizedCustomer,
   updateCustomerProfile,
   changeCustomerPassword,
-  getCustomerById,
-  sanitizeCustomer,
 } from '@/lib/db/customers';
 
 interface CustomerAuthContextType {
@@ -41,139 +39,34 @@ interface CustomerAuthContextType {
   refreshCustomer: () => Promise<void>;
 }
 
-const CUSTOMER_SESSION_KEY = 'alhamd_customer_session';
-const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
-
-function setCustomerCookie(customer: SanitizedCustomer) {
-  if (typeof document === 'undefined') return;
-  const payload = {
-    id: customer.id,
-    email: customer.email,
-    shopName: customer.shopName || '',
-    customerType: customer.customerType || 'RETAIL',
-    fullName:
-      customer.fullName ||
-      customer.shopName ||
-      `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
-    role: 'CUSTOMER',
-    status: customer.status || 'active',
-    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-  };
-  const val = encodeURIComponent(JSON.stringify(payload));
-  const maxAge = 60 * 60 * 24 * 7;
-  document.cookie = `${CUSTOMER_COOKIE_NAME}=${val}; path=/; max-age=${maxAge}; SameSite=Lax`;
-}
-
-function clearCustomerCookie() {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${CUSTOMER_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-}
-
-function getCustomerFromCookie(): SanitizedCustomer | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(new RegExp('(^|;\\s*)' + CUSTOMER_COOKIE_NAME + '=([^;]*)'));
-  if (match && match[2]) {
-    let curr = match[2].trim();
-    if (curr.startsWith('"') && curr.endsWith('"') && curr.length > 2) {
-      curr = curr.slice(1, -1);
-    }
-    for (let i = 0; i < 4; i++) {
-      try {
-        const parsed = JSON.parse(curr);
-        if (typeof parsed === 'string') {
-          curr = parsed;
-          continue;
-        }
-        if (parsed && typeof parsed === 'object' && (parsed.id || parsed.email || parsed.shopName)) {
-          return parsed as SanitizedCustomer;
-        }
-        return null;
-      } catch {
-        if (curr.includes('\\"')) {
-          curr = curr.replace(/\\"/g, '"');
-          continue;
-        }
-        try {
-          const decoded = decodeURIComponent(curr);
-          if (decoded === curr) break;
-          curr = decoded;
-        } catch {
-          break;
-        }
-      }
-    }
-  }
-  return null;
-}
-
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(undefined);
 
 export function CustomerAuthProvider({ children }: { children: React.ReactNode }) {
   const [customer, setCustomer] = useState<SanitizedCustomer | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Restore customer session on mount
+  // Task S5.5: Restore customer session strictly via GET /api/auth/customer/me
+  // (Cookie is httpOnly and verified cryptographically on the server)
   const restoreSession = useCallback(async () => {
     try {
       if (typeof window === 'undefined') return;
 
-      // Authoritative perimeter check: cookie is required for active session
-      const cookieSession = getCustomerFromCookie();
-      if (!cookieSession || !cookieSession.id) {
-        // Logged out or no session cookie present
-        localStorage.removeItem(CUSTOMER_SESSION_KEY);
-        clearCustomerCookie();
-        setCustomer(null);
-        setIsLoading(false);
-        return;
-      }
+      const res = await fetch('/api/auth/customer/me', {
+        credentials: 'same-origin',
+        headers: { 'Cache-Control': 'no-cache' },
+        cache: 'no-store',
+      });
 
-      // Verify token expiration
-      if (
-        (cookieSession as any).expiresAt &&
-        typeof (cookieSession as any).expiresAt === 'number' &&
-        (cookieSession as any).expiresAt < Date.now()
-      ) {
-        localStorage.removeItem(CUSTOMER_SESSION_KEY);
-        clearCustomerCookie();
-        setCustomer(null);
-        setIsLoading(false);
-        return;
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && data?.customer) {
+          setCustomer(data.customer);
+          return;
+        }
       }
-
-      const sessionData = cookieSession;
-
-      // Re-verify against database
-      let live = await getCustomerById(sessionData.id);
-      if (!live && sessionData && sessionData.id && sessionData.status === 'active') {
-        // Fallback to active valid session payload
-        live = sessionData as any;
-        try {
-          const rawCust = localStorage.getItem('alhamd_store_customers');
-          const list: any[] = rawCust ? JSON.parse(rawCust) : [];
-          if (!list.some((c: any) => c.id === sessionData.id)) {
-            list.unshift(sessionData);
-            localStorage.setItem('alhamd_store_customers', JSON.stringify(list));
-          }
-        } catch {}
-      }
-
-      if (!live || live.status !== 'active') {
-        localStorage.removeItem(CUSTOMER_SESSION_KEY);
-        clearCustomerCookie();
-        setCustomer(null);
-      } else {
-        const sanitized = sanitizeCustomer(live);
-        setCustomer(sanitized);
-        // Keep session storage & cookies in sync
-        localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
-      }
+      setCustomer(null);
     } catch (err) {
       console.warn('Customer session recovery error:', err);
-      try {
-        localStorage.removeItem(CUSTOMER_SESSION_KEY);
-        clearCustomerCookie();
-      } catch (_) {}
       setCustomer(null);
     } finally {
       setIsLoading(false);
@@ -181,7 +74,20 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    restoreSession();
+    if (typeof window === 'undefined') return;
+
+    // Task W5: Defer non-critical customer session check until idle/after load
+    if ('requestIdleCallback' in window) {
+      const id = (window as any).requestIdleCallback(() => {
+        restoreSession();
+      }, { timeout: 1500 });
+      return () => (window as any).cancelIdleCallback(id);
+    } else {
+      const timer = setTimeout(() => {
+        restoreSession();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
   }, [restoreSession]);
 
   const login = async (emailOrShopName: string, password: string, intendedRedirect?: string): Promise<any> => {
@@ -189,6 +95,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     try {
       const res = await fetch('/api/auth/customer/login', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: emailOrShopName, password, redirect: intendedRedirect }),
       });
@@ -207,22 +114,9 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
       // Check if server recognized active administrator or staff credentials
       if (data.isAdmin || data.accountType === 'ADMIN' || data.accountType === 'STAFF') {
-        // Clear any customer session to keep roles completely separate
         setCustomer(null);
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem(CUSTOMER_SESSION_KEY);
-          clearCustomerCookie();
-          if (data.user) {
-            localStorage.setItem('alhamd_current_admin', JSON.stringify(data.user));
-          }
-          if (data.token) {
-            localStorage.setItem('alhamd_admin_token', data.token);
-            sessionStorage.setItem('alhamd_admin_token', data.token);
-            const isHttps = window.location.protocol === 'https:';
-            const secureSuffix = isHttps ? '; Secure' : '';
-            document.cookie = `alhamd_admin_session=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${secureSuffix}`;
-            document.cookie = `admin_session=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${secureSuffix}`;
-          }
+        if (typeof window !== 'undefined' && data.user) {
+          localStorage.setItem('alhamd_current_admin', JSON.stringify(data.user));
         }
         return {
           id: data.user?.id || 'admin',
@@ -233,25 +127,13 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
           isAdmin: true,
           accountType: data.accountType || 'ADMIN',
           role: data.role || data.user?.role || 'ADMIN',
-          token: data.token,
           redirect: data.redirect || '/admin/dashboard',
         };
       }
 
       const sanitized: SanitizedCustomer = data.customer;
       setCustomer(sanitized);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
-        setCustomerCookie(sanitized);
-        try {
-          const rawCust = localStorage.getItem('alhamd_store_customers');
-          const list: any[] = rawCust ? JSON.parse(rawCust) : [];
-          if (!list.some((c: any) => c.id === sanitized.id)) {
-            list.unshift(sanitized);
-            localStorage.setItem('alhamd_store_customers', JSON.stringify(list));
-          }
-        } catch {}
-      }
+
       return {
         ...sanitized,
         isAdmin: false,
@@ -276,6 +158,7 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     try {
       const res = await fetch('/api/auth/customer/register', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
@@ -287,20 +170,6 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
       const sanitized: SanitizedCustomer = resData.customer;
       setCustomer(sanitized);
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
-        setCustomerCookie(sanitized);
-        try {
-          const rawCust = localStorage.getItem('alhamd_store_customers');
-          const list: any[] = rawCust ? JSON.parse(rawCust) : [];
-          if (!list.some((c: any) => c.id === sanitized.id)) {
-            list.unshift(sanitized);
-            localStorage.setItem('alhamd_store_customers', JSON.stringify(list));
-          }
-        } catch {}
-      }
-
       return sanitized;
     } finally {
       setIsLoading(false);
@@ -309,14 +178,10 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
   const logout = useCallback(async (): Promise<void> => {
     setCustomer(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(CUSTOMER_SESSION_KEY);
-      clearCustomerCookie();
-    }
     try {
       await fetch('/api/auth/customer/logout', {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'same-origin',
         cache: 'no-store',
       });
     } catch (e) {
@@ -336,15 +201,13 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     province?: string;
     postalCode?: string;
     dateOfBirth?: string;
+    shopName?: string;
   }): Promise<SanitizedCustomer> => {
     if (!customer) {
       throw new Error('You must be signed in to update your profile.');
     }
     const updated = await updateCustomerProfile(customer.id, data);
     setCustomer(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(updated));
-    }
     return updated;
   };
 
@@ -360,13 +223,22 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
   const refreshCustomer = async (): Promise<void> => {
     if (!customer) return;
-    const live = await getCustomerById(customer.id);
-    if (live && live.status === 'active') {
-      const sanitized = sanitizeCustomer(live);
-      setCustomer(sanitized);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(sanitized));
+    try {
+      const res = await fetch('/api/auth/customer/me', {
+        credentials: 'same-origin',
+        headers: { 'Cache-Control': 'no-cache' },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && data?.customer) {
+          setCustomer(data.customer);
+          return;
+        }
       }
+      setCustomer(null);
+    } catch {
+      // keep current state on network flicker
     }
   };
 

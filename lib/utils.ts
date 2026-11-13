@@ -126,3 +126,81 @@ export function getAdminGreeting(name?: string | null): string {
 
   return `Welcome ${clean}`;
 }
+
+/**
+ * Shared storefront product visibility predicate:
+ * Excludes products whose status is draft/inactive/hidden/archived, isActive is false,
+ * or whose price is 0 or less.
+ */
+export function isStorefrontVisibleProduct(product: any): boolean {
+  if (!product || typeof product !== 'object') return false;
+  if (product.isActive === false) return false;
+  const status = typeof product.status === 'string' ? product.status.trim().toLowerCase() : 'active';
+  if (status === 'draft' || status === 'inactive' || status === 'hidden' || status === 'archived') {
+    return false;
+  }
+  const price = Number(product.price);
+  if (!Number.isFinite(price) || price <= 0) return false;
+  return true;
+}
+
+/**
+ * Computes verified/approved review count & average rating purely from real reviews data.
+ * Never returns seeded/synthetic product.reviewCount when reviews data is empty.
+ */
+export function getVerifiedReviewStats(product: any): { count: number; rating: number } {
+  if (!product || typeof product !== 'object') {
+    return { count: 0, rating: 0 };
+  }
+
+  if (Array.isArray(product.reviews)) {
+    const approved = product.reviews.filter((r: any) => r && r.verified !== false);
+    if (approved.length === 0) return { count: 0, rating: 0 };
+    const totalRating = approved.reduce((sum: number, r: any) => sum + (Number(r.rating) || 0), 0);
+    return {
+      count: approved.length,
+      rating: Number((totalRating / approved.length).toFixed(1)),
+    };
+  }
+
+  if (typeof product.approvedReviewCount === 'number') {
+    const count = Math.max(0, Math.floor(product.approvedReviewCount));
+    if (count === 0) return { count: 0, rating: 0 };
+    const rating =
+      typeof product.approvedRating === 'number' && product.approvedRating > 0
+        ? Number(Number(product.approvedRating).toFixed(1))
+        : Number(Number(product.rating || 5).toFixed(1));
+    return { count, rating };
+  }
+
+  return { count: 0, rating: 0 };
+}
+
+/**
+ * Returns real discount percentage (> 0) only when compareAtPrice strictly exceeds price.
+ */
+export function getRealDiscountPercentage(product: any): number {
+  if (!product || typeof product !== 'object') return 0;
+  const price = Number(product.price);
+  const compareAt = Number(product.compareAtPrice);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(compareAt) || compareAt <= price) {
+    return 0;
+  }
+  const pct = Math.round(((compareAt - price) / compareAt) * 100);
+  return pct > 0 ? pct : 0;
+}
+
+/**
+ * Returns true if the product has the admin New flag OR was created within the last 30 days.
+ */
+export function isProductNewBadgeEligible(product: any): boolean {
+  if (!product || typeof product !== 'object') return false;
+  if (Boolean(product.isNew || product.isNewArrival)) return true;
+  if (!product.createdAt) return false;
+  const createdMs = new Date(product.createdAt).getTime();
+  if (Number.isNaN(createdMs)) return false;
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  const ageMs = Date.now() - createdMs;
+  return ageMs >= -86400000 && ageMs <= thirtyDaysMs;
+}
+

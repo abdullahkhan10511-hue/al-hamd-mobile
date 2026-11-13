@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import {
   getServerStaffUsers,
   saveServerStaffUsers,
@@ -11,44 +9,11 @@ import {
 } from '@/lib/db/staff-server';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { StaffUser } from '@/types/admin';
-import { getAdminSession, unauthorizedResponse } from '@/lib/db/adminAuth';
-
-const COOKIE_NAME = 'alhamd_admin_session';
-const FALLBACK_COOKIE_NAME = 'admin_session';
-
-/**
- * Updates seed constant files on disk when primary administrator changes their password
- * so that cold reboots always boot with the active password.
- */
-function syncSeedFiles(email: string, salt: string, passwordHash: string) {
-  try {
-    const staffTsPath = path.join(process.cwd(), 'lib', 'db', 'staff.ts');
-    if (fs.existsSync(staffTsPath)) {
-      let content = fs.readFileSync(staffTsPath, 'utf8');
-      content = content.replace(
-        /const SEED_SALT\s*=\s*['"][^'"]*['"];/,
-        `const SEED_SALT = '${salt}';`
-      );
-      content = content.replace(
-        /const SEED_HASH\s*=\s*['"][^'"]*['"];/,
-        `const SEED_HASH = '${passwordHash}';`
-      );
-      fs.writeFileSync(staffTsPath, content, 'utf8');
-    }
-
-    const seedTsPath = path.join(process.cwd(), 'lib', 'db', 'seed.ts');
-    if (fs.existsSync(seedTsPath)) {
-      let content = fs.readFileSync(seedTsPath, 'utf8');
-      content = content.replace(
-        /salt:\s*['"][^'"]*['"],\s*passwordHash:\s*['"][^'"]*['"]/,
-        `salt: '${salt}',\n    passwordHash: '${passwordHash}'`
-      );
-      fs.writeFileSync(seedTsPath, content, 'utf8');
-    }
-  } catch (err) {
-    console.warn('Could not sync seed constants:', err);
-  }
-}
+import { getAdminSessionAsync, unauthorizedResponse } from '@/lib/db/adminAuth';
+import { createSignedSessionToken, COOKIE_NAME } from '@/lib/db/sessionToken';
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
+import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
+import { verifyUserPasswordUnified, hashPasswordSecure, validatePasswordPolicy } from '@/lib/security/password';
 
 /**
  * POST /api/admin/password
@@ -56,9 +21,22 @@ function syncSeedFiles(email: string, salt: string, passwordHash: string) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    // 1. CSRF Verification (Task S13)
+    const csrfCheck = assertSameOrigin(request);
+    if (!csrfCheck.ok) {
+      return createCsrfForbiddenResponse(csrfCheck.reason);
+    }
+
+    // 2. Authoritative server-side async authentication (Task X1)
+    const session = await getAdminSessionAsync(request);
     if (!session) {
       return unauthorizedResponse('Unauthorized. Active admin session required to change password.');
+    }
+
+    // S7: Rate limit admin password changes: 5 attempts per 15 minutes per user
+    const rateCheck = await checkRateLimit(`admin_pw_change_${session.id}`, 5, 15 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return createRateLimitResponse(rateCheck.retryAfterSeconds, 'Too many password change attempts.');
     }
 
     const body = await request.json();
@@ -72,9 +50,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    const policy = validatePasswordPolicy(newPassword);
+    if (!policy.valid) {
       return NextResponse.json(
-        { success: false, error: 'New password must be at least 6 characters long.' },
+        { success: false, error: policy.error || 'Password does not meet complexity requirements.' },
         { status: 400 }
       );
     }
@@ -88,8 +67,8 @@ export async function POST(request: NextRequest) {
 
     // Locate the current administrator in database
     const allStaff = await getServerStaffUsers();
-    const targetEmail = session?.email?.toLowerCase();
-    const targetId = session?.id;
+    const targetEmail = session.email?.toLowerCase();
+    const targetId = session.id;
 
     const index = allStaff.findIndex(
       (u) =>
@@ -106,23 +85,26 @@ export async function POST(request: NextRequest) {
 
     const targetUser = allStaff[index];
 
-    // Cryptographically verify current password against actual stored salt & hash
-    const isCurrentValid = verifyServerPassword(
-      currentPassword,
-      targetUser.salt || '',
-      targetUser.passwordHash || ''
-    );
+    // Cryptographically verify current password with unified scrypt/legacy handler
+    const currentVerify = await verifyUserPasswordUnified({
+      password: currentPassword,
+      storedHash: targetUser.passwordHash,
+      salt: targetUser.salt,
+      userType: 'staff',
+      userId: targetUser.id,
+      email: targetUser.email,
+    });
 
-    if (!isCurrentValid) {
+    if (!currentVerify.valid) {
       return NextResponse.json(
         { success: false, error: 'Current password is incorrect.' },
         { status: 400 }
       );
     }
 
-    // Generate new cryptographic salt and salted SHA-256 hash
+    // Generate modern scrypt hash
     const newSalt = generateServerSalt(16);
-    const newPasswordHash = hashServerPassword(newPassword, newSalt);
+    const newPasswordHash = await hashPasswordSecure(newPassword);
 
     const updatedUser: StaffUser = {
       ...targetUser,
@@ -142,31 +124,16 @@ export async function POST(request: NextRequest) {
     allStaff[index] = updatedUser;
     await saveServerStaffUsers(allStaff);
 
-    // If primary owner, sync in-code seed fallback files only in offline/local mode
-    if (
-      !isDbConfigured() &&
-      (updatedUser.isOwner ||
-        updatedUser.id === 'staff-owner-1' ||
-        updatedUser.email.toLowerCase() === 'admin@alhamdmobile.com')
-    ) {
-      syncSeedFiles(updatedUser.email, newSalt, newPasswordHash);
-    }
-
-    // Construct fresh session cookie
-    const sessionPayload = {
+    // Construct fresh signed session token (Task S9)
+    const sessionToken = createSignedSessionToken({
       id: updatedUser.id,
-      name: updatedUser.name,
       email: updatedUser.email,
       role: updatedUser.role,
-      isOwner: Boolean(updatedUser.isOwner),
       permissions: updatedUser.permissions || [],
-      status: updatedUser.status || 'active',
-      avatar: updatedUser.avatar || '',
-      lastLogin: updatedUser.lastLogin || new Date().toISOString(),
-      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    };
+      isOwner: Boolean(updatedUser.isOwner),
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+    });
 
-    const cookieValue = encodeURIComponent(JSON.stringify(sessionPayload));
     const response = NextResponse.json({
       success: true,
       message: 'Password changed successfully.',
@@ -178,15 +145,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const cookieOptions = {
+    response.cookies.set(COOKIE_NAME, sessionToken, {
       path: '/',
-      maxAge: 7 * 24 * 60 * 60,
-      sameSite: 'lax' as const,
-      httpOnly: false,
-    };
-
-    response.cookies.set(COOKIE_NAME, cookieValue, cookieOptions);
-    response.cookies.set(FALLBACK_COOKIE_NAME, cookieValue, cookieOptions);
+      maxAge: 12 * 60 * 60,
+      sameSite: 'lax',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+    });
 
     return response;
   } catch (err: any) {

@@ -1,3 +1,4 @@
+import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs';
@@ -7,12 +8,13 @@ import { StoreSettings } from '@/types/admin';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb, invalidateStoreSettingsCache } from '@/lib/db/repositories/settings';
 import { normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
-import { getAdminSession, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
+import { getDataFilePath } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'store-settings.json');
+const SETTINGS_FILE_PATH = getDataFilePath('store-settings.json');
 
 function readLocalFileSettings(): StoreSettings {
   try {
@@ -80,7 +82,7 @@ async function writeServerSettings(settings: StoreSettings): Promise<void> {
 }
 
 export async function GET(request: NextRequest) {
-  const session = getAdminSession(request);
+  const session = await getAdminSessionAsync(request);
   if (!session) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized: Admin session required.' },
@@ -108,7 +110,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = getAdminSession(request);
+    const session = await getAdminSessionAsync(request);
 
     if (!session) {
       return NextResponse.json(

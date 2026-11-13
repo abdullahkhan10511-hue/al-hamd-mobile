@@ -29,11 +29,11 @@ When your phone battery is depleted (0–50%), the charger ramps to peak current
     author: {
       name: 'Julian Vance',
       role: 'Hardware Engineering Lead',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
+      avatar: '/placeholders/general.svg',
     },
     publishedAt: 'March 2, 2026',
     readTime: '4 min read',
-    image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?q=80&w=1200&auto=format&fit=crop',
+    image: '/placeholders/general.svg',
     tags: ['Fast Charging', 'GaN', 'Power Delivery', 'Battery Health'],
   },
   {
@@ -60,11 +60,11 @@ Whether navigating the noisy streets of Lahore or working in a bustling cafe, un
     author: {
       name: 'Elena Rostova',
       role: 'Acoustic Research Lead',
-      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=200&auto=format&fit=crop',
+      avatar: '/placeholders/general.svg',
     },
     publishedAt: 'February 24, 2026',
     readTime: '6 min read',
-    image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?q=80&w=1200&auto=format&fit=crop',
+    image: '/placeholders/general.svg',
     tags: ['TWS', 'Earbuds', 'ANC', 'Audio Engineering'],
   },
   {
@@ -95,11 +95,11 @@ Both premium tempered glass and top-tier hydrogel feature an electroplated oleop
     author: {
       name: 'David Chen',
       role: 'Materials Engineer',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop',
+      avatar: '/placeholders/general.svg',
     },
     publishedAt: 'January 18, 2026',
     readTime: '5 min read',
-    image: 'https://images.unsplash.com/photo-1580910051074-3eb694886505?q=80&w=1200&auto=format&fit=crop',
+    image: '/placeholders/general.svg',
     tags: ['Screen Protectors', 'Tempered Glass', 'Hydrogel', 'Impact Protection'],
   },
 ];
