@@ -187,6 +187,109 @@ export async function POST(request: NextRequest) {
     body.paymentMethod = targetMethod.name;
     body.paymentMethodId = targetMethod.id;
 
+    // 3. Server-side authoritative price and total recomputation
+    // Never trust client-submitted line prices, line totals, subtotal, discount, or order total
+    let computedSubtotal = 0;
+    if (isDbConfigured()) {
+      const { query: dbQuery } = await import('@/lib/db/mysql');
+
+      for (const item of body.items) {
+        const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+        let authoritativeUnitPrice = Number(item.price) || 0;
+
+        if (item.itemType === 'DEAL' || item.dealId) {
+          const dealId = item.dealId || item.productId;
+          try {
+            const dealRows: any = await dbQuery(
+              'SELECT id, name, deal_price FROM deals WHERE id = ? OR slug = ? LIMIT 1',
+              [dealId, dealId]
+            );
+            if (dealRows && dealRows.length > 0 && Number(dealRows[0].deal_price) > 0) {
+              authoritativeUnitPrice = Number(dealRows[0].deal_price);
+              item.productName = dealRows[0].name;
+            }
+          } catch {}
+        } else if (item.productId) {
+          try {
+            const prodRows: any = await dbQuery(
+              'SELECT id, name, sku, price, sale_price, wholesale_price, super_wholesale_price FROM products WHERE id = ? LIMIT 1',
+              [item.productId]
+            );
+            if (prodRows && prodRows.length > 0) {
+              const p = prodRows[0];
+              const retailP = Number(p.price) || 0;
+              const saleP = Number(p.sale_price) || 0;
+              const wholesaleP = Number(p.wholesale_price) || 0;
+              const superWholesaleP = Number(p.super_wholesale_price) || 0;
+
+              if (customerType === 'SUPER_WHOLESALE') {
+                authoritativeUnitPrice = superWholesaleP > 0 ? superWholesaleP : (wholesaleP > 0 ? wholesaleP : (saleP > 0 ? saleP : retailP));
+              } else if (customerType === 'WHOLESALE') {
+                authoritativeUnitPrice = wholesaleP > 0 ? wholesaleP : (saleP > 0 ? saleP : retailP);
+              } else {
+                authoritativeUnitPrice = (saleP > 0 && saleP < retailP) ? saleP : retailP;
+              }
+              item.productName = p.name;
+              item.sku = p.sku;
+            }
+          } catch {}
+        }
+
+        item.price = authoritativeUnitPrice;
+        item.total = authoritativeUnitPrice * qty;
+        item.quantity = qty;
+        computedSubtotal += item.total;
+      }
+    } else {
+      computedSubtotal = body.items.reduce((sum: number, it: any) => {
+        const p = Number(it.price) || 0;
+        const q = Math.max(1, Math.floor(Number(it.quantity) || 1));
+        it.total = p * q;
+        return sum + it.total;
+      }, 0);
+    }
+
+    body.subtotal = computedSubtotal;
+
+    // Validate and recompute discounts server-side
+    let computedDiscount = 0;
+    if (body.promoCode && isDbConfigured()) {
+      try {
+        const { getPromoCodeByCodeFromDb } = await import('@/lib/db/repositories/promotions');
+        const promo = await getPromoCodeByCodeFromDb(body.promoCode);
+        if (promo && promo.isActive) {
+          if (promo.discountType === 'percentage') {
+            computedDiscount = Math.round((computedSubtotal * Number(promo.discountValue)) / 100);
+          } else {
+            computedDiscount = Number(promo.discountValue) || 0;
+          }
+          if (promo.maximumDiscount && computedDiscount > Number(promo.maximumDiscount)) {
+            computedDiscount = Number(promo.maximumDiscount);
+          }
+          body.promoDiscountAmount = computedDiscount;
+        } else {
+          delete body.promoCode;
+          delete body.promoDiscountAmount;
+        }
+      } catch {
+        computedDiscount = 0;
+      }
+    } else if (body.orderSource === 'POS' && body.posDiscountValue) {
+      const posVal = Number(body.posDiscountValue) || 0;
+      if (body.posDiscountType === 'percentage') {
+        computedDiscount = Math.round((computedSubtotal * posVal) / 100);
+      } else {
+        computedDiscount = posVal;
+      }
+    }
+
+    body.discount = computedDiscount;
+    const computedShipping = Number(body.shipping) > 0 ? Number(body.shipping) : 0;
+    body.shipping = computedShipping;
+    const computedTax = Number(body.tax) > 0 ? Number(body.tax) : 0;
+    body.tax = computedTax;
+    body.total = Math.max(0, computedSubtotal - computedDiscount + computedShipping + computedTax);
+
     const order = await createOrderInDb(body);
     return NextResponse.json({ success: true, order }, { status: 201 });
   } catch (err: any) {

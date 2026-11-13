@@ -1,8 +1,81 @@
+
+/**
+ * Sanitizes product objects for public storefront and customer sessions.
+ * Never leaks internal cost_price, purchase_price, supplier, or margin fields to the public.
+ * Wholesale and super wholesale pricing are stripped unless the customer holds an active verified tier.
+ */
+export function sanitizeProductForPublic(
+  product: any,
+  customerType: 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE' = 'RETAIL'
+): any {
+  if (!product) return product;
+  const clone = { ...product };
+
+  // Always strip internal cost, supplier, and margin fields from public view
+  delete clone.costPrice;
+  delete clone.cost_price;
+  delete clone.purchasePrice;
+  delete clone.purchase_price;
+  delete clone.supplier;
+  delete clone.supplierId;
+  delete clone.supplier_id;
+  delete clone.profit;
+  delete clone.margin;
+
+  // Wholesale pricing strictly for verified WHOLESALE or SUPER_WHOLESALE customers
+  if (customerType !== 'WHOLESALE' && customerType !== 'SUPER_WHOLESALE') {
+    delete clone.wholesalePrice;
+    delete clone.wholesale_price;
+  }
+
+  // Super wholesale pricing strictly for verified SUPER_WHOLESALE customers
+  if (customerType !== 'SUPER_WHOLESALE') {
+    delete clone.superWholesalePrice;
+    delete clone.super_wholesale_price;
+  }
+
+  // Sanitize variant models
+  if (Array.isArray(clone.models)) {
+    clone.models = clone.models.map((m: any) => {
+      const mc = { ...m };
+      delete mc.costPrice;
+      delete mc.cost_price;
+      delete mc.purchasePrice;
+      delete mc.purchase_price;
+      delete mc.supplier;
+      delete mc.supplierId;
+      delete mc.supplier_id;
+      delete mc.profit;
+      delete mc.margin;
+
+      if (customerType !== 'WHOLESALE' && customerType !== 'SUPER_WHOLESALE') {
+        delete mc.wholesalePrice;
+        delete mc.wholesale_price;
+      }
+      if (customerType !== 'SUPER_WHOLESALE') {
+        delete mc.superWholesalePrice;
+        delete mc.super_wholesale_price;
+      }
+      return mc;
+    });
+  }
+
+  return clone;
+}
+
+export function sanitizeProductsForPublic(
+  products: any[],
+  customerType: 'RETAIL' | 'WHOLESALE' | 'SUPER_WHOLESALE' = 'RETAIL'
+): any[] {
+  if (!Array.isArray(products)) return [];
+  return products.map((p) => sanitizeProductForPublic(p, customerType));
+}
 import { AdminSession } from '@/lib/db/sessionToken';
 import { hasAdminPermission } from '@/lib/db/adminAuth';
 
 export function sanitizeProductForSession(product: any, session: AdminSession | any): any {
-  if (!product || !session) return product;
+  if (!product) return product;
+  if (!session) return sanitizeProductForPublic(product, "RETAIL");
 
   // Root owner has access to all pricing & data
   const isOwner = Boolean(

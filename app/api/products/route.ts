@@ -7,7 +7,8 @@ import {
   getProductByIdFromDb,
 } from '@/lib/db/repositories/products';
 import { getAdminSessionAsync } from '@/lib/db/adminAuth';
-import { sanitizeProductsForSession } from '@/lib/productSanitizer';
+import { sanitizeProductsForSession, sanitizeProductsForPublic } from '@/lib/productSanitizer';
+import { getCustomerSession } from '@/lib/db/customerSession';
 import { allowDevMockFallback } from '@/lib/env';
 import { getPublicCacheHeaders } from '@/lib/cacheControl';
 import { getVerifiedReviewStats, isStorefrontVisibleProduct } from '@/lib/utils';
@@ -39,9 +40,18 @@ export async function GET(request: NextRequest) {
           .slice(0, 50)
       : undefined;
 
-    // Check if request is authenticated as an admin
+    // Check if request is authenticated as an admin or verified customer
     const adminSession = await getAdminSessionAsync(request);
     const isAdmin = Boolean(adminSession);
+    const customerSession = !isAdmin ? await getCustomerSession(request) : null;
+    const customerTier = customerSession?.customerType || 'RETAIL';
+
+    const sanitizeList = (prods: any[]) => {
+      if (isAdmin) {
+        return sanitizeProductsForSession(prods, adminSession);
+      }
+      return sanitizeProductsForPublic(prods, customerTier);
+    };
 
     // Single item by slug lookup
     if (slug) {
@@ -54,7 +64,7 @@ export async function GET(request: NextRequest) {
         const devProds = getDevProducts();
         product = devProds.find((p) => p.slug?.toLowerCase() === cleanSlug || p.id === cleanSlug) || null;
       }
-      const products = product ? [product] : [];
+      const products = product ? sanitizeList([product]) : [];
       return NextResponse.json(
         {
           success: true,
@@ -77,7 +87,7 @@ export async function GET(request: NextRequest) {
         const devProds = getDevProducts();
         product = devProds.find((p) => p.id === cleanId) || null;
       }
-      const products = product ? [product] : [];
+      const products = product ? sanitizeList([product]) : [];
       return NextResponse.json(
         {
           success: true,
@@ -159,7 +169,7 @@ export async function GET(request: NextRequest) {
           page: result.page,
           limit: result.limit,
           totalPages: result.totalPages,
-          products: result.products,
+          products: sanitizeList(result.products),
         },
         { headers: getPublicCacheHeaders(request) }
       );

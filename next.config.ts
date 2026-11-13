@@ -80,7 +80,9 @@ const nextConfig: NextConfig = {
   turbopack: {},
   async headers() {
     const isProd = process.env.NODE_ENV === 'production';
-    const isCspEnforce = (process.env.CSP_ENFORCE || '').toLowerCase().trim() === 'true';
+    // Step 14 Phase 2: Enforce strict CSP with escape switch DISABLE_STRICT_CSP=true
+    const isCspDisabled = (process.env.DISABLE_STRICT_CSP || '').toLowerCase().trim() === 'true';
+    const isCspEnforce = !isCspDisabled && ((process.env.CSP_ENFORCE || '').toLowerCase().trim() === 'true' || isProd);
     const cspKey = isCspEnforce ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
 
     const cspDirectives = [
