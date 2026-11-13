@@ -208,9 +208,10 @@ export function Footer({ initialSettings }: { initialSettings?: StoreSettings })
                 >
                   {activeSocialAccounts.map((account) => {
                     const p = account.platform.toLowerCase();
+                    const cleanPhone = (currentSettings?.whatsapp || '').replace(/\D/g, '') || '923432200995';
                     const href =
                       p === 'whatsapp'
-                        ? 'https://wa.me/923432200995'
+                        ? (account.url && account.url.trim() ? account.url : `https://wa.me/${cleanPhone}`)
                         : account.url;
 
                     return (

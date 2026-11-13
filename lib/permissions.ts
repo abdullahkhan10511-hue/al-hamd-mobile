@@ -369,6 +369,11 @@ export function canAccessAdminRoute(
     return has('promotions.view') || has('promotions.add') || has('promotions.edit');
   }
 
+  // UI Settings (Step 15)
+  if (pathname.startsWith('/admin/homepage-animations') || pathname.startsWith('/admin/whatsapp')) {
+    return has('settings.appearance');
+  }
+
   // Website Content
   if (pathname.startsWith('/admin/homepage-videos')) {
     return has('content.homepage') || has('content.media');

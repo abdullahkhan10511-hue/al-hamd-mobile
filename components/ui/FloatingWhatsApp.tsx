@@ -1,19 +1,76 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { MessageCircle, X } from 'lucide-react';
+import {
+  WhatsAppButtonSettings,
+  DEFAULT_WHATSAPP_SETTINGS,
+  buildWhatsAppLink,
+} from '@/lib/db/siteUiSettings';
 
-export function FloatingWhatsApp() {
-  const pathname = usePathname();
+interface FloatingWhatsAppProps {
+  initialSettings?: WhatsAppButtonSettings | null;
+}
+
+export function FloatingWhatsApp({ initialSettings }: FloatingWhatsAppProps) {
+  const pathname = usePathname() || '/';
+  const [settings, setSettings] = useState<WhatsAppButtonSettings>(
+    initialSettings || DEFAULT_WHATSAPP_SETTINGS
+  );
   const [showTooltip, setShowTooltip] = useState(true);
-  const isHomepage = pathname === '/';
-
-  // Visibility state: on homepage, starts hidden until hero scrolled past (<25% visible)
-  const [isVisible, setIsVisible] = useState(!isHomepage);
   const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState('');
+  const [pageTitle, setPageTitle] = useState('');
 
+  const isHomepage = pathname === '/';
+
+  // Check display rules
+  const isHiddenByPageRule = (() => {
+    if (!settings.enabled) return true;
+    if (pathname.startsWith('/admin')) return true;
+    if (settings.showOn === 'except_checkout_cart') {
+      if (pathname.startsWith('/checkout') || pathname.startsWith('/cart')) return true;
+    }
+    if (settings.showOn === 'homepage_only' && !isHomepage) {
+      return true;
+    }
+    return false;
+  })();
+
+  // Visibility state: on homepage with after_hero, starts hidden until hero scrolled past (<25% visible)
+  const [isVisible, setIsVisible] = useState(() => {
+    if (isHiddenByPageRule) return false;
+    if (isHomepage && settings.homepageBehavior === 'after_hero') {
+      return false;
+    }
+    return true;
+  });
+
+  // Client-side fetch latest settings if not supplied or for live updates
+  useEffect(() => {
+    if (initialSettings) {
+      setSettings(initialSettings);
+      return;
+    }
+    async function fetchSettings() {
+      try {
+        const res = await fetch('/api/ui-settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.whatsapp) {
+            setSettings(data.whatsapp);
+          }
+        }
+      } catch {
+        // silent fallback to default
+      }
+    }
+    fetchSettings();
+  }, [initialSettings]);
+
+  // Motion preference
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -23,22 +80,34 @@ export function FloatingWhatsApp() {
     return () => mq.removeEventListener?.('change', handler);
   }, []);
 
+  // Update current URL and document title for token replacement
   useEffect(() => {
-    if (!isHomepage) {
+    if (typeof window !== 'undefined') {
+      setCurrentUrl(window.location.href);
+      setPageTitle(document.title || (isHomepage ? 'Home' : pathname.replace(/^\//, '')));
+    }
+  }, [pathname, isHomepage]);
+
+  // Intersection observer for Homepage Hero
+  useEffect(() => {
+    if (isHiddenByPageRule) {
+      setIsVisible(false);
+      return;
+    }
+
+    if (!isHomepage || settings.homepageBehavior === 'always') {
       setIsVisible(true);
       setHasAnimatedIn(true);
       return;
     }
 
-    // On homepage, observe the hero element
+    // Homepage with 'after_hero'
     const heroEl = document.getElementById('hero');
     if (!heroEl || typeof IntersectionObserver === 'undefined') {
       setIsVisible(true);
       return;
     }
 
-    // When hero is less than 25% visible, button appears.
-    // When hero is >= 25% visible, button hides.
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
@@ -60,23 +129,26 @@ export function FloatingWhatsApp() {
 
     observer.observe(heroEl);
     return () => observer.disconnect();
-  }, [isHomepage]);
+  }, [isHomepage, isHiddenByPageRule, settings.homepageBehavior]);
 
-  // Do not render on admin dashboard pages
-  if (pathname?.startsWith('/admin')) {
+  if (isHiddenByPageRule) {
     return null;
   }
 
-  const phoneNumber = '923432200995';
-  const defaultMessage = encodeURIComponent(
-    'Salam! I want to inquire about products on AL-HAMD SHOP.'
-  );
-  const whatsappUrl = `https://wa.me/${phoneNumber}?text=${defaultMessage}`;
+  const whatsappUrl = buildWhatsAppLink(settings.phoneNumber, settings.defaultMessage, {
+    page: pageTitle,
+    url: currentUrl,
+  });
+
+  const positionClass =
+    settings.position === 'bottom_left'
+      ? 'left-4 sm:left-6 flex-row-reverse'
+      : 'right-4 sm:right-6';
 
   return (
     <div
       id="floating-whatsapp-container"
-      className={`fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 flex items-center gap-2 group transition-all ${
+      className={`fixed bottom-20 sm:bottom-6 z-40 flex items-center gap-2 group transition-all ${positionClass} ${
         prefersReducedMotion
           ? isVisible
             ? 'opacity-100 pointer-events-auto'
@@ -126,13 +198,21 @@ export function FloatingWhatsApp() {
           target="_blank"
           rel="noopener noreferrer"
           tabIndex={isVisible ? 0 : -1}
-          className="relative w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-emerald-300/50 cursor-pointer"
-          aria-label="Chat with AL-HAMD SHOP on WhatsApp (+92 343 2200995)"
+          className={`relative ${
+            settings.labelText
+              ? 'px-4 py-3 rounded-full'
+              : 'w-13 h-13 sm:w-14 sm:h-14 rounded-full'
+          } bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-emerald-300/50 cursor-pointer`}
+          aria-label={`Chat with AL-HAMD SHOP on WhatsApp (${settings.phoneNumber})`}
         >
-          <MessageCircle className="w-7 h-7 fill-white stroke-none" />
+          <MessageCircle className="w-6 h-6 sm:w-7 sm:h-7 fill-white stroke-none shrink-0" />
+          {settings.labelText && (
+            <span className="text-xs sm:text-sm font-semibold tracking-wide pr-1 whitespace-nowrap">
+              {settings.labelText}
+            </span>
+          )}
         </a>
       </div>
     </div>
   );
 }
-

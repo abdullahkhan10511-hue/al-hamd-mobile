@@ -176,6 +176,16 @@ function CheckoutContent() {
   const [phone, setPhone] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [whatsAppNumber, setWhatsAppNumber] = useState('923432200995');
+
+  useEffect(() => {
+    fetch('/api/ui-settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.whatsapp?.phoneNumber) setWhatsAppNumber(d.whatsapp.phoneNumber);
+      })
+      .catch(() => {});
+  }, []);
 
   // Pakistan address fields
   const [province, setProvince] = useState('Punjab');
@@ -655,7 +665,7 @@ function CheckoutContent() {
             {/* Order Actions: WhatsApp Confirmation + Continue Shopping */}
             <div className="max-w-sm mx-auto space-y-3">
               <a
-                href={`https://wa.me/923432200995?text=${encodeURIComponent(
+                href={`https://wa.me/${whatsAppNumber}?text=${encodeURIComponent(
                   `Salam, I have placed Order #${createdOrder.id} on AL-HAMD SHOP for Rs. ${createdOrder.total}. Please confirm my order.`
                 )}`}
                 target="_blank"

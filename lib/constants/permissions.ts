@@ -732,6 +732,13 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
     module: 'Settings',
     description: 'Configure delivery zones, courier partners, and shipping fee schedules.',
   },
+  {
+    id: 'perm-sett-5',
+    key: 'settings.appearance',
+    name: 'Manage Store Appearance & UI Controls',
+    module: 'Settings',
+    description: 'Configure homepage animations, marquee speed, and floating WhatsApp support button.',
+  },
 
   // =========================================================================
   // 16. STAFF MANAGEMENT

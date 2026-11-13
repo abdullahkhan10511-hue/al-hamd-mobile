@@ -22,11 +22,12 @@ import {
   getServerHomepageProducts,
   getServerAllCategories,
 } from '@/lib/db/serverCatalog';
+import { getHomepageAnimationsSettings } from '@/lib/db/repositories/siteUiSettings';
 
 export const revalidate = 300; // 5-minute ISR
 
 export default async function HomePage() {
-  const [heroVideosRes, newArrivals, allCategories] = await Promise.all([
+  const [heroVideosRes, newArrivals, allCategories, animSettingsRes] = await Promise.all([
     (async () => {
       let list: HomepageVideo[] = [];
       if (isDbConfigured()) {
@@ -42,6 +43,7 @@ export default async function HomePage() {
     })(),
     getServerNewArrivals(8),
     getServerAllCategories(),
+    getHomepageAnimationsSettings().catch(() => null),
   ]);
 
   const newArrivalIds = newArrivals.map((p) => p.id);
@@ -80,9 +82,20 @@ export default async function HomePage() {
       case 'trust':
         return <TrustBenefitsBar key="trust" />;
       case 'categories':
-        return <ShopByCategories key="categories" initialCategories={allCategories} />;
+        return (
+          <ShopByCategories
+            key="categories"
+            initialCategories={allCategories}
+            settings={animSettingsRes?.settings?.categories}
+          />
+        );
       case 'brands':
-        return <ShopByBrands key="brands" />;
+        return (
+          <ShopByBrands
+            key="brands"
+            settings={animSettingsRes?.settings?.brands}
+          />
+        );
       case 'new-arrivals':
         return <NewArrivals key="new-arrivals" initialProducts={newArrivals} />;
       case 'best-sellers':

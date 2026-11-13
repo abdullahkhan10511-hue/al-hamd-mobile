@@ -5,6 +5,7 @@ import { Providers } from '@/components/Providers';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { FloatingWhatsApp } from '@/components/ui/FloatingWhatsApp';
+import { getWhatsAppButtonSettings } from '@/lib/db/repositories/siteUiSettings';
 
 import { getServerStoreSettings as getStoreSettings, normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settingsServer';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
@@ -205,6 +206,8 @@ export default async function RootLayout({
     : `${baseUrl}/icon.png`;
 
   // WebSite and Organization / OnlineStore JSON-LD Structured Data
+  const whatsappRes = await getWhatsAppButtonSettings().catch(() => null);
+
   const structuredData = [
     {
       '@context': 'https://schema.org',
@@ -239,7 +242,7 @@ export default async function RootLayout({
           <Header initialSettings={settings} />
           <main className="flex-1">{children}</main>
           <Footer initialSettings={settings} />
-          <FloatingWhatsApp />
+          <FloatingWhatsApp initialSettings={whatsappRes?.settings} />
         </Providers>
       </body>
     </html>
