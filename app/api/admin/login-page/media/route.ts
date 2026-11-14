@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_MEDIA, LoginPageMediaItem } from '@/lib/db/loginPage';
 import { getAdminSessionAsync } from '@/lib/db/adminAuth';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataDir, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -43,10 +43,23 @@ function readLocalLoginPageMedia(): LoginPageMediaItem[] {
 
 function writeLocalLoginPageMedia(media: LoginPageMediaItem[]): void {
   try {
-    ensureDataDir();
-    fs.writeFileSync(MEDIA_FILE, JSON.stringify(media, null, 2), 'utf8');
+    writeAtomicJsonFile(MEDIA_FILE, media);
   } catch (err) {
     console.error('Failed to write login-page-media.json:', err);
+    throw err;
+  }
+}
+
+function triggerLoginMediaRevalidation(): boolean {
+  try {
+    revalidatePath('/login');
+    revalidatePath('/account/login');
+    revalidatePath('/admin/login-page');
+    revalidatePath('/api/login-page/media');
+    return true;
+  } catch (revErr) {
+    console.warn('Login media revalidation notice:', revErr);
+    return false;
   }
 }
 
@@ -102,7 +115,7 @@ export async function POST(request: NextRequest) {
         }
       }
       writeLocalLoginPageMedia(items);
-      try { revalidatePath('/login'); revalidatePath('/admin/login-page'); } catch {}
+      triggerLoginMediaRevalidation();
       return NextResponse.json({ success: true, items });
     }
 
@@ -138,7 +151,7 @@ export async function POST(request: NextRequest) {
       localMedia.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
       writeLocalLoginPageMedia(localMedia);
 
-      try { revalidatePath('/login'); revalidatePath('/admin/login-page'); } catch {}
+      triggerLoginMediaRevalidation();
       return NextResponse.json({ success: true, item: newItem, items: localMedia });
     }
 
@@ -164,7 +177,7 @@ export async function POST(request: NextRequest) {
       localMedia.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
       writeLocalLoginPageMedia(localMedia);
 
-      try { revalidatePath('/login'); revalidatePath('/admin/login-page'); } catch {}
+      triggerLoginMediaRevalidation();
       return NextResponse.json({ success: true, item: updatedItem, items: localMedia });
     }
 
@@ -179,7 +192,7 @@ export async function POST(request: NextRequest) {
       localMedia = localMedia.filter((m) => m.id !== id);
       writeLocalLoginPageMedia(localMedia);
 
-      try { revalidatePath('/login'); revalidatePath('/admin/login-page'); } catch {}
+      triggerLoginMediaRevalidation();
       return NextResponse.json({ success: true, items: localMedia });
     }
 
@@ -202,7 +215,7 @@ export async function POST(request: NextRequest) {
 
       writeLocalLoginPageMedia(localMedia);
 
-      try { revalidatePath('/login'); revalidatePath('/admin/login-page'); } catch {}
+      triggerLoginMediaRevalidation();
       return NextResponse.json({ success: true, items: localMedia });
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db/mysql';
 import {
   getBrandByIdOrSlugFromDb,
@@ -8,6 +9,7 @@ import {
 import { requireAdmin } from '@/lib/db/requireAdmin';
 import { allowDevMockFallback } from '@/lib/env';
 import { getPublicCacheHeaders } from '@/lib/cacheControl';
+import { serverCache } from '@/lib/cache/memoryCache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -61,7 +63,29 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Database is not configured in production.' }, { status: 503 });
     }
 
-    return NextResponse.json({ success: true, brand });
+    serverCache.invalidate('brands');
+    let revalidated = true;
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/brands');
+      if (brand?.slug) {
+        revalidatePath(`/brand/${brand.slug}`);
+      }
+      revalidatePath('/api/brands');
+      revalidatePath('/admin/brands');
+    } catch (revErr) {
+      console.warn('Brand update revalidation notice:', revErr);
+      revalidated = false;
+    }
+
+    return NextResponse.json({
+      success: true,
+      brand,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to update brand.' }, { status: 500 });
   }
@@ -92,7 +116,25 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Brand not found.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'Brand deleted successfully.' });
+    serverCache.invalidate('brands');
+    let revalidated = true;
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/brands');
+      revalidatePath('/api/brands');
+      revalidatePath('/admin/brands');
+    } catch (revErr) {
+      console.warn('Brand delete revalidation notice:', revErr);
+      revalidated = false;
+    }
+
+    return NextResponse.json({
+      success: true,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Brand deleted, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to delete brand.' }, { status: 500 });
   }

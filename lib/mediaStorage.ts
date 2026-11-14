@@ -114,7 +114,8 @@ export function getUploadsRootDir(): string {
 
   let resolved: string;
   if (customPath && customPath.trim().length > 0) {
-    const trimmed = customPath.trim();
+    // Strip surrounding quotes (from .env or shell env) and trailing slashes
+    const trimmed = customPath.trim().replace(/^["']|["']$/g, '').replace(/[/\\]+$/, '');
     if (path.isAbsolute(trimmed)) {
       resolved = path.normalize(trimmed);
     } else {
@@ -184,10 +185,15 @@ export async function resolveMediaFilePath(
     return null;
   }
 
+  // Filter out any empty segments (e.g. from leading, trailing, or double slashes)
+  const cleanSegments = segments.filter((s) => typeof s === 'string' && s.trim().length > 0);
+  if (cleanSegments.length === 0) {
+    return null;
+  }
+
   // Safely decode segments once (e.g. %20 -> space, non-ASCII/Urdu/Unicode characters)
   const decodedSegments: string[] = [];
-  for (const rawSeg of segments) {
-    if (!rawSeg || typeof rawSeg !== 'string') return null;
+  for (const rawSeg of cleanSegments) {
     let decoded = rawSeg;
     try {
       decoded = decodeURIComponent(rawSeg);
@@ -213,31 +219,69 @@ export async function resolveMediaFilePath(
   const primaryRoot = path.resolve(getUploadsRootDir());
   const fallbackRoot = path.resolve(getFallbackUploadsDir());
 
+  // Canonicalize symlinks (e.g. Hostinger /home/... symlinked to /home2/...)
+  let realPrimaryRoot = primaryRoot;
+  try {
+    if (fs.existsSync(primaryRoot)) {
+      realPrimaryRoot = fs.realpathSync(primaryRoot);
+    }
+  } catch {}
+
   const primaryPath = path.resolve(primaryRoot, ...decodedSegments);
-  // Verify path containment strictly within primaryRoot
-  if (primaryPath.startsWith(primaryRoot + path.sep) || primaryPath === primaryRoot) {
-    if (fs.existsSync(primaryPath)) {
-      try {
-        const stat = await fs.promises.stat(primaryPath);
-        if (stat.isFile()) {
-          return { absolutePath: primaryPath, isFallback: false, size: stat.size };
-        }
-      } catch {}
+  const isPrimaryContained =
+    primaryPath.startsWith(primaryRoot + path.sep) ||
+    primaryPath === primaryRoot ||
+    (realPrimaryRoot !== primaryRoot &&
+      (primaryPath.startsWith(realPrimaryRoot + path.sep) || primaryPath === realPrimaryRoot));
+
+  if (isPrimaryContained || realPrimaryRoot !== primaryRoot) {
+    const candidatePaths = [primaryPath];
+    if (realPrimaryRoot !== primaryRoot) {
+      candidatePaths.push(path.resolve(realPrimaryRoot, ...decodedSegments));
+    }
+    for (const cand of candidatePaths) {
+      if (fs.existsSync(cand)) {
+        try {
+          const stat = await fs.promises.stat(cand);
+          if (stat.isFile()) {
+            return { absolutePath: cand, isFallback: false, size: stat.size };
+          }
+        } catch {}
+      }
     }
   }
 
   // Check fallback repository directory if different from primary
-  if (fallbackRoot !== primaryRoot) {
+  let realFallbackRoot = fallbackRoot;
+  try {
+    if (fs.existsSync(fallbackRoot)) {
+      realFallbackRoot = fs.realpathSync(fallbackRoot);
+    }
+  } catch {}
+
+  if (fallbackRoot !== primaryRoot && realFallbackRoot !== realPrimaryRoot) {
     const fallbackPath = path.resolve(fallbackRoot, ...decodedSegments);
-    if (fallbackPath.startsWith(fallbackRoot + path.sep) || fallbackPath === fallbackRoot) {
-      if (fs.existsSync(fallbackPath)) {
-        try {
-          const stat = await fs.promises.stat(fallbackPath);
-          if (stat.isFile()) {
-            return { absolutePath: fallbackPath, isFallback: true, size: stat.size };
+    const isFallbackContained =
+      fallbackPath.startsWith(fallbackRoot + path.sep) ||
+      fallbackPath === fallbackRoot ||
+      (realFallbackRoot !== fallbackRoot &&
+        (fallbackPath.startsWith(realFallbackRoot + path.sep) || fallbackPath === realFallbackRoot));
+
+    if (isFallbackContained || realFallbackRoot !== fallbackRoot) {
+      const candidateFallbackPaths = [fallbackPath];
+      if (realFallbackRoot !== fallbackRoot) {
+        candidateFallbackPaths.push(path.resolve(realFallbackRoot, ...decodedSegments));
+      }
+      for (const cand of candidateFallbackPaths) {
+        if (fs.existsSync(cand)) {
+          try {
+            const stat = await fs.promises.stat(cand);
+            if (stat.isFile()) {
+              return { absolutePath: cand, isFallback: true, size: stat.size };
+            }
+          } catch {
+            return null;
           }
-        } catch {
-          return null;
         }
       }
     }

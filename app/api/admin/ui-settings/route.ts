@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 import { assertSameOrigin, createCsrfForbiddenResponse } from '@/lib/security/csrf';
 import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
@@ -111,11 +112,23 @@ export async function POST(request: NextRequest) {
           { status: result.tableExists === false ? 428 : 400 }
         );
       }
+      let revalidated = true;
+      try {
+        revalidatePath('/', 'layout');
+        revalidatePath('/');
+        revalidatePath('/shop');
+        revalidatePath('/api/ui-settings');
+      } catch (revErr) {
+        console.warn('UI animations revalidation notice:', revErr);
+        revalidated = false;
+      }
+
       return NextResponse.json({
         success: true,
         settings: targetData,
         tableExists: result.tableExists,
-        message: 'Homepage animations updated successfully.',
+        revalidated,
+        message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
       });
     }
 
@@ -139,11 +152,24 @@ export async function POST(request: NextRequest) {
           { status: result.tableExists === false ? 428 : 400 }
         );
       }
+
+      let revalidated = true;
+      try {
+        revalidatePath('/', 'layout');
+        revalidatePath('/');
+        revalidatePath('/shop');
+        revalidatePath('/api/ui-settings');
+      } catch (revErr) {
+        console.warn('WhatsApp button revalidation notice:', revErr);
+        revalidated = false;
+      }
+
       return NextResponse.json({
         success: true,
         settings: targetData,
         tableExists: result.tableExists,
-        message: 'WhatsApp button settings updated successfully.',
+        revalidated,
+        message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
       });
     }
 

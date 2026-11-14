@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const brand = searchParams.get('brand');
-    const search = searchParams.get('search');
+    const search = searchParams.get('search') || searchParams.get('q');
     const slug = searchParams.get('slug');
     const id = searchParams.get('id');
     const idsParam = searchParams.get('ids');
@@ -29,6 +29,10 @@ export async function GET(request: NextRequest) {
     const pageParam = searchParams.get('page');
     const sortBy = searchParams.get('sortBy') || searchParams.get('sort') || 'featured';
     const inStockOnly = searchParams.get('inStock') === 'true' || searchParams.get('inStockOnly') === 'true';
+    const minPriceParam = searchParams.get('minPrice') || searchParams.get('min_price');
+    const maxPriceParam = searchParams.get('maxPrice') || searchParams.get('max_price');
+    const minPrice = minPriceParam ? parseFloat(minPriceParam) : undefined;
+    const maxPrice = maxPriceParam ? parseFloat(maxPriceParam) : undefined;
     const minimal = searchParams.get('minimal') === 'true';
 
     // Parse requested IDs (up to 50 items for cart and wishlist)
@@ -141,6 +145,7 @@ export async function GET(request: NextRequest) {
           page,
           limit,
           totalPages: 0,
+          hasMore: false,
           products: [],
         },
         { headers: getPublicCacheHeaders(request) }
@@ -158,6 +163,8 @@ export async function GET(request: NextRequest) {
         limit,
         sortBy,
         inStockOnly,
+        minPrice: minPrice && !isNaN(minPrice) ? minPrice : undefined,
+        maxPrice: maxPrice && !isNaN(maxPrice) ? maxPrice : undefined,
         minimal,
       });
 
@@ -169,6 +176,7 @@ export async function GET(request: NextRequest) {
           page: result.page,
           limit: result.limit,
           totalPages: result.totalPages,
+          hasMore: result.hasMore,
           products: sanitizeList(result.products),
         },
         { headers: getPublicCacheHeaders(request) }
@@ -256,6 +264,7 @@ export async function GET(request: NextRequest) {
         page,
         limit,
         totalPages,
+        hasMore: page < totalPages,
         products: paginatedProducts,
       },
       { headers: getPublicCacheHeaders(request) }

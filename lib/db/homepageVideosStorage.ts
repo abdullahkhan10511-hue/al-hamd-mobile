@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { HomepageVideo } from '@/types/admin';
 import { seedHomepageVideos } from './homepageVideos';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 /**
  * Server Disk Storage & Fallback Cache for Homepage Videos.
@@ -11,13 +11,8 @@ import { getDataDir } from '@/lib/storage/dataDir';
  * PRIMARY / PRODUCTION STORE: MySQL `homepage_videos` table via `lib/db/repositories/homepageVideos.ts`.
  * SECONDARY / FALLBACK STORE: `data/homepage-videos.json` for offline resilience and local dev caching.
  */
-const DATA_DIR = getDataDir();
-const VIDEOS_FILE = path.join(DATA_DIR, 'homepage-videos.json');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+function getVideosFilePath(): string {
+  return getDataFilePath('homepage-videos.json');
 }
 
 function sortDeterministic(list: HomepageVideo[]): HomepageVideo[] {
@@ -29,10 +24,10 @@ function sortDeterministic(list: HomepageVideo[]): HomepageVideo[] {
 }
 
 export function readPersistentHomepageVideos(): HomepageVideo[] {
+  const filePath = getVideosFilePath();
   try {
-    ensureDataDir();
-    if (fs.existsSync(VIDEOS_FILE)) {
-      const content = fs.readFileSync(VIDEOS_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return sortDeterministic(parsed);
@@ -44,17 +39,16 @@ export function readPersistentHomepageVideos(): HomepageVideo[] {
 
   const defaults = sortDeterministic([...seedHomepageVideos]);
   try {
-    ensureDataDir();
-    fs.writeFileSync(VIDEOS_FILE, JSON.stringify(defaults, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, defaults);
   } catch {}
   return defaults;
 }
 
 export function writePersistentHomepageVideos(items: HomepageVideo[]): void {
   try {
-    ensureDataDir();
+    const filePath = getVideosFilePath();
     const sorted = sortDeterministic(items);
-    fs.writeFileSync(VIDEOS_FILE, JSON.stringify(sorted, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, sorted);
   } catch (err) {
     console.error('Failed to write homepage-videos.json:', err);
     throw new Error('Failed to write homepage videos to persistent server storage.');

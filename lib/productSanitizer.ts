@@ -26,12 +26,17 @@ export function sanitizeProductForPublic(
   if (customerType !== 'WHOLESALE' && customerType !== 'SUPER_WHOLESALE') {
     delete clone.wholesalePrice;
     delete clone.wholesale_price;
+    delete clone.wholesale_Price;
+    delete clone.wholesale;
   }
 
   // Super wholesale pricing strictly for verified SUPER_WHOLESALE customers
   if (customerType !== 'SUPER_WHOLESALE') {
     delete clone.superWholesalePrice;
     delete clone.super_wholesale_price;
+    delete clone.superWholesale_price;
+    delete clone.superWholesale;
+    delete clone.super_wholesale;
   }
 
   // Sanitize variant models

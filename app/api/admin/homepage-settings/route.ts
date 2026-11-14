@@ -117,17 +117,21 @@ export async function POST(request: NextRequest) {
     writePersistentHomepageSettings(current);
 
     // Invalidate public page caches
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
       revalidatePath('/');
       revalidatePath('/admin/homepage');
       revalidatePath('/api/homepage-settings');
     } catch (e) {
       console.warn('Path revalidation note:', e);
+      revalidated = false;
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Homepage settings saved successfully.',
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
       settings: getMergedHomepageSettings(),
     });
   } catch (err: any) {

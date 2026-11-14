@@ -23,7 +23,9 @@
     "predeploy": "node scripts/predeploy-check.mjs",
     "audit:image-hosts": "node scripts/list-image-hosts.mjs",
     "verify:step14": "node scripts/verify-step14.mjs",
-    "verify:step15": "node scripts/verify-step15.mjs"
+    "verify:step15": "node scripts/verify-step15.mjs",
+    "verify:step16": "node scripts/verify-step16.mjs",
+    "verify:step17": "node scripts/verify-step17.mjs"
   },
   "dependencies": {
     "framer-motion": "^13.5.1",

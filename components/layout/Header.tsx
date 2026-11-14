@@ -27,18 +27,28 @@ import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById }
 import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { getPages } from '@/lib/db/pages';
-import { NavigationItem, StoreSettings, ShopLocation, CustomPage } from '@/types/admin';
+import { AnnouncementItem, NavigationItem, StoreSettings, ShopLocation, CustomPage } from '@/types/admin';
 import { Category } from '@/types';
 import { AnnouncementBar } from './AnnouncementBar';
 
-export function Header({ initialSettings }: { initialSettings?: StoreSettings }) {
+export function Header({
+  initialSettings,
+  initialNavigation,
+  initialAnnouncements,
+}: {
+  initialSettings?: StoreSettings;
+  initialNavigation?: NavigationItem[];
+  initialAnnouncements?: AnnouncementItem[];
+}) {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const isHomePage = pathname === '/';
   const isTransparent = isHomePage && !isScrolled;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
-  const [navItems, setNavItems] = useState<NavigationItem[]>([]);
+  const [navItems, setNavItems] = useState<NavigationItem[]>(
+    initialNavigation && initialNavigation.length > 0 ? initialNavigation : []
+  );
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
@@ -215,7 +225,10 @@ export function Header({ initialSettings }: { initialSettings?: StoreSettings })
 
   return (
     <>
-      <AnnouncementBar initialSettings={currentSettings || undefined} />
+      <AnnouncementBar
+        initialSettings={currentSettings || undefined}
+        initialAnnouncements={initialAnnouncements}
+      />
       <header
         className={`w-full max-w-full py-3.5 ${
           isHomePage ? 'fixed top-0 left-0 w-full max-w-full z-40' : 'sticky top-0 z-40'

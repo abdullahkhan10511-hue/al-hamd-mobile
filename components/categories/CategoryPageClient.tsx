@@ -68,6 +68,52 @@ function CategoryPageContent({
   const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'featured');
   const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
   const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 16);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalCount, setTotalCount] = useState<number>(() => category.productCount || initialProducts.length);
+  const [hasMore, setHasMore] = useState<boolean>(initialProducts.length >= 16);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  const fetchCategoryProducts = async (pageToFetch: number, isAppending = false) => {
+    if (isAppending) {
+      setIsLoadingMore(true);
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set('category', category.slug);
+      params.set('page', String(pageToFetch));
+      params.set('limit', '24');
+      params.set('minimal', 'true');
+      if (selectedBrandParam) params.set('brand', selectedBrandParam);
+      if (maxPrice < 1000000) params.set('maxPrice', String(maxPrice));
+      if (inStockOnly) params.set('inStock', 'true');
+      if (sortBy) params.set('sort', sortBy);
+
+      const res = await fetch(`/api/products?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          if (isAppending) {
+            setCategoryProducts((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const newItems = data.products.filter((p: Product) => !existingIds.has(p.id));
+              return [...prev, ...newItems];
+            });
+          } else {
+            setCategoryProducts(data.products);
+          }
+          if (typeof data.total === 'number') {
+            setTotalCount(data.total);
+          }
+          setHasMore(Boolean(data.hasMore));
+          setCurrentPage(pageToFetch);
+        }
+      }
+    } catch (err) {
+      console.error('[CategoryPage] Error fetching category products:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const isInitialMount = useRef(true);
   useEffect(() => {
@@ -75,7 +121,7 @@ function CategoryPageContent({
       isInitialMount.current = false;
       return;
     }
-    setVisibleCount(16);
+    fetchCategoryProducts(1, false);
   }, [selectedBrandParam, maxPrice, sortBy, inStockOnly, category.slug]);
 
   // Save listing state when filters or visibleCount change
@@ -439,19 +485,20 @@ function CategoryPageContent({
         ) : (
           <div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
-              {filteredProducts.slice(0, visibleCount).map((prod) => (
+              {filteredProducts.map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}
             </div>
 
-            {visibleCount < filteredProducts.length && (
-              <div className="text-center mt-12">
+            {hasMore && (
+              <div className="text-center mt-12 flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => prev + 16)}
-                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                  disabled={isLoadingMore}
+                  onClick={() => fetchCategoryProducts(currentPage + 1, true)}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Load More Products ({filteredProducts.length - visibleCount} remaining)
+                  {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - filteredProducts.length)} remaining)`}
                 </button>
               </div>
             )}

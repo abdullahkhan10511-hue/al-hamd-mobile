@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/db/repositories/activity';
 import { recordInventoryLog } from '@/lib/db/repositories/inventory';
 import { ensureSafeMediaUrls } from '../serverMedia';
 import { serverCache } from '@/lib/cache/memoryCache';
+import { isStorefrontVisibleProduct } from '@/lib/utils';
 
 export function invalidateProductCache(): void {
   serverCache.invalidate('products');
@@ -299,8 +300,8 @@ export function mapRowToProduct(
     lowStockThreshold: Number(row.low_stock_threshold),
     rating: Number(row.rating),
     reviewCount: Number(row.review_count),
-    status: row.status,
-    isActive: Boolean(row.is_active),
+    status: row.status || 'active',
+    isActive: row.is_active !== undefined && row.is_active !== null ? Boolean(row.is_active) : true,
     isNew: Boolean(row.is_new),
     isNewArrival: Boolean(row.is_new_arrival),
     isBestSeller: Boolean(row.is_best_seller),
@@ -394,7 +395,7 @@ export async function getAllProductsFromDb(): Promise<(Product & { sku: string; 
         stock: Number(m.stock),
         shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
         sku: m.sku || undefined,
-        isActive: Boolean(m.is_active),
+        isActive: m.is_active !== undefined && m.is_active !== null ? Boolean(m.is_active) : true,
         images: parseJsonField<string[]>(m.images, []),
         videos: parseJsonField<string[]>(m.videos, []),
       } as any);
@@ -408,7 +409,7 @@ export async function getAllProductsFromDb(): Promise<(Product & { sku: string; 
         id: c.id,
         name: c.name,
         hex: c.hex || undefined,
-        isActive: Boolean(c.is_active),
+        isActive: c.is_active !== undefined && c.is_active !== null ? Boolean(c.is_active) : true,
       });
       colorsByProd.set(c.product_id, list);
     }
@@ -476,11 +477,37 @@ export interface StorefrontProductQueryParams {
   ids?: string[];
   page?: number;
   limit?: number;
-  sortBy?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating' | string;
+  sortBy?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'price-low' | 'price-high' | 'rating' | 'best-selling' | 'bestseller' | string;
   inStockOnly?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
   isBestSeller?: boolean;
   isNewArrival?: boolean;
   minimal?: boolean;
+}
+
+let hasIsActiveColumnCache: boolean | null = null;
+async function checkHasIsActiveColumn(): Promise<boolean> {
+  if (hasIsActiveColumnCache !== null) return hasIsActiveColumnCache;
+  try {
+    const rows = await query<RowDataPacket[]>("SHOW COLUMNS FROM products LIKE 'is_active'");
+    hasIsActiveColumnCache = Array.isArray(rows) && rows.length > 0;
+  } catch {
+    hasIsActiveColumnCache = false;
+  }
+  return hasIsActiveColumnCache;
+}
+
+let hasShopStockColumnCache: boolean | null = null;
+async function checkHasShopStockColumn(): Promise<boolean> {
+  if (hasShopStockColumnCache !== null) return hasShopStockColumnCache;
+  try {
+    const rows = await query<RowDataPacket[]>("SHOW COLUMNS FROM products LIKE 'shop_stock'");
+    hasShopStockColumnCache = Array.isArray(rows) && rows.length > 0;
+  } catch {
+    hasShopStockColumnCache = false;
+  }
+  return hasShopStockColumnCache;
 }
 
 export async function getStorefrontProductsFromDb(params: StorefrontProductQueryParams = {}): Promise<{
@@ -489,13 +516,22 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
   page: number;
   limit: number;
   totalPages: number;
+  hasMore: boolean;
 }> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
   }
 
-  const conditions: string[] = ["status = 'active'", 'is_active = 1', 'price > 0'];
+  const conditions: string[] = [
+    "(status = 'active' OR status IS NULL OR (LOWER(status) != 'inactive' AND LOWER(status) != 'archived' AND LOWER(status) != 'draft' AND LOWER(status) != 'hidden'))",
+    'price > 0',
+  ];
   const queryParams: any[] = [];
+
+  const hasIsActive = await checkHasIsActiveColumn();
+  if (hasIsActive) {
+    conditions.push('(is_active = 1 OR is_active IS NULL)');
+  }
 
   // Filter: specific slug
   if (params.slug) {
@@ -540,9 +576,26 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
     queryParams.push(s, s, s, s);
   }
 
+  // Filter: min price
+  if (typeof params.minPrice === 'number' && !isNaN(params.minPrice) && params.minPrice > 0) {
+    conditions.push('price >= ?');
+    queryParams.push(params.minPrice);
+  }
+
+  // Filter: max price
+  if (typeof params.maxPrice === 'number' && !isNaN(params.maxPrice) && params.maxPrice > 0) {
+    conditions.push('price <= ?');
+    queryParams.push(params.maxPrice);
+  }
+
   // Filter: in stock only
   if (params.inStockOnly) {
-    conditions.push('(stock > 0 OR shop_stock > 0)');
+    const hasShopStock = await checkHasShopStockColumn();
+    if (hasShopStock) {
+      conditions.push('(stock > 0 OR shop_stock > 0)');
+    } else {
+      conditions.push('stock > 0');
+    }
   }
 
   // Filter: badges
@@ -555,200 +608,288 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-  // 1. Fast SQL COUNT
-  const countSql = `SELECT COUNT(*) as total FROM products ${whereClause}`;
-  const countRows = await query<RowDataPacket[]>(countSql, queryParams);
-  const total = Number(countRows[0]?.total || 0);
+  try {
+    // 1. Fast SQL COUNT
+    const countSql = `SELECT COUNT(*) as total FROM products ${whereClause}`;
+    const countRows = await query<RowDataPacket[]>(countSql, queryParams);
+    const total = Number(countRows[0]?.total || 0);
 
-  // Pagination bounds: default 24, max 60 for public
-  const page = Math.max(1, Number(params.page) || 1);
-  const limit = Math.max(1, Math.min(Number(params.limit) || 24, 60));
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const offset = (page - 1) * limit;
+    // Pagination bounds: default 24, max 60 for public
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.max(1, Math.min(Number(params.limit) || 24, 60));
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
 
-  // 2. SQL ORDER BY
-  let orderBy = 'created_at DESC';
-  switch (params.sortBy) {
-    case 'featured':
-      orderBy = 'featured DESC, created_at DESC';
-      break;
-    case 'newest':
-      orderBy = 'created_at DESC';
-      break;
-    case 'price-asc':
-      orderBy = 'price ASC';
-      break;
-    case 'price-desc':
-      orderBy = 'price DESC';
-      break;
-    case 'rating':
-      orderBy = 'rating DESC, review_count DESC';
-      break;
-    default:
-      orderBy = 'created_at DESC';
-      break;
-  }
+    // 2. SQL ORDER BY
+    let orderBy = 'created_at DESC';
+    switch (params.sortBy) {
+      case 'featured':
+        orderBy = 'featured DESC, created_at DESC';
+        break;
+      case 'newest':
+        orderBy = 'created_at DESC';
+        break;
+      case 'price-asc':
+      case 'price-low':
+        orderBy = 'price ASC';
+        break;
+      case 'price-desc':
+      case 'price-high':
+        orderBy = 'price DESC';
+        break;
+      case 'rating':
+        orderBy = 'rating DESC, review_count DESC';
+        break;
+      case 'best-selling':
+      case 'bestseller':
+        orderBy = 'is_best_seller DESC, review_count DESC, created_at DESC';
+        break;
+      default:
+        orderBy = 'created_at DESC';
+        break;
+    }
 
-  // 3. Paginated SQL SELECT (using numeric interpolation for safe LIMIT/OFFSET)
-  const selectSql = `SELECT * FROM products ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
-  const productRows = await query<ProductRow[]>(selectSql, queryParams);
+    // 3. Paginated SQL SELECT (using numeric interpolation for safe LIMIT/OFFSET)
+    const selectSql = `SELECT * FROM products ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+    const productRows = await query<ProductRow[]>(selectSql, queryParams);
 
-  if (!productRows || productRows.length === 0) {
-    return { products: [], total, page, limit, totalPages };
-  }
+    if (!productRows || productRows.length === 0) {
+      return { products: [], total, page, limit, totalPages, hasMore: false };
+    }
 
-  const productIds = productRows.map((p) => p.id);
-  const placeholders = productIds.map(() => '?').join(',');
+    const productIds = productRows.map((p) => p.id);
+    const placeholders = productIds.map(() => '?').join(',');
 
-  // 4. Batched related records query for ONLY current page product IDs (Zero N+1)
-  const [modelsRows, colorsRows, mediaRows] = await Promise.all([
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_models WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_colors WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-    query<RowDataPacket[]>(
-      `SELECT * FROM product_media WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
-      productIds
-    ),
-  ]);
-
-  let bulkRows: RowDataPacket[] = [];
-  let reviewsRows: RowDataPacket[] = [];
-  let reviewStatsRows: RowDataPacket[] = [];
-  if (!params.minimal) {
-    [bulkRows, reviewsRows] = await Promise.all([
+    // 4. Batched related records query for ONLY current page product IDs (Zero N+1)
+    const [modelsRows, colorsRows, mediaRows] = await Promise.all([
       query<RowDataPacket[]>(
-        `SELECT * FROM product_bulk_pricing WHERE product_id IN (${placeholders}) ORDER BY min_qty ASC`,
+        `SELECT * FROM product_models WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
         productIds
       ),
       query<RowDataPacket[]>(
-        `SELECT * FROM product_reviews WHERE product_id IN (${placeholders}) ORDER BY date DESC`,
+        `SELECT * FROM product_colors WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+        productIds
+      ),
+      query<RowDataPacket[]>(
+        `SELECT * FROM product_media WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
         productIds
       ),
     ]);
-  } else {
-    try {
-      reviewStatsRows = await query<RowDataPacket[]>(
-        `SELECT product_id, COUNT(*) as cnt, AVG(rating) as avg_rating FROM product_reviews WHERE product_id IN (${placeholders}) AND verified = 1 GROUP BY product_id`,
-        productIds
+
+    let bulkRows: RowDataPacket[] = [];
+    let reviewsRows: RowDataPacket[] = [];
+    let reviewStatsRows: RowDataPacket[] = [];
+    if (!params.minimal) {
+      [bulkRows, reviewsRows] = await Promise.all([
+        query<RowDataPacket[]>(
+          `SELECT * FROM product_bulk_pricing WHERE product_id IN (${placeholders}) ORDER BY min_qty ASC`,
+          productIds
+        ),
+        query<RowDataPacket[]>(
+          `SELECT * FROM product_reviews WHERE product_id IN (${placeholders}) ORDER BY date DESC`,
+          productIds
+        ),
+      ]);
+    } else {
+      try {
+        reviewStatsRows = await query<RowDataPacket[]>(
+          `SELECT product_id, COUNT(*) as cnt, AVG(rating) as avg_rating FROM product_reviews WHERE product_id IN (${placeholders}) AND verified = 1 GROUP BY product_id`,
+          productIds
+        );
+      } catch {
+        reviewStatsRows = [];
+      }
+    }
+
+    // Group related by product_id
+    const modelsByProd = new Map<string, ProductModelVariant[]>();
+    for (const m of modelsRows) {
+      const list = modelsByProd.get(m.product_id) || [];
+      list.push({
+        id: m.id,
+        name: m.name,
+        price: Number(m.price),
+        compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
+        wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
+        superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
+        stock: Number(m.stock),
+        shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
+        sku: m.sku || undefined,
+        isActive: m.is_active !== undefined && m.is_active !== null ? Boolean(m.is_active) : true,
+        images: parseJsonField<string[]>(m.images, []),
+        videos: parseJsonField<string[]>(m.videos, []),
+      } as any);
+      modelsByProd.set(m.product_id, list);
+    }
+
+    const colorsByProd = new Map<string, ProductColorVariant[]>();
+    for (const c of colorsRows) {
+      const list = colorsByProd.get(c.product_id) || [];
+      list.push({
+        id: c.id,
+        name: c.name,
+        hex: c.hex || undefined,
+        isActive: c.is_active !== undefined && c.is_active !== null ? Boolean(c.is_active) : true,
+      });
+      colorsByProd.set(c.product_id, list);
+    }
+
+    const mediaByProd = new Map<string, ProductMediaItem[]>();
+    for (const med of mediaRows) {
+      const list = mediaByProd.get(med.product_id) || [];
+      list.push({
+        id: med.id,
+        url: med.url,
+        type: med.media_type,
+        name: med.name || undefined,
+        size: med.size || undefined,
+      });
+      mediaByProd.set(med.product_id, list);
+    }
+
+    const bulkByProd = new Map<string, BulkPricingRule[]>();
+    for (const b of bulkRows) {
+      const list = bulkByProd.get(b.product_id) || [];
+      list.push({
+        id: b.id,
+        minQty: Number(b.min_qty),
+        maxQty: Number(b.max_qty),
+        discountPercentage: Number(b.discount_percentage),
+      });
+      bulkByProd.set(b.product_id, list);
+    }
+
+    const reviewsByProd = new Map<string, ProductReview[]>();
+    for (const r of reviewsRows) {
+      const list = reviewsByProd.get(r.product_id) || [];
+      list.push({
+        id: r.id,
+        author: r.author,
+        rating: Number(r.rating),
+        comment: r.comment,
+        title: r.title || '',
+        verified: Boolean(r.verified),
+        date: r.date,
+      });
+      reviewsByProd.set(r.product_id, list);
+    }
+
+    const reviewStatsByProd = new Map<string, { count: number; rating: number }>();
+    for (const rs of reviewStatsRows) {
+      reviewStatsByProd.set(rs.product_id, {
+        count: Number(rs.cnt) || 0,
+        rating: rs.avg_rating ? Number(Number(rs.avg_rating).toFixed(1)) : 0,
+      });
+    }
+
+    const products = productRows.map((row) => {
+      const mapped = mapRowToProduct(
+        row,
+        modelsByProd.get(row.id) || [],
+        colorsByProd.get(row.id) || [],
+        mediaByProd.get(row.id) || [],
+        bulkByProd.get(row.id) || [],
+        reviewsByProd.get(row.id) || []
       );
-    } catch {
-      reviewStatsRows = [];
+      if (params.minimal) {
+        const stats = reviewStatsByProd.get(row.id) || { count: 0, rating: 0 };
+        return {
+          ...mapped,
+          approvedReviewCount: stats.count,
+          approvedRating: stats.rating,
+        };
+      }
+      return mapped;
+    });
+
+    return {
+      products,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasMore: page < totalPages,
+    };
+  } catch (err: any) {
+    console.error('[products] getStorefrontProductsFromDb error, falling back to getAllProductsFromDb:', err);
+    try {
+      const allDb = await getAllProductsFromDb();
+      let eligible = allDb.filter(isStorefrontVisibleProduct);
+      if (params.slug) {
+        const cleanSlug = params.slug.trim().toLowerCase();
+        eligible = eligible.filter((p) => p.slug?.toLowerCase() === cleanSlug);
+      }
+      if (params.id) {
+        eligible = eligible.filter((p) => p.id === params.id);
+      }
+      if (Array.isArray(params.ids) && params.ids.length > 0) {
+        const idSet = new Set(params.ids.map(String));
+        eligible = eligible.filter((p) => idSet.has(p.id));
+      }
+      if (params.category && params.category !== 'all') {
+        const cat = params.category.trim().toLowerCase();
+        eligible = eligible.filter(
+          (p) => p.categorySlug?.toLowerCase() === cat || p.category?.toLowerCase() === cat
+        );
+      }
+      if (params.brand && params.brand !== 'all') {
+        const b = params.brand.trim().toLowerCase();
+        eligible = eligible.filter(
+          (p) => p.brandSlug?.toLowerCase() === b || p.brand?.toLowerCase() === b || p.brandId?.toLowerCase() === b
+        );
+      }
+      if (params.search && params.search.trim().length >= 2) {
+        const s = params.search.trim().toLowerCase();
+        eligible = eligible.filter(
+          (p) =>
+            (p.name || '').toLowerCase().includes(s) ||
+            (p.sku || '').toLowerCase().includes(s) ||
+            (p.brand || '').toLowerCase().includes(s) ||
+            (p.description || '').toLowerCase().includes(s)
+        );
+      }
+      if (typeof params.minPrice === 'number' && !isNaN(params.minPrice) && params.minPrice > 0) {
+        eligible = eligible.filter((p) => Number(p.price) >= params.minPrice!);
+      }
+      if (typeof params.maxPrice === 'number' && !isNaN(params.maxPrice) && params.maxPrice > 0) {
+        eligible = eligible.filter((p) => Number(p.price) <= params.maxPrice!);
+      }
+      if (params.inStockOnly) {
+        eligible = eligible.filter((p) => (Number(p.stock) || 0) > 0 || (Number((p as any).shopStock) || 0) > 0);
+      }
+      if (params.isBestSeller) {
+        eligible = eligible.filter((p) => Boolean(p.isBestSeller));
+      }
+      if (params.isNewArrival) {
+        eligible = eligible.filter((p) => Boolean((p as any).isNewArrival || p.isNew));
+      }
+
+      // Sort
+      if (params.sortBy === 'price-asc' || params.sortBy === 'price-low') {
+        eligible.sort((a, b) => Number(a.price) - Number(b.price));
+      } else if (params.sortBy === 'price-desc' || params.sortBy === 'price-high') {
+        eligible.sort((a, b) => Number(b.price) - Number(a.price));
+      } else if (params.sortBy === 'rating') {
+        eligible.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      } else if (params.sortBy === 'featured') {
+        eligible.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+      } else if (params.sortBy === 'best-selling' || params.sortBy === 'bestseller') {
+        eligible.sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0));
+      } else {
+        eligible.sort((a, b) => new Date((b as any).createdAt || 0).getTime() - new Date((a as any).createdAt || 0).getTime());
+      }
+
+      const total = eligible.length;
+      const page = Math.max(1, Number(params.page) || 1);
+      const limit = Math.max(1, Math.min(Number(params.limit) || 24, 60));
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const paginated = eligible.slice((page - 1) * limit, page * limit);
+      return { products: paginated, total, page, limit, totalPages, hasMore: page < totalPages };
+    } catch (fallbackErr) {
+      console.error('[products] getAllProductsFromDb fallback also failed:', fallbackErr);
+      return { products: [], total: 0, page: 1, limit: 24, totalPages: 1, hasMore: false };
     }
   }
-
-  // Group related by product_id
-  const modelsByProd = new Map<string, ProductModelVariant[]>();
-  for (const m of modelsRows) {
-    const list = modelsByProd.get(m.product_id) || [];
-    list.push({
-      id: m.id,
-      name: m.name,
-      price: Number(m.price),
-      compareAtPrice: m.compare_at_price !== null ? Number(m.compare_at_price) : undefined,
-      wholesalePrice: m.wholesale_price !== null ? Number(m.wholesale_price) : undefined,
-      superWholesalePrice: m.super_wholesale_price !== null && m.super_wholesale_price !== undefined ? Number(m.super_wholesale_price) : undefined,
-      stock: Number(m.stock),
-      shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
-      sku: m.sku || undefined,
-      isActive: Boolean(m.is_active),
-      images: parseJsonField<string[]>(m.images, []),
-      videos: parseJsonField<string[]>(m.videos, []),
-    } as any);
-    modelsByProd.set(m.product_id, list);
-  }
-
-  const colorsByProd = new Map<string, ProductColorVariant[]>();
-  for (const c of colorsRows) {
-    const list = colorsByProd.get(c.product_id) || [];
-    list.push({
-      id: c.id,
-      name: c.name,
-      hex: c.hex || undefined,
-      isActive: Boolean(c.is_active),
-    });
-    colorsByProd.set(c.product_id, list);
-  }
-
-  const mediaByProd = new Map<string, ProductMediaItem[]>();
-  for (const med of mediaRows) {
-    const list = mediaByProd.get(med.product_id) || [];
-    list.push({
-      id: med.id,
-      url: med.url,
-      type: med.media_type,
-      name: med.name || undefined,
-      size: med.size || undefined,
-    });
-    mediaByProd.set(med.product_id, list);
-  }
-
-  const bulkByProd = new Map<string, BulkPricingRule[]>();
-  for (const b of bulkRows) {
-    const list = bulkByProd.get(b.product_id) || [];
-    list.push({
-      id: b.id,
-      minQty: Number(b.min_qty),
-      maxQty: Number(b.max_qty),
-      discountPercentage: Number(b.discount_percentage),
-    });
-    bulkByProd.set(b.product_id, list);
-  }
-
-  const reviewsByProd = new Map<string, ProductReview[]>();
-  for (const r of reviewsRows) {
-    const list = reviewsByProd.get(r.product_id) || [];
-    list.push({
-      id: r.id,
-      author: r.author,
-      rating: Number(r.rating),
-      comment: r.comment,
-      title: r.title || '',
-      verified: Boolean(r.verified),
-      date: r.date,
-    });
-    reviewsByProd.set(r.product_id, list);
-  }
-
-  const reviewStatsByProd = new Map<string, { count: number; rating: number }>();
-  for (const rs of reviewStatsRows) {
-    reviewStatsByProd.set(rs.product_id, {
-      count: Number(rs.cnt) || 0,
-      rating: rs.avg_rating ? Number(Number(rs.avg_rating).toFixed(1)) : 0,
-    });
-  }
-
-  const products = productRows.map((row) => {
-    const mapped = mapRowToProduct(
-      row,
-      modelsByProd.get(row.id) || [],
-      colorsByProd.get(row.id) || [],
-      mediaByProd.get(row.id) || [],
-      bulkByProd.get(row.id) || [],
-      reviewsByProd.get(row.id) || []
-    );
-    if (params.minimal) {
-      const stats = reviewStatsByProd.get(row.id) || { count: 0, rating: 0 };
-      return {
-        ...mapped,
-        approvedReviewCount: stats.count,
-        approvedRating: stats.rating,
-      };
-    }
-    return mapped;
-  });
-
-  return {
-    products,
-    total,
-    page,
-    limit,
-    totalPages,
-  };
 }
 
 export async function getProductByIdFromDb(id: string): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
@@ -799,7 +940,7 @@ export async function getProductByIdFromDb(id: string): Promise<(Product & { sku
         stock: Number(m.stock),
         shopStock: m.shop_stock !== undefined && m.shop_stock !== null ? Number(m.shop_stock) : 0,
         sku: m.sku || undefined,
-        isActive: Boolean(m.is_active),
+        isActive: m.is_active !== undefined && m.is_active !== null ? Boolean(m.is_active) : true,
         images: parseJsonField<string[]>(m.images, []),
         videos: parseJsonField<string[]>(m.videos, []),
       } as any)),
@@ -807,7 +948,7 @@ export async function getProductByIdFromDb(id: string): Promise<(Product & { sku
         id: c.id,
         name: c.name,
         hex: c.hex || undefined,
-        isActive: Boolean(c.is_active),
+        isActive: c.is_active !== undefined && c.is_active !== null ? Boolean(c.is_active) : true,
       })),
       media.map((med) => ({
         id: med.id,

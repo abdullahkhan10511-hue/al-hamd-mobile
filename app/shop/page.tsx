@@ -114,44 +114,79 @@ function ShopContent() {
     }
   }, [savedState]);
 
-  const applyData = (prods: Product[], cats: Category[], brands: Brand[]) => {
-    const activeProds = prods.filter(isStorefrontVisibleProduct);
-    setProductsList(activeProds);
-    setCategoriesList(deduplicateCategoriesById(cats));
-    setBrandsList(brands.filter((b) => b.status === 'active'));
-    setHasLoaded(true);
-  };
+  const initialPage = parseInt(searchParams.get('page') || '1', 10);
+  const [currentPage, setCurrentPage] = useState<number>(() => (isNaN(initialPage) || initialPage < 1 ? 1 : initialPage));
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
 
-  const loadData = async () => {
-    // 1. Initial local cache render
-    const initialProds = getProducts();
-    const initialCats = deduplicateCategoriesById(getActiveCategories());
-    const initialBrands = getBrands().filter((b) => b.status === 'active');
-    applyData(initialProds, initialCats, initialBrands);
-
-    // 2. Network sync: fetch bounded storefront products without downloading full catalogue
+  const fetchProductsPage = async (pageToFetch: number, isAppending = false) => {
+    if (isAppending) {
+      setIsLoadingMore(true);
+    }
     try {
-      const [freshProdsData, freshCats, freshBrands] = await Promise.all([
-        fetch('/api/products?limit=60&minimal=true')
-          .then((r) => r.json())
-          .catch(() => null),
-        syncCategoriesFromApi().catch(() => initialCats),
-        syncBrandsFromApi().catch(() => initialBrands),
-      ]);
-      const freshProds = freshProdsData && Array.isArray(freshProdsData.products)
-        ? freshProdsData.products
-        : initialProds;
-      applyData(freshProds, freshCats, freshBrands);
-    } catch {
-      // Keep initial cached state
+      const params = new URLSearchParams();
+      params.set('page', String(pageToFetch));
+      params.set('limit', '24');
+      params.set('minimal', 'true');
+
+      if (selectedCategory && selectedCategory !== 'all') {
+        params.set('category', selectedCategory);
+      }
+      if (selectedBrands.length > 0 && selectedBrands[0] !== 'all') {
+        params.set('brand', selectedBrands[0]);
+      }
+      if (searchQuery && searchQuery.trim().length >= 2) {
+        params.set('q', searchQuery.trim());
+      }
+      if (maxPrice < 1000000) {
+        params.set('maxPrice', String(maxPrice));
+      }
+      if (sortBy) {
+        params.set('sort', sortBy);
+      }
+
+      const res = await fetch(`/api/products?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          if (isAppending) {
+            setProductsList((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const newItems = data.products.filter((p: Product) => !existingIds.has(p.id));
+              return [...prev, ...newItems];
+            });
+          } else {
+            setProductsList(data.products);
+          }
+          const total = typeof data.total === 'number' ? data.total : data.products.length;
+          setTotalCount(total);
+          setTotalPages(typeof data.totalPages === 'number' ? data.totalPages : Math.ceil(total / 24));
+          setHasMore(Boolean(data.hasMore));
+          setCurrentPage(pageToFetch);
+        }
+      }
+    } catch (err) {
+      console.error('[ShopPage] Failed to fetch products from SQL:', err);
+    } finally {
+      setHasLoaded(true);
+      setIsLoadingMore(false);
     }
   };
 
-  const refreshFromCache = () => {
-    const prods = getProducts();
-    const cats = deduplicateCategoriesById(getActiveCategories());
-    const brands = getBrands().filter((b) => b.status === 'active');
-    applyData(prods, cats, brands);
+  const loadData = async () => {
+    try {
+      const [freshCats, freshBrands] = await Promise.all([
+        syncCategoriesFromApi().catch(() => deduplicateCategoriesById(getActiveCategories())),
+        syncBrandsFromApi().catch(() => getBrands()),
+      ]);
+      if (Array.isArray(freshCats)) setCategoriesList(deduplicateCategoriesById(freshCats));
+      if (Array.isArray(freshBrands)) setBrandsList(freshBrands.filter((b) => b.status === 'active'));
+    } catch (err) {
+      console.error('[ShopPage] Error syncing categories/brands:', err);
+    }
+    await fetchProductsPage(currentPage, false);
   };
 
   useEffect(() => {
@@ -161,11 +196,24 @@ function ShopContent() {
       const key = (e as CustomEvent)?.detail?.key;
       const SHOP_KEYS = ['products', 'categories', 'brands'];
       if (key && !SHOP_KEYS.includes(key)) return;
-      refreshFromCache();
+      fetchProductsPage(1, false);
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
+
+  // Fetch from SQL whenever filters change (debounced for search and slider)
+  const isInitialFilterMount = useRef(true);
+  useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetchProductsPage(1, false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [selectedCategory, selectedBrands, maxPrice, sortBy, searchQuery]);
 
   // Desktop mouse wheel horizontal scroll translation
   useEffect(() => {
@@ -225,7 +273,7 @@ function ShopContent() {
     setSelectedBrands(brandParam ? [brandParam] : []);
   }, [searchParams]);
 
-  const updateUrlFilters = (nextCategory?: string, nextBrands?: string[]) => {
+  const updateUrlFilters = (nextCategory?: string, nextBrands?: string[], nextPage?: number) => {
     const params = new URLSearchParams(searchParams.toString());
     const cat = nextCategory !== undefined ? nextCategory : selectedCategory;
     const brands = nextBrands !== undefined ? nextBrands : selectedBrands;
@@ -236,10 +284,16 @@ function ShopContent() {
       params.delete('category');
     }
 
-    if (brands.length > 0) {
+    if (brands.length > 0 && brands[0] !== 'all') {
       params.set('brand', brands[0]);
     } else {
       params.delete('brand');
+    }
+
+    if (nextPage && nextPage > 1) {
+      params.set('page', String(nextPage));
+    } else {
+      params.delete('page');
     }
 
     const qs = params.toString();
@@ -424,100 +478,16 @@ function ShopContent() {
     updateUrlFilters(selectedCategory, nextBrands);
   };
 
-  // Filter logic (Exact intersection of category, brand, price, rating, stock, search)
-  const filteredProducts = useMemo(() => {
-    return productsList.filter((product) => {
-      // Category filter: 'all' shows ALL items automatically
-      if (selectedCategory !== 'all') {
-        const cat = selectedCategory.trim().toLowerCase();
-        const pCat = (product.category || '').trim().toLowerCase();
-        const pCatSlug = (product.categorySlug || '').trim().toLowerCase();
-        const pCatId = ((product as any).categoryId || '').toString().trim().toLowerCase();
-        const catObj = categoriesList.find(
-          (c) => c.slug?.toLowerCase() === cat || c.name?.toLowerCase() === cat || c.id?.toLowerCase() === cat
-        );
-        const targetName = catObj ? catObj.name.toLowerCase() : cat;
-        const targetSlug = catObj ? catObj.slug.toLowerCase() : cat;
-
-        const matchesCat =
-          pCat === cat ||
-          pCatSlug === cat ||
-          pCatId === cat ||
-          pCat === targetName ||
-          pCatSlug === targetSlug;
-
-        if (!matchesCat) return false;
-      }
-
-      // Brand filter
-      if (selectedBrands.length > 0) {
-        const matchesBrand = selectedBrands.some((sel) => {
-          const s = sel.trim().toLowerCase();
-          const pBrand = (product.brand || '').trim().toLowerCase();
-          const pSlug = (product.brandSlug || '').trim().toLowerCase();
-          const pId = ((product as any).brandId || '').toString().trim().toLowerCase();
-          const brandObj = brandsList.find(
-            (b) => b.slug?.toLowerCase() === s || b.name?.toLowerCase() === s || b.id?.toLowerCase() === s
-          );
-          const matchedTargetName = brandObj ? brandObj.name.toLowerCase() : s;
-          const matchedTargetSlug = brandObj ? brandObj.slug.toLowerCase() : s;
-
-          return (
-            pBrand === s ||
-            pSlug === s ||
-            (pId && s === pId) ||
-            pBrand === matchedTargetName ||
-            pSlug === matchedTargetSlug
-          );
-        });
-        if (!matchesBrand) return false;
-      }
-
-      // Price filter
-      if (product.price > maxPrice) {
-        return false;
-      }
-
-      // Rating filter
-      if (minRating !== null && product.rating < minRating) {
-        return false;
-      }
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matches =
-          product.name.toLowerCase().includes(q) ||
-          product.description.toLowerCase().includes(q) ||
-          product.brand.toLowerCase().includes(q) ||
-          product.category.toLowerCase().includes(q) ||
-          (product.sku && product.sku.toLowerCase().includes(q));
-        if (!matches) return false;
-      }
-
-      return true;
-    });
-  }, [productsList, selectedCategory, selectedBrands, brandsList, maxPrice, minRating, searchQuery]);
-
-  // Sort logic
-  const sortedProducts = useMemo(() => {
-    const list = [...filteredProducts];
-    switch (sortBy) {
-      case 'newest':
-        return list.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0));
-      case 'best-selling':
-        return list.sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0));
-      case 'price-low':
-        return list.sort((a, b) => a.price - b.price);
-      case 'price-high':
-        return list.sort((a, b) => b.price - a.price);
-      case 'rating':
-        return list.sort((a, b) => b.rating - a.rating);
-      case 'featured':
-      default:
-        return list.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+  // Display products (filtered and sorted in SQL, optional client-side rating filter)
+  const displayProducts = useMemo(() => {
+    if (minRating !== null) {
+      return productsList.filter((product) => (product.rating || 0) >= minRating);
     }
-  }, [filteredProducts, sortBy]);
+    return productsList;
+  }, [productsList, minRating]);
+
+  const sortedProducts = displayProducts;
+  const filteredProducts = displayProducts;
 
   const pageHeading = useMemo(() => {
     if (selectedCategoryObj && selectedBrandObj) {
@@ -563,7 +533,7 @@ function ShopContent() {
                 {pageHeading}
               </h1>
               <p className="text-sm text-neutral-500 mt-1">
-                Showing {sortedProducts.length} curated products
+                Showing {displayProducts.length} of {totalCount} curated products
               </p>
             </div>
 
@@ -621,7 +591,7 @@ function ShopContent() {
                     return;
                   }
                   setSelectedCategory('all');
-                  updateUrlFilters('all', selectedBrands);
+                  updateUrlFilters('all', selectedBrands, 1);
                 }}
                 className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
                   selectedCategory === 'all'
@@ -629,7 +599,7 @@ function ShopContent() {
                     : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
                 }`}
               >
-                {selectedBrandObj ? `All ${selectedBrandObj.name} (${brandFilteredCount})` : `All Items (${productsList.length})`}
+                {selectedBrandObj ? `All ${selectedBrandObj.name} (${selectedBrandObj.productCount ?? brandFilteredCount})` : `All Items (${totalCount})`}
               </button>
               {availableCategoriesForBrand.map((cat) => (
                 <button
@@ -641,7 +611,7 @@ function ShopContent() {
                       return;
                     }
                     setSelectedCategory(cat.slug);
-                    updateUrlFilters(cat.slug, selectedBrands);
+                    updateUrlFilters(cat.slug, selectedBrands, 1);
                   }}
                   className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
                     selectedCategory.toLowerCase() === cat.slug?.toLowerCase() ||
@@ -650,7 +620,7 @@ function ShopContent() {
                       : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
                   }`}
                 >
-                  {cat.name}
+                  {cat.name} {typeof cat.productCount === 'number' && cat.productCount > 0 ? `(${cat.productCount})` : ''}
                 </button>
               ))}
             </div>
@@ -823,7 +793,7 @@ function ShopContent() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
-                {sortedProducts.slice(0, visibleCount).map((product, idx) => (
+                {displayProducts.map((product, idx) => (
                   <ScrollReveal
                     key={product.id}
                     delayMs={Math.min((idx % 6) * 25, 100)}
@@ -835,15 +805,55 @@ function ShopContent() {
               </div>
             )}
 
-            {/* Load More Button */}
-            {visibleCount < sortedProducts.length && (
-              <div className="text-center mt-12">
+            {/* Load More & Pagination Area */}
+            {hasMore && (
+              <div className="text-center mt-12 flex flex-col items-center gap-2">
                 <button
-                  onClick={() => setVisibleCount((prev) => prev + 12)}
-                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                  type="button"
+                  disabled={isLoadingMore}
+                  onClick={() => {
+                    const nextPage = currentPage + 1;
+                    fetchProductsPage(nextPage, true);
+                    updateUrlFilters(selectedCategory, selectedBrands, nextPage);
+                  }}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Load More Products ({sortedProducts.length - visibleCount} remaining)
+                  {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - displayProducts.length)} remaining)`}
                 </button>
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-3 text-xs font-semibold text-neutral-700">
+                {currentPage > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prevPage = currentPage - 1;
+                      fetchProductsPage(prevPage, false);
+                      updateUrlFilters(selectedCategory, selectedBrands, prevPage);
+                    }}
+                    className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer"
+                  >
+                    ← Previous Page
+                  </button>
+                )}
+                <span className="px-3 py-1 bg-neutral-100 rounded-full text-neutral-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextPage = currentPage + 1;
+                      fetchProductsPage(nextPage, false);
+                      updateUrlFilters(selectedCategory, selectedBrands, nextPage);
+                    }}
+                    className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer"
+                  >
+                    Next Page →
+                  </button>
+                )}
               </div>
             )}
           </div>

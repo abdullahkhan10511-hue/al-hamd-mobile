@@ -9,7 +9,7 @@ import {
 } from '@/lib/db/repositories/loginPage';
 import { DEFAULT_LOGIN_PAGE_SETTINGS, LoginPageSettings } from '@/lib/db/loginPage';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataDir, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -54,10 +54,10 @@ function readLocalLoginPageSettings(): LoginPageSettings {
 
 function writeLocalLoginPageSettings(settings: LoginPageSettings): void {
   try {
-    ensureDataDir();
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+    writeAtomicJsonFile(SETTINGS_FILE, settings);
   } catch (err) {
     console.error('Failed to write login-page-settings.json:', err);
+    throw err;
   }
 }
 
@@ -121,13 +121,23 @@ export async function POST(request: NextRequest) {
       writeLocalLoginPageSettings(updated);
     }
 
+    let revalidated = true;
     try {
       revalidatePath('/login');
+      revalidatePath('/account/login');
       revalidatePath('/admin/login-page');
       revalidatePath('/api/login-page/settings');
-    } catch {}
+    } catch (revErr) {
+      console.warn('Login settings revalidation notice:', revErr);
+      revalidated = false;
+    }
 
-    return NextResponse.json({ success: true, settings: updated });
+    return NextResponse.json({
+      success: true,
+      settings: updated,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Login page settings saved, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     console.error('Error saving login page settings:', err);
     return NextResponse.json(

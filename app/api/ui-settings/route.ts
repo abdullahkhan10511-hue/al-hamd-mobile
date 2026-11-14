@@ -3,9 +3,10 @@ import {
   getHomepageAnimationsSettings,
   getWhatsAppButtonSettings,
 } from '@/lib/db/repositories/siteUiSettings';
+import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 60; // 1-minute cache
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,9 +22,7 @@ export async function GET(request: NextRequest) {
         whatsapp: whatsappRes.settings,
       },
       {
-        headers: {
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
-        },
+        headers: getPublicCacheHeaders(request),
       }
     );
   } catch (err) {

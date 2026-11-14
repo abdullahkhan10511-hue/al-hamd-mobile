@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Hash,
 } from 'lucide-react';
-import { getStoreSettings, getActiveSocialAccounts } from '@/lib/db/settings';
+import { getStoreSettings, getActiveSocialAccounts, syncStoreSettingsFromApi } from '@/lib/db/settings';
 import { getActiveShopLocation, syncShopLocationsFromApi } from '@/lib/db/locations';
 import { StoreSettings, ShopLocation, InquiryType } from '@/types/admin';
 import { ShopLocationCard } from '@/components/ui/ShopLocationCard';
@@ -79,6 +79,9 @@ export default function ContactPage() {
 
   useEffect(() => {
     loadData();
+    syncStoreSettingsFromApi(true).then((fresh) => {
+      if (fresh) setSettings(fresh);
+    }).catch(() => {});
     syncShopLocationsFromApi().then((fresh) => {
       if (fresh) setActiveLocation(fresh.find((l) => l.isActive) || null);
     }).catch(() => {});

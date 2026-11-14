@@ -87,3 +87,44 @@ export function getDataDir(): string {
 export function getDataFilePath(filename: string): string {
   return path.join(getDataDir(), filename);
 }
+
+/**
+ * Atomically writes JSON data to a file inside or outside DATA_DIR by writing to a unique
+ * temporary file first and renaming it to the target file.
+ * Handles locks and cross-platform edge cases gracefully.
+ * Logs and re-throws errors so calling routes never fail silently.
+ */
+export function writeAtomicJsonFile(filePath: string, data: unknown): void {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (mkdirErr) {
+      console.error(`[DATA_DIR] Failed to create parent directory at ${dir}:`, mkdirErr);
+      throw mkdirErr;
+    }
+  }
+
+  const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const serialized = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    fs.writeFileSync(tempPath, serialized, 'utf8');
+    try {
+      fs.renameSync(tempPath, filePath);
+    } catch {
+      // Fallback for Windows or systems where renameSync cannot replace across locked files
+      fs.copyFileSync(tempPath, filePath);
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {}
+    }
+  } catch (err) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch {}
+    console.error(`[DATA_DIR] Failed atomic write to ${filePath}:`, err);
+    throw err;
+  }
+}

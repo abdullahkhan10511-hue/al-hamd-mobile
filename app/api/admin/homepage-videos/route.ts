@@ -19,6 +19,18 @@ import { seedHomepageVideos } from '@/lib/db/homepageVideos';
 import { HomepageVideo } from '@/types/admin';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 
+function triggerVideosRevalidation(): boolean {
+  try {
+    revalidatePath('/', 'layout');
+    revalidatePath('/');
+    revalidatePath('/api/homepage-videos');
+    return true;
+  } catch (revErr) {
+    console.warn('Homepage videos revalidation notice:', revErr);
+    return false;
+  }
+}
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -116,7 +128,7 @@ export async function POST(request: NextRequest) {
 
         const updated = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(updated); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: updated, videos: updated });
       }
 
@@ -124,7 +136,7 @@ export async function POST(request: NextRequest) {
         const saved = await saveHomepageVideoInDb(item);
         const all = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(all); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, item: saved, items: all, videos: all });
       }
 
@@ -132,7 +144,7 @@ export async function POST(request: NextRequest) {
         const saved = await saveHomepageVideoInDb({ ...updates, id });
         const all = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(all); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, item: saved, items: all, videos: all });
       }
 
@@ -140,7 +152,7 @@ export async function POST(request: NextRequest) {
         await deleteHomepageVideoInDb(id);
         const all = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(all); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
 
@@ -155,7 +167,7 @@ export async function POST(request: NextRequest) {
         }
         const all = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(all); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
 
@@ -169,7 +181,7 @@ export async function POST(request: NextRequest) {
         }
         const all = sortDeterministic(await getAllHomepageVideosFromDb());
         try { writePersistentHomepageVideos(all); } catch {}
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
     } else {
@@ -177,41 +189,41 @@ export async function POST(request: NextRequest) {
       if (action === 'sync' && Array.isArray(items)) {
         writePersistentHomepageVideos(items);
         const updated = readPersistentHomepageVideos();
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: updated, videos: updated });
       }
 
       if (action === 'add' && item) {
         const saved = savePersistentHomepageVideo(item);
         const all = readPersistentHomepageVideos();
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, item: saved, items: all, videos: all });
       }
 
       if (action === 'update' && id && updates) {
         const saved = savePersistentHomepageVideo({ ...updates, id });
         const all = readPersistentHomepageVideos();
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, item: saved, items: all, videos: all });
       }
 
       if (action === 'delete' && id) {
         deletePersistentHomepageVideo(id);
         const all = readPersistentHomepageVideos();
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
 
       if (action === 'reorder' && Array.isArray(orderedIds)) {
         const all = reorderPersistentHomepageVideos(orderedIds);
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
 
       if (Array.isArray(body)) {
         writePersistentHomepageVideos(body);
         const all = readPersistentHomepageVideos();
-        try { revalidatePath('/'); } catch {}
+        triggerVideosRevalidation();
         return NextResponse.json({ success: true, items: all, videos: all });
       }
     }

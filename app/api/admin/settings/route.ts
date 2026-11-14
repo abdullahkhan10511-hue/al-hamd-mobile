@@ -9,7 +9,7 @@ import { isDbConfigured } from '@/lib/db/mysql';
 import { getStoreSettingsFromDb, updateStoreSettingsInDb, invalidateStoreSettingsCache } from '@/lib/db/repositories/settings';
 import { normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settings';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
-import { getDataFilePath } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -64,11 +64,7 @@ async function writeServerSettings(settings: StoreSettings): Promise<void> {
 
   // Persistent file cache on disk so file-based reads & local fallback stay synchronized
   try {
-    const dir = path.dirname(SETTINGS_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2), 'utf8');
+    writeAtomicJsonFile(SETTINGS_FILE_PATH, settings);
   } catch (err) {
     console.error('Failed to write store-settings.json:', err);
     if (!isDbConfigured() || dbError) {
@@ -168,17 +164,26 @@ export async function POST(request: NextRequest) {
 
     await writeServerSettings(updated);
 
+    let revalidated = true;
     try {
       revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/contact');
       revalidatePath('/api/settings');
       revalidatePath('/admin/settings');
       revalidatePath('/admin/settings/seo');
     } catch (revalidateErr) {
       console.warn('revalidatePath notice:', revalidateErr);
+      revalidated = false;
     }
 
-    return NextResponse.json({ success: true, settings: updated });
+    return NextResponse.json({
+      success: true,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+      settings: updated,
+    });
   } catch (err: any) {
     console.error('Failed to save store settings:', err);
     return NextResponse.json(

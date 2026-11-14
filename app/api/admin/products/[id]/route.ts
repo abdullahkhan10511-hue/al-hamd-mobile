@@ -9,6 +9,7 @@ import {
   sanitizeProductForSession,
   validateProductWritePermissions,
 } from '@/lib/productSanitizer';
+import { serverCache } from '@/lib/cache/memoryCache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -101,20 +102,35 @@ export async function PUT(
       );
     }
 
+    serverCache.invalidate('products');
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
       revalidatePath('/');
-      revalidatePath('/api/products');
-      revalidatePath('/products');
-      revalidatePath('/admin/products');
-      if (product?.slug) {
+      revalidatePath('/shop');
+      revalidatePath('/search');
+      revalidatePath('/categories');
+      revalidatePath('/brands');
+      if (existing?.slug) {
+        revalidatePath(`/product/${existing.slug}`);
+      }
+      if (product?.slug && product.slug !== existing?.slug) {
         revalidatePath(`/product/${product.slug}`);
       }
+      revalidatePath('/api/products');
+      revalidatePath('/admin/products');
     } catch (revErr) {
       console.warn('revalidatePath notice:', revErr);
+      revalidated = false;
     }
 
     const safeProduct = sanitizeProductForSession(product, session);
-    return NextResponse.json({ success: true, product: safeProduct });
+    return NextResponse.json({
+      success: true,
+      product: safeProduct,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     console.error('Error updating product:', err);
     return NextResponse.json(
@@ -159,16 +175,27 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Product not found.' }, { status: 404 });
     }
 
+    serverCache.invalidate('products');
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/search');
+      revalidatePath('/categories');
+      revalidatePath('/brands');
       revalidatePath('/api/products');
-      revalidatePath('/products');
       revalidatePath('/admin/products');
     } catch (revErr) {
       console.warn('revalidatePath notice:', revErr);
+      revalidated = false;
     }
 
-    return NextResponse.json({ success: true, message: 'Product deleted successfully.' });
+    return NextResponse.json({
+      success: true,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Product deleted, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     console.error('Error deleting product:', err);
     return NextResponse.json(

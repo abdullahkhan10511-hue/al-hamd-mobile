@@ -9,7 +9,7 @@ import { ensureSafeMediaUrl, ensureSafeMediaUrls } from './serverMedia';
 import { logActivity } from './activity';
 import { deduplicateCategoriesById } from '@/lib/utils';
 import { isDbConfigured } from './mysql';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataDir, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 /**
  * Strict Security Guard:
@@ -52,8 +52,7 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
   }
   // Initialize file with fallback only if missing or unreadable
   try {
-    ensureDataDir();
-    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, fallback);
   } catch (err) {
     console.warn(`Error initializing dev storage file ${filePath}:`, err);
   }
@@ -62,10 +61,10 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
 
 function writeJsonFile<T>(filePath: string, data: T): void {
   try {
-    ensureDataDir();
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, data);
   } catch (err) {
     console.error(`Error writing dev storage file ${filePath}:`, err);
+    throw new Error(`Failed to write dev storage file: ${filePath}`);
   }
 }
 

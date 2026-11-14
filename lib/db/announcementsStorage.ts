@@ -3,15 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { AnnouncementItem } from '@/types/admin';
 import { seedAnnouncements } from './seed';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
-const DATA_DIR = getDataDir();
-const ANNOUNCEMENTS_FILE = path.join(DATA_DIR, 'announcements.json');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+function getAnnouncementsFilePath(): string {
+  return getDataFilePath('announcements.json');
 }
 
 function normalizeAnnouncements(raw: AnnouncementItem[]): AnnouncementItem[] {
@@ -25,10 +20,10 @@ function normalizeAnnouncements(raw: AnnouncementItem[]): AnnouncementItem[] {
 }
 
 export function readPersistentAnnouncements(): AnnouncementItem[] {
+  const filePath = getAnnouncementsFilePath();
   try {
-    ensureDataDir();
-    if (fs.existsSync(ANNOUNCEMENTS_FILE)) {
-      const content = fs.readFileSync(ANNOUNCEMENTS_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return normalizeAnnouncements(parsed);
@@ -40,17 +35,16 @@ export function readPersistentAnnouncements(): AnnouncementItem[] {
 
   const defaults = normalizeAnnouncements(seedAnnouncements);
   try {
-    ensureDataDir();
-    fs.writeFileSync(ANNOUNCEMENTS_FILE, JSON.stringify(defaults, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, defaults);
   } catch {}
   return defaults;
 }
 
 export function writePersistentAnnouncements(items: AnnouncementItem[]): void {
   try {
-    ensureDataDir();
+    const filePath = getAnnouncementsFilePath();
     const normalized = normalizeAnnouncements(items);
-    fs.writeFileSync(ANNOUNCEMENTS_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, normalized);
   } catch (err) {
     console.error('Failed to write announcements.json:', err);
     throw new Error('Failed to write announcements to persistent server storage.');

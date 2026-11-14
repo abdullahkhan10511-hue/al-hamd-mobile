@@ -252,7 +252,7 @@ export default function HomepageControlPage() {
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-neutral-950 text-white font-bold text-xs tracking-wider uppercase hover:bg-neutral-800 transition-colors shadow-md cursor-pointer"
           >
             {isSaved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-            <span>{isSaved ? 'Changes Saved' : 'Save Homepage'}</span>
+            <span>{isSaved ? 'Saved and live' : 'Save Homepage'}</span>
           </button>
         </div>
       </div>
@@ -611,7 +611,7 @@ export default function HomepageControlPage() {
               className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-xs cursor-pointer self-start sm:self-auto"
             >
               {isSaved ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-              <span>{isSaved ? 'Settings Saved' : 'Save Section Settings'}</span>
+              <span>{isSaved ? 'Saved and live' : 'Save Section Settings'}</span>
             </button>
           </div>
         </div>

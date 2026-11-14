@@ -28,12 +28,28 @@ export async function PUT(
       page = savePersistentPage({ ...body, id });
     }
 
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      if (body.slug) {
+        revalidatePath(`/${body.slug}`);
+        revalidatePath(`/api/pages/${body.slug}`);
+      }
       revalidatePath('/pages');
-      if (body.slug) revalidatePath(`/pages/${body.slug}`);
-    } catch {}
+      revalidatePath('/api/pages');
+      revalidatePath('/admin/pages');
+    } catch (revErr) {
+      console.warn('Page update revalidation notice:', revErr);
+      revalidated = false;
+    }
 
-    return NextResponse.json({ success: true, page });
+    return NextResponse.json({
+      success: true,
+      page,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Page updated, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to update custom page.' }, { status: 500 });
   }
@@ -62,11 +78,23 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Page not found.' }, { status: 404 });
     }
 
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
       revalidatePath('/pages');
-    } catch {}
+      revalidatePath('/api/pages');
+      revalidatePath('/admin/pages');
+    } catch (revErr) {
+      console.warn('Page delete revalidation notice:', revErr);
+      revalidated = false;
+    }
 
-    return NextResponse.json({ success: true, message: 'Custom page deleted successfully.' });
+    return NextResponse.json({
+      success: true,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Page deleted, but storefront revalidation is pending.',
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to delete custom page.' }, { status: 500 });
   }

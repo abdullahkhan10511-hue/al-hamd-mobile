@@ -17,7 +17,9 @@ export function getServerProducts(): (Product & { sku: string; lowStockThreshold
         fallback = parsed;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.error('[productsServer] Failed reading dev-products.json fallback:', err);
+  }
 
   return sanitizeProducts(fallback);
 }

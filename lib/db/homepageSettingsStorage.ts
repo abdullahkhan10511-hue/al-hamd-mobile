@@ -8,10 +8,7 @@ import {
   seedTrustBenefits,
   seedAllProductsConfig,
 } from '@/lib/db/seed';
-import { getDataDir } from '@/lib/storage/dataDir';
-
-const DATA_DIR = getDataDir();
-const SETTINGS_FILE = path.join(DATA_DIR, 'homepage-settings.json');
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 export interface PersistentHomepageSettings {
   sections?: any[];
@@ -21,10 +18,15 @@ export interface PersistentHomepageSettings {
   allProducts?: any;
 }
 
+function getSettingsFilePath(): string {
+  return getDataFilePath('homepage-settings.json');
+}
+
 export function readPersistentHomepageSettings(): PersistentHomepageSettings {
+  const filePath = getSettingsFilePath();
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const content = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (parsed && typeof parsed === 'object') {
         return parsed;
@@ -38,10 +40,8 @@ export function readPersistentHomepageSettings(): PersistentHomepageSettings {
 
 export function writePersistentHomepageSettings(settings: PersistentHomepageSettings): void {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+    const filePath = getSettingsFilePath();
+    writeAtomicJsonFile(filePath, settings);
   } catch (err) {
     console.error('Failed to write homepage-settings.json:', err);
     throw new Error('Failed to write homepage settings to persistent server storage.');

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { resolveMediaFilePath } from '@/lib/mediaStorage';
+import { resolveMediaFilePath, getUploadsRootDir } from '@/lib/mediaStorage';
 
 /**
  * Fixed allowlist of permitted extensions with correct Content-Type (Task S10b).
@@ -48,6 +48,7 @@ export async function GET(
 
     const resolved = await resolveMediaFilePath(segments);
     if (!resolved) {
+      console.warn(`[uploads] Asset not found for segments: ${JSON.stringify(segments)} in root: ${getUploadsRootDir()}`);
       return new NextResponse('File not found', { status: 404 });
     }
 

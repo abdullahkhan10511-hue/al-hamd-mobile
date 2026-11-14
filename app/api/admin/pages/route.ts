@@ -60,12 +60,28 @@ export async function POST(request: NextRequest) {
       page = savePersistentPage(body);
     }
 
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      if (body.slug) {
+        revalidatePath(`/${body.slug}`);
+        revalidatePath(`/api/pages/${body.slug}`);
+      }
       revalidatePath('/pages');
-      revalidatePath(`/pages/${body.slug}`);
-    } catch {}
+      revalidatePath('/api/pages');
+      revalidatePath('/admin/pages');
+    } catch (revErr) {
+      console.warn('Page revalidation notice:', revErr);
+      revalidated = false;
+    }
 
-    return NextResponse.json({ success: true, page }, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      page,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Page saved, but storefront revalidation is pending.',
+    }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Failed to save custom page.' }, { status: 500 });
   }

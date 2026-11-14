@@ -114,30 +114,64 @@ function SearchContent() {
     }
   }, [savedState]);
 
-  const loadData = async () => {
-    let prods = getProducts();
-    if (prods.length === 0) {
-      prods = await syncProductsFromApi().catch(() => []);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  const fetchSearchResults = async (pageToFetch: number, isAppending = false) => {
+    if (isAppending) {
+      setIsLoadingMore(true);
     }
-    const all = prods.filter(isStorefrontVisibleProduct);
-    setProductsList(all);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(pageToFetch));
+      params.set('limit', '24');
+      params.set('minimal', 'true');
+      if (rawQuery && rawQuery.trim().length >= 2) params.set('q', rawQuery.trim());
+      if (selectedCategory && selectedCategory !== 'all') params.set('category', selectedCategory);
+      if (selectedBrand && selectedBrand !== 'all') params.set('brand', selectedBrand);
+      if (maxPrice < 1000000) params.set('maxPrice', String(maxPrice));
+      if (inStockOnly) params.set('inStock', 'true');
+      if (sortBy) params.set('sort', sortBy);
 
-    const cats = deduplicateCategoriesById(getActiveCategories());
-    setCategoriesList(cats);
-    syncCategoriesFromApi().then(() => {
-      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    }).catch(() => {});
-
-    const freshBrands = await syncBrandsFromApi().catch(() => getBrands());
-    setBrandsList(freshBrands.filter((b) => b.status === 'active'));
+      const res = await fetch(`/api/products?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          if (isAppending) {
+            setProductsList((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const newItems = data.products.filter((p: Product) => !existingIds.has(p.id));
+              return [...prev, ...newItems];
+            });
+          } else {
+            setProductsList(data.products);
+          }
+          if (typeof data.total === 'number') {
+            setTotalCount(data.total);
+          }
+          setHasMore(Boolean(data.hasMore));
+          setCurrentPage(pageToFetch);
+        }
+      }
+    } catch (err) {
+      console.error('[SearchPage] Error fetching search results:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
-  const refreshFromCache = () => {
-    const prods = getProducts();
-    const all = prods.filter(isStorefrontVisibleProduct);
-    setProductsList(all);
-    setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    setBrandsList(getBrands().filter((b) => b.status === 'active'));
+  const loadData = async () => {
+    syncCategoriesFromApi().then((cats) => {
+      if (Array.isArray(cats)) setCategoriesList(deduplicateCategoriesById(cats));
+    }).catch(() => {});
+
+    syncBrandsFromApi().then((brands) => {
+      if (Array.isArray(brands)) setBrandsList(brands.filter((b) => b.status === 'active'));
+    }).catch(() => {});
+
+    await fetchSearchResults(1, false);
   };
 
   useEffect(() => {
@@ -146,11 +180,23 @@ function SearchContent() {
       const key = (e as CustomEvent)?.detail?.key;
       const SEARCH_KEYS = ['products', 'categories', 'brands'];
       if (key && !SEARCH_KEYS.includes(key)) return;
-      refreshFromCache();
+      fetchSearchResults(1, false);
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
   }, []);
+
+  const isInitialFilter = useRef(true);
+  useEffect(() => {
+    if (isInitialFilter.current) {
+      isInitialFilter.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetchSearchResults(1, false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [rawQuery, selectedCategory, selectedBrand, maxPrice, inStockOnly, sortBy]);
 
   useEffect(() => {
     setInputQuery(rawQuery);
@@ -181,81 +227,8 @@ function SearchContent() {
 
   const cleanQuery = rawQuery.toLowerCase().trim();
 
-  // Multi-term space-safe and field-safe matching
-  const matchingProducts = useMemo(() => {
-    if (!cleanQuery) return [];
-
-    const normalizedQuery = normalizeSearchText(cleanQuery);
-    const searchTerms = normalizedQuery.split(' ').filter(Boolean);
-
-    let result = productsList.filter((p) => {
-      const nameNorm = normalizeSearchText(p.name);
-      const brandNorm = normalizeSearchText(p.brand);
-      const categoryNorm = normalizeSearchText(p.category);
-      const categorySlugNorm = normalizeSearchText(p.categorySlug);
-      const skuNorm = normalizeSearchText((p as any).sku);
-      const descNorm = normalizeSearchText(p.description);
-      const taglineNorm = normalizeSearchText(p.tagline);
-      const tagsNorm = Array.isArray(p.tags)
-        ? normalizeSearchText(p.tags.join(' '))
-        : normalizeSearchText(p.tags);
-      const featuresNorm = Array.isArray(p.features)
-        ? normalizeSearchText(p.features.join(' '))
-        : '';
-
-      const combined = `${nameNorm} ${brandNorm} ${categoryNorm} ${categorySlugNorm} ${skuNorm} ${descNorm} ${taglineNorm} ${tagsNorm} ${featuresNorm}`;
-      return searchTerms.every((term) => combined.includes(term));
-    });
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      result = result.filter(
-        (p) =>
-          p.categorySlug === selectedCategory ||
-          p.category?.toLowerCase() === selectedCategory.toLowerCase()
-      );
-    }
-
-    // Brand filter
-    if (selectedBrand !== 'all') {
-      result = result.filter(
-        (p) => p.brand?.toLowerCase() === selectedBrand.toLowerCase()
-      );
-    }
-
-    // Price filter
-    result = result.filter((p) => p.price <= maxPrice);
-
-    // In Stock filter (All catalogue products are available for customer purchasing)
-    if (inStockOnly) {
-      result = result.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
-    }
-
-    // Sorting
-    switch (sortBy) {
-      case 'price-low':
-        result.sort((a, b) => a.price - b.price);
-        break;
-      case 'price-high':
-        result.sort((a, b) => b.price - a.price);
-        break;
-      case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'newest':
-        result.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0));
-        break;
-      case 'bestselling':
-        result.sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0));
-        break;
-      case 'featured':
-      default:
-        result.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
-        break;
-    }
-
-    return result;
-  }, [cleanQuery, productsList, selectedCategory, selectedBrand, maxPrice, inStockOnly, sortBy]);
+  // Multi-term SQL search results
+  const matchingProducts = cleanQuery ? productsList : [];
 
   // Trending fallback products
   const trendingProducts = useMemo(() => {
@@ -533,23 +506,24 @@ function SearchContent() {
           <div>
             <div className="flex items-center justify-between mb-6 text-xs text-neutral-500 font-mono">
               <span>
-                Showing {matchingProducts.length} product{matchingProducts.length !== 1 ? 's' : ''} for &ldquo;{rawQuery}&rdquo;
+                Showing {productsList.length} of {totalCount} product{totalCount !== 1 ? 's' : ''} for &ldquo;{rawQuery}&rdquo;
               </span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
-              {matchingProducts.slice(0, visibleCount).map((prod) => (
+              {productsList.map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}
             </div>
 
-            {visibleCount < matchingProducts.length && (
-              <div className="text-center mt-12">
+            {hasMore && (
+              <div className="text-center mt-12 flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => prev + 16)}
-                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                  disabled={isLoadingMore}
+                  onClick={() => fetchSearchResults(currentPage + 1, true)}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Load More Products ({matchingProducts.length - visibleCount} remaining)
+                  {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - productsList.length)} remaining)`}
                 </button>
               </div>
             )}

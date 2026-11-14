@@ -24,7 +24,7 @@ import {
 } from '@/lib/db/serverCatalog';
 import { getHomepageAnimationsSettings } from '@/lib/db/repositories/siteUiSettings';
 
-export const revalidate = 300; // 5-minute ISR
+export const revalidate = 60; // 60-second ISR safety net for admin updates
 
 export default async function HomePage() {
   const [heroVideosRes, newArrivals, allCategories, animSettingsRes] = await Promise.all([
@@ -33,7 +33,8 @@ export default async function HomePage() {
       if (isDbConfigured()) {
         try {
           list = await getActiveHomepageVideosFromDb();
-        } catch {
+        } catch (err) {
+          console.error('[HomePage] getActiveHomepageVideosFromDb error:', err);
           list = readPersistentHomepageVideos();
         }
       } else {
@@ -43,7 +44,10 @@ export default async function HomePage() {
     })(),
     getServerNewArrivals(8),
     getServerAllCategories(),
-    getHomepageAnimationsSettings().catch(() => null),
+    getHomepageAnimationsSettings().catch((err) => {
+      console.error('[HomePage] getHomepageAnimationsSettings error:', err);
+      return null;
+    }),
   ]);
 
   const newArrivalIds = newArrivals.map((p) => p.id);
@@ -68,10 +72,13 @@ export default async function HomePage() {
       mobileBlurDataUrl: v.mobileBlurDataUrl || v.blurDataUrl || DEFAULT_HERO_BLUR_DATA_URL,
     }));
 
-  const heroSettings = getMergedHomepageSettings().hero;
+  const homepageSettings = getMergedHomepageSettings();
+  const heroSettings = homepageSettings.hero;
   const showHeroText = Boolean(heroSettings?.showText === true);
 
-  const sections = getCanonicalHomepageSections()
+  const sections = (homepageSettings.sections && homepageSettings.sections.length > 0
+    ? homepageSettings.sections
+    : getCanonicalHomepageSections())
     .filter((s) => s.enabled)
     .sort((a, b) => a.order - b.order);
 
@@ -80,7 +87,7 @@ export default async function HomePage() {
       case 'hero':
         return <HeroSection key="hero" initialVideos={activeHeroVideos} showText={showHeroText} />;
       case 'trust':
-        return <TrustBenefitsBar key="trust" />;
+        return <TrustBenefitsBar key="trust" initialBenefits={homepageSettings.trustBenefits} />;
       case 'categories':
         return (
           <ShopByCategories

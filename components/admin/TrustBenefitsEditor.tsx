@@ -288,7 +288,7 @@ export function TrustBenefitsEditor({
               {isSaved ? (
                 <>
                   <Check className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
-                  <span>Saved!</span>
+                  <span>Saved and live</span>
                 </>
               ) : isSaving ? (
                 <>

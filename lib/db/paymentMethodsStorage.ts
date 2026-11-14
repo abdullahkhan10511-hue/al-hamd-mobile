@@ -2,7 +2,7 @@ import 'server-only';
 import fs from 'fs';
 import { PaymentMethodConfig, PaymentSecuritySettings } from '@/types/admin';
 import { seedPaymentMethods, seedPaymentSecuritySettings } from './paymentMethods';
-import { getDataDir, getDataFilePath } from '@/lib/storage/dataDir';
+import { getDataDir, getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 function getPaymentMethodsFile(): string {
   return getDataFilePath('payment-methods.json');
@@ -78,8 +78,7 @@ export function readPersistentPaymentConfig(): PersistentPaymentConfig {
   };
 
   try {
-    ensureDataDir();
-    fs.writeFileSync(filePath, JSON.stringify(defaults, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, defaults);
   } catch {}
 
   return defaults;
@@ -88,7 +87,6 @@ export function readPersistentPaymentConfig(): PersistentPaymentConfig {
 export function writePersistentPaymentConfig(data: Partial<PersistentPaymentConfig>): void {
   const filePath = getPaymentMethodsFile();
   try {
-    ensureDataDir();
     const current = readPersistentPaymentConfig();
     const updatedMethods = data.methods
       ? data.methods.map((m) => ({
@@ -101,7 +99,7 @@ export function writePersistentPaymentConfig(data: Partial<PersistentPaymentConf
       methods: updatedMethods,
       security: data.security ? { ...current.security, ...data.security } : current.security,
     };
-    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, updated);
   } catch (err) {
     console.error('Failed to write payment-methods.json:', err);
     throw new Error('Failed to write payment methods configuration to persistent server storage.');

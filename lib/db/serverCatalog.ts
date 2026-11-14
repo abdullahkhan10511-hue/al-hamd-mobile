@@ -36,8 +36,6 @@ export function projectMinimalCardProduct(p: Product): Product {
     categorySlug: p.categorySlug,
     price: Number(p.price) || 0,
     compareAtPrice: p.compareAtPrice !== undefined ? Number(p.compareAtPrice) : undefined,
-    wholesalePrice: p.wholesalePrice !== undefined ? Number(p.wholesalePrice) : undefined,
-    superWholesalePrice: p.superWholesalePrice !== undefined ? Number(p.superWholesalePrice) : undefined,
     discountPercentage: p.discountPercentage,
     rating: Number(p.rating) || 0,
     reviewCount: Number(p.reviewCount) || 0,
@@ -120,13 +118,17 @@ export async function getServerRelatedProducts(
       if (filtered.length > 0) {
         return filtered.map(projectMinimalCardProduct);
       }
-    } catch { }
+    } catch (err) {
+      console.error('[serverCatalog] DB getServerRelatedProducts error:', err);
+    }
   }
 
   let all: Product[] = [];
   try {
     all = getProducts();
-  } catch { }
+  } catch (err) {
+    console.error('[serverCatalog] Local getProducts in getServerRelatedProducts error:', err);
+  }
 
   return all
     .filter(
@@ -155,7 +157,17 @@ export async function getServerBestSellers(limit = 8, excludeIds: string[] = [])
       if (filtered.length > 0) {
         return filtered.slice(0, limit).map(projectMinimalCardProduct);
       }
-    } catch { }
+      // If no product is explicitly flagged as isBestSeller in DB, fall back to top-rated or newest products
+      const fallbackRes = await getStorefrontProductsFromDb({ limit: fetchLimit, minimal: true });
+      const fallbackFiltered = fallbackRes.products.filter(
+        (p) => isStorefrontVisibleProduct(p) && !excludeSet.has(p.id)
+      );
+      if (fallbackFiltered.length > 0) {
+        return fallbackFiltered.slice(0, limit).map(projectMinimalCardProduct);
+      }
+    } catch (err) {
+      console.error('[serverCatalog] DB getServerBestSellers error:', err);
+    }
   }
   const all = getProducts();
   return all
@@ -181,7 +193,9 @@ export async function getServerNewArrivals(limit = 8): Promise<Product[]> {
       if (filtered.length > 0) {
         return filtered.slice(0, limit).map(projectMinimalCardProduct);
       }
-    } catch { }
+    } catch (err) {
+      console.error('[serverCatalog] DB getServerNewArrivals error:', err);
+    }
   }
   const all = getProducts()
     .filter(isStorefrontVisibleProduct)
@@ -217,7 +231,9 @@ export async function getServerHomepageProducts(
         products: eligible.slice(0, limit).map(projectMinimalCardProduct),
         total: Math.max(eligible.length, res.total - excludeIds.length),
       };
-    } catch { }
+    } catch (err) {
+      console.error('[serverCatalog] DB getServerHomepageProducts error:', err);
+    }
   }
   const all = getProducts().filter((p) => isStorefrontVisibleProduct(p) && !excludeSet.has(p.id));
   return {
@@ -300,13 +316,17 @@ export async function getServerCategoryProducts(
           total: res.total,
         };
       }
-    } catch { }
+    } catch (err) {
+      console.error(`[serverCatalog] DB getServerCategoryProducts error for "${targetSlug}":`, err);
+    }
   }
 
   let allProds: Product[] = [];
   try {
     allProds = getProducts();
-  } catch { }
+  } catch (err) {
+    console.error('[serverCatalog] Local getProducts in getServerCategoryProducts error:', err);
+  }
 
   const targetName = (category.name || '').trim().toLowerCase();
   const targetId = (category.id || '').trim().toLowerCase();
@@ -409,13 +429,17 @@ export async function getServerBrandProducts(
           total: res.total,
         };
       }
-    } catch { }
+    } catch (err) {
+      console.error(`[serverCatalog] DB getServerBrandProducts error for "${targetSlug}":`, err);
+    }
   }
 
   let allProds: Product[] = [];
   try {
     allProds = getProducts();
-  } catch { }
+  } catch (err) {
+    console.error('[serverCatalog] Local getProducts in getServerBrandProducts error:', err);
+  }
 
   const targetName = (brand.name || '').trim().toLowerCase();
   const targetId = (brand.id || '').trim().toLowerCase();
@@ -456,7 +480,8 @@ export async function getServerAllCategories(): Promise<Category[]> {
         const st = typeof c.status === 'string' ? c.status.trim().toLowerCase() : 'active';
         return st !== 'inactive' && st !== 'archived';
       });
-    } catch {
+    } catch (err) {
+      console.error('[serverCatalog] DB getAllCategories error:', err);
       if (process.env.NODE_ENV === 'production') {
         return [];
       }
@@ -473,7 +498,9 @@ export async function getServerAllBrands(): Promise<Brand[]> {
     try {
       const brands = await getAllBrandsFromDb(false);
       if (brands.length > 0) return brands;
-    } catch { }
+    } catch (err) {
+      console.error('[serverCatalog] DB getAllBrands error:', err);
+    }
   }
   return getActiveBrands();
 }

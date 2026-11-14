@@ -7,7 +7,8 @@ import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 
 import fs from 'fs';
 import path from 'path';
-import { getDataFilePath } from '@/lib/storage/dataDir';
+import { revalidatePath } from 'next/cache';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 const DEV_BILL_SETTINGS_FILE = getDataFilePath('dev-bill-settings.json');
 
@@ -49,12 +50,11 @@ function getDevBillSettings(): BillSettings {
 
 function saveDevBillSettings(settings: BillSettings): void {
   try {
-    const dir = path.dirname(DEV_BILL_SETTINGS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(DEV_BILL_SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
-  } catch {}
+    writeAtomicJsonFile(DEV_BILL_SETTINGS_FILE, settings);
+  } catch (err) {
+    console.error('Failed to save bill settings atomically:', err);
+    throw err;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -118,7 +118,14 @@ export async function PUT(request: NextRequest) {
 
     if (isDbConfigured()) {
       const updated = await updateBillSettingsInDb(body, session?.email || 'system');
-      return NextResponse.json({ success: true, settings: updated });
+      try {
+        revalidatePath('/admin/pos');
+        revalidatePath('/admin/orders');
+        revalidatePath('/api/admin/bill-settings');
+      } catch (revErr) {
+        console.warn('Revalidation warning in /api/admin/bill-settings:', revErr);
+      }
+      return NextResponse.json({ success: true, settings: updated, revalidated: true });
     }
 
     const current = getDevBillSettings();
@@ -150,7 +157,15 @@ export async function PUT(request: NextRequest) {
     };
     saveDevBillSettings(updated);
 
-    return NextResponse.json({ success: true, settings: updated });
+    try {
+      revalidatePath('/admin/pos');
+      revalidatePath('/admin/orders');
+      revalidatePath('/api/admin/bill-settings');
+    } catch (revErr) {
+      console.warn('Revalidation warning in /api/admin/bill-settings dev mode:', revErr);
+    }
+
+    return NextResponse.json({ success: true, settings: updated, revalidated: true });
   } catch (err: any) {
     console.error('Error updating bill settings in MySQL:', err);
     return NextResponse.json(

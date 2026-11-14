@@ -68,6 +68,53 @@ function BrandPageContent({
   const [inStockOnly, setInStockOnly] = useState<boolean>(() => savedState?.inStockOnly ?? false);
   const [searchQuery, setSearchQuery] = useState<string>(() => savedState?.searchQuery || '');
   const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 16);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalCount, setTotalCount] = useState<number>(() => brand.productCount || initialProducts.length);
+  const [hasMore, setHasMore] = useState<boolean>(initialProducts.length >= 16);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  const fetchBrandProducts = async (pageToFetch: number, isAppending = false) => {
+    if (isAppending) {
+      setIsLoadingMore(true);
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set('brand', brand.slug);
+      params.set('page', String(pageToFetch));
+      params.set('limit', '24');
+      params.set('minimal', 'true');
+      if (selectedCategoryParam && selectedCategoryParam !== 'all') params.set('category', selectedCategoryParam);
+      if (maxPrice < 1000000) params.set('maxPrice', String(maxPrice));
+      if (inStockOnly) params.set('inStock', 'true');
+      if (sortBy) params.set('sort', sortBy);
+      if (searchQuery && searchQuery.trim().length >= 2) params.set('q', searchQuery.trim());
+
+      const res = await fetch(`/api/products?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          if (isAppending) {
+            setBrandProducts((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const newItems = data.products.filter((p: Product) => !existingIds.has(p.id));
+              return [...prev, ...newItems];
+            });
+          } else {
+            setBrandProducts(data.products);
+          }
+          if (typeof data.total === 'number') {
+            setTotalCount(data.total);
+          }
+          setHasMore(Boolean(data.hasMore));
+          setCurrentPage(pageToFetch);
+        }
+      }
+    } catch (err) {
+      console.error('[BrandPage] Error fetching brand products:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const isInitialMount = useRef(true);
   useEffect(() => {
@@ -75,7 +122,7 @@ function BrandPageContent({
       isInitialMount.current = false;
       return;
     }
-    setVisibleCount(16);
+    fetchBrandProducts(1, false);
   }, [selectedCategoryParam, maxPrice, sortBy, inStockOnly, searchQuery, brand.slug]);
 
   // Save listing state when filters or visibleCount change
@@ -464,19 +511,20 @@ function BrandPageContent({
         ) : (
           <div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
-              {filteredProducts.slice(0, visibleCount).map((prod) => (
+              {filteredProducts.map((prod) => (
                 <ProductCard key={prod.id} product={prod} />
               ))}
             </div>
 
-            {visibleCount < filteredProducts.length && (
-              <div className="text-center mt-12">
+            {hasMore && (
+              <div className="text-center mt-12 flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => prev + 16)}
-                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer"
+                  disabled={isLoadingMore}
+                  onClick={() => fetchBrandProducts(currentPage + 1, true)}
+                  className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Load More Products ({filteredProducts.length - visibleCount} remaining)
+                  {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - filteredProducts.length)} remaining)`}
                 </button>
               </div>
             )}

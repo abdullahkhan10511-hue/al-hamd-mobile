@@ -56,15 +56,22 @@ export async function POST(request: NextRequest) {
       const filtered = currentLocations.filter((l) => l.id !== id);
       writePersistentLocations(filtered);
 
+      let revalidated = true;
       try {
+        revalidatePath('/', 'layout');
         revalidatePath('/');
         revalidatePath('/contact');
+        revalidatePath('/api/locations');
         revalidatePath('/admin/shop-location');
-      } catch {}
+      } catch (revErr) {
+        console.warn('Location delete revalidation notice:', revErr);
+        revalidated = false;
+      }
 
       return NextResponse.json({
         success: true,
-        message: 'Shop location deleted successfully.',
+        revalidated,
+        message: revalidated ? 'Saved and live' : 'Shop location deleted, but storefront revalidation is pending.',
         locations: filtered,
       });
     }
@@ -109,14 +116,22 @@ export async function POST(request: NextRequest) {
 
     writePersistentLocations(updatedList);
 
+    let revalidated = true;
     try {
+      revalidatePath('/', 'layout');
       revalidatePath('/');
       revalidatePath('/contact');
+      revalidatePath('/api/locations');
       revalidatePath('/admin/shop-location');
-    } catch {}
+    } catch (revErr) {
+      console.warn('Location save revalidation notice:', revErr);
+      revalidated = false;
+    }
 
     return NextResponse.json({
       success: true,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Shop location saved, but storefront revalidation is pending.',
       data: record,
       location: record,
       locations: updatedList,

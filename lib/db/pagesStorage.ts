@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { CustomPage } from '@/types/admin';
 import { seedPages } from './pages';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
 /**
  * Server Disk Storage & Fallback Cache for Custom Pages.
@@ -11,13 +11,8 @@ import { getDataDir } from '@/lib/storage/dataDir';
  * PRIMARY / PRODUCTION STORE: MySQL `custom_pages` table via `lib/db/repositories/pages.ts`.
  * SECONDARY / FALLBACK STORE: `data/custom-pages.json` for offline resilience and local dev caching.
  */
-const DATA_DIR = getDataDir();
-const PAGES_FILE = path.join(DATA_DIR, 'custom-pages.json');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+function getPagesFilePath(): string {
+  return getDataFilePath('custom-pages.json');
 }
 
 function normalizePages(raw: CustomPage[]): CustomPage[] {
@@ -25,10 +20,10 @@ function normalizePages(raw: CustomPage[]): CustomPage[] {
 }
 
 export function readPersistentPages(): CustomPage[] {
+  const filePath = getPagesFilePath();
   try {
-    ensureDataDir();
-    if (fs.existsSync(PAGES_FILE)) {
-      const content = fs.readFileSync(PAGES_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return normalizePages(parsed);
@@ -40,17 +35,16 @@ export function readPersistentPages(): CustomPage[] {
 
   const defaults = normalizePages(seedPages);
   try {
-    ensureDataDir();
-    fs.writeFileSync(PAGES_FILE, JSON.stringify(defaults, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, defaults);
   } catch {}
   return defaults;
 }
 
 export function writePersistentPages(items: CustomPage[]): void {
   try {
-    ensureDataDir();
+    const filePath = getPagesFilePath();
     const sorted = normalizePages(items);
-    fs.writeFileSync(PAGES_FILE, JSON.stringify(sorted, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, sorted);
   } catch (err) {
     console.error('Failed to write custom-pages.json:', err);
     throw new Error('Failed to write custom pages to persistent server storage.');

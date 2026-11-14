@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { getAllCategoriesFromDb, insertCategoryToDb } from '@/lib/db/repositories/categories';
 import { getAdminSessionAsync, hasAdminPermission } from '@/lib/db/adminAuth';
 import { allowDevMockFallback } from '@/lib/env';
 import { deduplicateCategoriesById } from '@/lib/utils';
 import { getPublicCacheHeaders } from '@/lib/cacheControl';
+import { serverCache } from '@/lib/cache/memoryCache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -67,19 +69,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Category name is required.' }, { status: 400 });
     }
 
+    let category: any = null;
     if (isDbConfigured()) {
-      const category = await insertCategoryToDb(body, session.email);
-      return NextResponse.json({ success: true, category }, { status: 201 });
+      category = await insertCategoryToDb(body, session.email);
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       const { insertDevCategory } = await import('@/lib/db/serverDevStorage');
-      const category = await insertDevCategory(body, session.email);
-      return NextResponse.json({ success: true, category }, { status: 201 });
+      category = await insertDevCategory(body, session.email);
     } else {
       return NextResponse.json(
         { success: false, error: 'Database is not configured in production.' },
         { status: 503 }
       );
     }
+
+    serverCache.invalidate('categories');
+    let revalidated = true;
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/categories');
+      if (category?.slug) {
+        revalidatePath(`/category/${category.slug}`);
+      }
+      revalidatePath('/api/categories');
+      revalidatePath('/admin/categories');
+    } catch (revErr) {
+      console.warn('Category revalidation notice:', revErr);
+      revalidated = false;
+    }
+
+    return NextResponse.json({
+      success: true,
+      category,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+    }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || 'Failed to create category.' },

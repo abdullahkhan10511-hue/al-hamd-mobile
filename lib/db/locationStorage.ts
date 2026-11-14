@@ -2,15 +2,17 @@ import 'server-only';
 import fs from 'fs';
 import path from 'path';
 import { ShopLocation } from '@/types/admin';
-import { getDataDir } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 
-const DATA_DIR = getDataDir();
-const LOCATIONS_FILE = path.join(DATA_DIR, 'shop-locations.json');
+function getLocationsFilePath(): string {
+  return getDataFilePath('shop-locations.json');
+}
 
 export function readPersistentLocations(): ShopLocation[] {
+  const filePath = getLocationsFilePath();
   try {
-    if (fs.existsSync(LOCATIONS_FILE)) {
-      const content = fs.readFileSync(LOCATIONS_FILE, 'utf8');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed)) {
         return parsed;
@@ -24,10 +26,8 @@ export function readPersistentLocations(): ShopLocation[] {
 
 export function writePersistentLocations(locations: ShopLocation[]): void {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(LOCATIONS_FILE, JSON.stringify(locations, null, 2), 'utf8');
+    const filePath = getLocationsFilePath();
+    writeAtomicJsonFile(filePath, locations);
   } catch (err) {
     console.error('Failed to write shop-locations.json:', err);
     throw new Error('Failed to write shop location to persistent server storage.');

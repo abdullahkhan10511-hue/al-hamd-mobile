@@ -189,11 +189,16 @@ export async function fetchProductById(
 ): Promise<(Product & { sku: string; lowStockThreshold: number; trending?: boolean; isActive?: boolean }) | null> {
   if (typeof window !== 'undefined') {
     try {
-      const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const isAdminPath = window.location.pathname.startsWith('/admin');
+      const endpoint = isAdminPath
+        ? `/api/admin/products/${encodeURIComponent(id)}`
+        : `/api/products?id=${encodeURIComponent(id)}`;
+      const res = await fetch(endpoint, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.product) {
-          return json.product;
+        if (json.success) {
+          if (json.product) return json.product;
+          if (Array.isArray(json.products) && json.products[0]) return json.products[0];
         }
       }
     } catch (err) {

@@ -1,7 +1,7 @@
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getDataFilePath } from '@/lib/storage/dataDir';
+import { getDataFilePath, writeAtomicJsonFile } from '@/lib/storage/dataDir';
 import { query, execute, isDbConfigured } from '../mysql';
 import { RowDataPacket } from 'mysql2/promise';
 import { revalidatePath } from 'next/cache';
@@ -38,13 +38,10 @@ export function readLocalSiteUiSettings(): LocalSettingsFile {
 export function writeLocalSiteUiSettings(data: LocalSettingsFile): void {
   try {
     const filePath = getDataFilePath(SETTINGS_FILE_NAME);
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeAtomicJsonFile(filePath, data);
   } catch (err) {
     console.error('Failed to write local site-ui-settings.json:', err);
+    throw err;
   }
 }
 

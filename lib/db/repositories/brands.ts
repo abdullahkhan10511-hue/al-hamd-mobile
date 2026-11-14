@@ -90,10 +90,15 @@ export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
     await ensureBrandOrderSchema().catch(() => {});
 
     const whereClause = activeOnly ? "WHERE b.status = 'active'" : '';
+    const productCountSubquery = `(SELECT COUNT(*) FROM products p 
+      WHERE (p.brand = b.name OR p.brand = b.id OR p.brand_id = b.id OR LOWER(p.brand) = LOWER(b.slug) OR LOWER(p.brand) = LOWER(b.name))
+      AND (p.status = 'active' OR p.status IS NULL OR (LOWER(p.status) != 'inactive' AND LOWER(p.status) != 'archived' AND LOWER(p.status) != 'draft' AND LOWER(p.status) != 'hidden'))
+      AND (p.is_active = 1 OR p.is_active IS NULL)
+      AND p.price > 0) AS product_count`;
     try {
       const rows = await query<BrandRow[]>(
         `SELECT b.*,
-          (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+          ${productCountSubquery}
          FROM brands b
          ${whereClause}
          ORDER BY b.sort_order ASC, b.name ASC`
@@ -108,7 +113,7 @@ export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
       // Fallback if sort_order column does not exist yet
       const rows = await query<BrandRow[]>(
         `SELECT b.*,
-          (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+          ${productCountSubquery}
          FROM brands b
          ${whereClause}
          ORDER BY b.name ASC`

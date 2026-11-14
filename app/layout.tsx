@@ -11,8 +11,10 @@ import { getServerStoreSettings as getStoreSettings, normalizeCanonicalUrl, reso
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
 import { StoreSettings } from '@/types/admin';
+import { readPersistentNavigation } from '@/lib/db/navigationStorage';
+import { readPersistentAnnouncements } from '@/lib/db/announcementsStorage';
 
-export const revalidate = 300;
+export const revalidate = 60;
 
 const loadServerSettings = cache(async (): Promise<StoreSettings> => {
   let settings = getStoreSettings();
@@ -207,6 +209,8 @@ export default async function RootLayout({
 
   // WebSite and Organization / OnlineStore JSON-LD Structured Data
   const whatsappRes = await getWhatsAppButtonSettings().catch(() => null);
+  const initialNav = readPersistentNavigation();
+  const initialAnnounce = readPersistentAnnouncements();
 
   const structuredData = [
     {
@@ -239,7 +243,11 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col bg-white text-neutral-900 selection:bg-neutral-950 selection:text-white overflow-x-hidden max-w-full">
         <Providers>
-          <Header initialSettings={settings} />
+          <Header
+            initialSettings={settings}
+            initialNavigation={initialNav}
+            initialAnnouncements={initialAnnounce}
+          />
           <main className="flex-1">{children}</main>
           <Footer initialSettings={settings} />
           <FloatingWhatsApp initialSettings={whatsappRes?.settings} />

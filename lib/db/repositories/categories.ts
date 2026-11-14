@@ -26,14 +26,17 @@ interface CategoryRow extends RowDataPacket {
   updated_at: string;
 }
 
-function mapRowToCategory(row: CategoryRow): Category {
+function mapRowToCategory(row: CategoryRow & { live_product_count?: number }): Category {
+  const count = row.live_product_count !== undefined && row.live_product_count !== null
+    ? Number(row.live_product_count)
+    : Number(row.product_count || 0);
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
     image: row.image,
     description: row.description || '',
-    productCount: Number(row.product_count),
+    productCount: count,
     status: (typeof row.status === 'string' && row.status.trim() ? row.status.trim().toLowerCase() : 'active') as Category['status'],
     isActive: row.is_active !== undefined && row.is_active !== null ? Boolean(Number(row.is_active)) : (typeof row.status !== 'string' || row.status.trim().toLowerCase() === 'active'),
     featured: Boolean(row.featured),
@@ -46,10 +49,25 @@ export async function getAllCategoriesFromDb(): Promise<Category[]> {
   }
 
   return serverCache.getOrSet('categories:all', async () => {
-    const rows = await query<CategoryRow[]>(
-      'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
-    );
-    return deduplicateCategoriesById(rows.map(mapRowToCategory));
+    try {
+      const rows = await query<CategoryRow[]>(
+        `SELECT c.*,
+          (SELECT COUNT(*) FROM products p
+           WHERE (p.category_slug = c.slug OR p.category = c.name OR p.category = c.id)
+           AND (p.status = 'active' OR p.status IS NULL OR (LOWER(p.status) != 'inactive' AND LOWER(p.status) != 'archived' AND LOWER(p.status) != 'draft' AND LOWER(p.status) != 'hidden'))
+           AND (p.is_active = 1 OR p.is_active IS NULL)
+           AND p.price > 0
+          ) AS live_product_count
+         FROM categories c
+         ORDER BY c.sort_order ASC, c.name ASC`
+      );
+      return deduplicateCategoriesById(rows.map(mapRowToCategory));
+    } catch {
+      const rows = await query<CategoryRow[]>(
+        'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
+      );
+      return deduplicateCategoriesById(rows.map(mapRowToCategory));
+    }
   }, 60000);
 }
 

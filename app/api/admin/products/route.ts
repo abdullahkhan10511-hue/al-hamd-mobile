@@ -10,6 +10,7 @@ import {
   sanitizeProductForSession,
   validateProductWritePermissions,
 } from '@/lib/productSanitizer';
+import { serverCache } from '@/lib/cache/memoryCache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -91,14 +92,6 @@ export async function POST(request: NextRequest) {
     let product: any = null;
     if (isDbConfigured()) {
       product = await insertProductToDb(body, session.email);
-      try {
-        revalidatePath('/');
-        revalidatePath('/api/products');
-        revalidatePath('/products');
-        revalidatePath('/admin/products');
-      } catch (revErr) {
-        console.warn('revalidatePath notice:', revErr);
-      }
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
       const { insertDevProduct } = await import('@/lib/db/serverDevStorage');
       product = await insertDevProduct(body, session.email);
@@ -109,8 +102,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    serverCache.invalidate('products');
+    let revalidated = true;
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/');
+      revalidatePath('/shop');
+      revalidatePath('/search');
+      revalidatePath('/categories');
+      revalidatePath('/brands');
+      if (product?.slug) {
+        revalidatePath(`/product/${product.slug}`);
+      }
+      revalidatePath('/api/products');
+      revalidatePath('/admin/products');
+    } catch (revErr) {
+      console.warn('Product create revalidation notice:', revErr);
+      revalidated = false;
+    }
+
     const safeProduct = sanitizeProductForSession(product, session);
-    return NextResponse.json({ success: true, product: safeProduct }, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      product: safeProduct,
+      revalidated,
+      message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+    }, { status: 201 });
   } catch (err: any) {
     console.error('Error creating product:', err);
     return NextResponse.json(

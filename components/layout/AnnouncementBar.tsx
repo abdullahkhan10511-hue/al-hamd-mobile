@@ -9,9 +9,19 @@ import { getAnnouncements, syncAnnouncementsFromApi } from '@/lib/db/announcemen
 import { getStoreSettings } from '@/lib/db/settings';
 import { AnnouncementItem, StoreSettings } from '@/types/admin';
 
-export function AnnouncementBar({ initialSettings }: { initialSettings?: StoreSettings }) {
+export function AnnouncementBar({
+  initialSettings,
+  initialAnnouncements,
+}: {
+  initialSettings?: StoreSettings;
+  initialAnnouncements?: AnnouncementItem[];
+}) {
   const pathname = usePathname();
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(
+    initialAnnouncements && initialAnnouncements.length > 0
+      ? initialAnnouncements.filter((a) => a.active)
+      : []
+  );
   const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [currentIndex, setCurrentIndex] = useState(0);
 

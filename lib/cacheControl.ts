@@ -1,8 +1,8 @@
 /**
- * Public API Caching Helper (Task C1)
+ * Public API Caching Helper (Task C1 & Step 17)
  *
  * Unauthenticated GET requests receive:
- *   Cache-Control: public, max-age=30, s-maxage=60, stale-while-revalidate=300
+ *   Cache-Control: public, max-age=15, s-maxage=30, stale-while-revalidate=60
  *
  * Authenticated requests (admin or wholesale/customer session cookie or Authorization header)
  * or cache-busting requests receive:
@@ -19,7 +19,7 @@ export function getPublicCacheHeaders(request?: Request): Record<string, string>
 
   if (!request) {
     return {
-      'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
+      'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=60',
       'Vary': 'Accept-Encoding, Cookie, Authorization',
     };
   }
@@ -51,7 +51,7 @@ export function getPublicCacheHeaders(request?: Request): Record<string, string>
 
   // 4. Return public CDN/browser caching headers
   return {
-    'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
+    'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=60',
     'Vary': 'Accept-Encoding, Cookie, Authorization',
   };
 }
