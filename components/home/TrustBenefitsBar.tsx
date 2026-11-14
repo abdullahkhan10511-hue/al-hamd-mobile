@@ -89,20 +89,19 @@ export function TrustBenefitsBar({
   initialBenefits?: TrustBenefitItem[];
 }) {
   const [benefits, setBenefits] = useState<TrustBenefitItem[]>(() => {
-    if (initialBenefits && initialBenefits.length > 0) {
-      const visible = initialBenefits.filter((b) => b.visible !== false);
-      if (visible.length > 0) return visible.slice(0, 4);
+    if (Array.isArray(initialBenefits)) {
+      return initialBenefits.filter((b) => b.visible !== false).slice(0, 4);
     }
-    return CANONICAL_TRUST_BENEFITS;
+    return [];
   });
 
   useEffect(() => {
-    if (initialBenefits && initialBenefits.length > 0) {
+    if (initialBenefits !== undefined) {
       return;
     }
     const loadData = () => {
-      const list = getTrustBenefits().filter((b) => b.visible);
-      setBenefits(list.length > 0 ? list.slice(0, 4) : CANONICAL_TRUST_BENEFITS);
+      const list = getTrustBenefits().filter((b) => b.visible !== false);
+      setBenefits(list.slice(0, 4));
     };
     loadData();
 

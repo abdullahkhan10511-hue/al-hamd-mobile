@@ -128,6 +128,14 @@ export async function createPosSale(params: CreatePosSaleParams): Promise<PosSal
         ? getModelEffectivePrice(product, modelObj, customerTier)
         : getProductEffectivePrice(product, customerTier);
       const unitPrice = basePrice;
+      // Reject unitPrice <= 0
+      if (unitPrice <= 0) {
+        return {
+          success: false,
+          error: `Item "${product.name}" has no valid price configured (Price on request) and cannot be sold.`,
+        };
+      }
+
       const lineTotal = unitPrice * cartItem.quantity;
 
       calculatedSubtotal += lineTotal;

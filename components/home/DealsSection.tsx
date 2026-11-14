@@ -15,12 +15,22 @@ const DealModal = dynamic(
 
 const HOMEPAGE_DEALS_LIMIT = 2;
 
-export function DealsSection() {
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+export function DealsSection({ initialDeals }: { initialDeals?: Deal[] }) {
+  const [deals, setDeals] = useState<Deal[]>(() => {
+    if (Array.isArray(initialDeals)) {
+      return initialDeals.filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d));
+    }
+    return [];
+  });
+  const [isLoaded, setIsLoaded] = useState(() => Array.isArray(initialDeals));
   const [selectedDealForModal, setSelectedDealForModal] = useState<Deal | null>(null);
 
   const loadData = () => {
+    if (Array.isArray(initialDeals)) {
+      setDeals(initialDeals.filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d)));
+      setIsLoaded(true);
+      return;
+    }
     // Show only active deals within start/end timing enabled for homepage, sorted by displayOrder / priority
     const list = getDeals()
       .filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d))
@@ -30,11 +40,19 @@ export function DealsSection() {
   };
 
   useEffect(() => {
-    loadData();
+    if (!initialDeals) {
+      loadData();
+    }
 
     syncDealsFromApi()
-      .then(() => loadData())
-      .catch(() => {
+      .then((fresh) => {
+        if (Array.isArray(fresh)) {
+          const active = fresh.filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d));
+          setDeals(active);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
         setIsLoaded(true);
       });
 

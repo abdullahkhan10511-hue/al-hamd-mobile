@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { getCanonicalProducts } from '@/lib/db/products';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Reveal3D } from '@/components/ui/motion/Reveal3D';
 import { isStorefrontVisibleProduct } from '@/lib/utils';
@@ -11,13 +10,12 @@ import { Product } from '@/types';
 
 export function NewArrivals({ initialProducts }: { initialProducts?: Product[] }) {
   const [products] = useState<Product[]>(() => {
-    if (initialProducts && initialProducts.length > 0) {
-      return initialProducts.filter(isStorefrontVisibleProduct).slice(0, 8);
+    if (Array.isArray(initialProducts)) {
+      return initialProducts
+        .filter((p) => isStorefrontVisibleProduct(p) && Boolean((p as any).isNewArrival))
+        .slice(0, 8);
     }
-    return getCanonicalProducts()
-      .filter((p) => isStorefrontVisibleProduct(p))
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-      .slice(0, 8);
+    return [];
   });
 
   if (products.length === 0) return null;

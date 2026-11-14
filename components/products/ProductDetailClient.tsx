@@ -25,6 +25,7 @@ import {
   Plus,
   ArrowLeft,
   ChevronRight as BreadcrumbChevron,
+  MessageCircle,
 } from 'lucide-react';
 import { getProductBySlug } from '@/lib/db/products';
 import { useCart } from '@/context/CartContext';
@@ -37,6 +38,7 @@ import { getCategoryPlaceholder, isPlaceholderImage } from '@/lib/placeholders';
 import { Product, ProductModelVariant } from '@/types';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getProductEffectivePrice, getModelEffectivePrice } from '@/lib/wholesale';
+import { buildProductInquiryWhatsAppUrl } from '@/lib/whatsapp';
 import { Tilt3D } from '@/components/ui/motion/Tilt3D';
 
 function getProductMediaList(
@@ -426,9 +428,6 @@ export function ProductDetailClient({
   }
 
   const isFavorited = isInWishlist(product.id);
-  const canAddToCart = !isModelRequired || Boolean(selectedModel);
-
-  // Pricing calculations
   const customerTier = isSuperWholesale
     ? 'SUPER_WHOLESALE'
     : isWholesale
@@ -438,6 +437,13 @@ export function ProductDetailClient({
   const effectivePrice = selectedModelObj
     ? getModelEffectivePrice(product, selectedModelObj, customerTier)
     : getProductEffectivePrice(product, customerTier);
+
+  const isPriceOnRequest = effectivePrice <= 0;
+  const inquiryWhatsAppUrl = useMemo(() => {
+    return product ? buildProductInquiryWhatsAppUrl(product) : '';
+  }, [product]);
+
+  const canAddToCart = (!isModelRequired || Boolean(selectedModel)) && !isPriceOnRequest;
 
   const retailEffectivePrice = selectedModelObj
     ? selectedModelObj.price || product.price
@@ -773,18 +779,31 @@ export function ProductDetailClient({
             {/* Pricing Section */}
             <div className="p-5 rounded-3xl bg-neutral-50/70 border border-neutral-100/80 space-y-2">
               <div className="flex items-baseline gap-3 flex-wrap">
-                <span className="text-2xl sm:text-3xl font-extrabold text-neutral-950">
-                  {formatPrice(effectivePrice)}
-                </span>
-                {isDiscounted && (
-                  <span className="text-sm sm:text-base text-neutral-400 line-through">
-                    {formatPrice(compareAt)}
-                  </span>
-                )}
-                {isDiscounted && (
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    Save {Math.round(((compareAt - effectivePrice) / compareAt) * 100)}%
-                  </span>
+                {isPriceOnRequest ? (
+                  <div className="flex flex-col">
+                    <span className="text-2xl sm:text-3xl font-extrabold text-amber-900">
+                      Price on request
+                    </span>
+                    <span className="text-xs text-neutral-500 mt-1">
+                      Direct WhatsApp pricing inquiry available below
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-2xl sm:text-3xl font-extrabold text-neutral-950">
+                      {formatPrice(effectivePrice)}
+                    </span>
+                    {isDiscounted && (
+                      <span className="text-sm sm:text-base text-neutral-400 line-through">
+                        {formatPrice(compareAt)}
+                      </span>
+                    )}
+                    {isDiscounted && (
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                        Save {Math.round(((compareAt - effectivePrice) / compareAt) * 100)}%
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -793,7 +812,7 @@ export function ProductDetailClient({
                 <div className="flex items-center gap-1.5 text-xs text-amber-800 font-semibold bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
                   <Zap className="w-3.5 h-3.5 fill-amber-500" />
                   <span>
-                    Wholesale pricing unlocked (Retail: {formatPrice(retailEffectivePrice)})
+                    Wholesale pricing unlocked (Retail: {Number(retailEffectivePrice) > 0 ? formatPrice(retailEffectivePrice) : 'Price on request'})
                   </span>
                 </div>
               )}
@@ -918,73 +937,115 @@ export function ProductDetailClient({
             )}
 
             {/* Quantity and Actions */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center gap-3">
-                {/* Quantity Input */}
-                <div className="inline-flex items-center border border-neutral-300 rounded-full p-1 bg-white shadow-2xs">
+            {isPriceOnRequest ? (
+              <div className="space-y-3 pt-2">
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 flex items-start gap-3">
+                  <MessageCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-neutral-900">
+                      Price on Request · Available via WhatsApp
+                    </h4>
+                    <p className="text-xs text-neutral-600 mt-0.5">
+                      The retail price for this item is not set yet. Tap below to chat directly with our sales team on WhatsApp for current price, bulk quotes, and dispatch details.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <a
+                    href={inquiryWhatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-md cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 fill-white" />
+                    <span>Contact us for price</span>
+                  </a>
+
+                  {/* Wishlist Button */}
                   <button
                     type="button"
-                    onClick={handleDecrement}
-                    disabled={quantity <= 1}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    onClick={() => product && toggleWishlist(product.id)}
+                    className={`w-12 h-12 rounded-full border flex items-center justify-center btn-motion-depth transition-colors cursor-pointer shrink-0 ${
+                      isFavorited
+                        ? 'border-rose-200 bg-rose-50 text-rose-600'
+                        : 'border-neutral-300 hover:border-neutral-400 text-neutral-700 bg-white'
+                    }`}
+                    aria-label={isFavorited ? 'Remove from wishlist' : 'Add to wishlist'}
                   >
-                    <Minus className="w-3.5 h-3.5" />
+                    <Heart className={`w-5 h-5 ${isFavorited ? 'fill-rose-600' : ''}`} />
                   </button>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={quantityInput}
-                    onChange={handleQuantityInputChange}
-                    onBlur={handleQuantityInputBlur}
-                    className="w-12 text-center text-xs sm:text-sm font-bold text-neutral-900 bg-transparent focus:outline-none"
-                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-3">
+                  {/* Quantity Input */}
+                  <div className="inline-flex items-center border border-neutral-300 rounded-full p-1 bg-white shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={handleDecrement}
+                      disabled={quantity <= 1}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={quantityInput}
+                      onChange={handleQuantityInputChange}
+                      onBlur={handleQuantityInputBlur}
+                      className="w-12 text-center text-xs sm:text-sm font-bold text-neutral-900 bg-transparent focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleIncrement}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Add to Cart */}
                   <button
                     type="button"
-                    onClick={handleIncrement}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    onClick={handleAddToCart}
+                    disabled={!canAddToCart}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Add to Cart</span>
+                  </button>
+
+                  {/* Wishlist Button */}
+                  <button
+                    type="button"
+                    onClick={() => product && toggleWishlist(product.id)}
+                    className={`w-12 h-12 rounded-full border flex items-center justify-center btn-motion-depth transition-colors cursor-pointer shrink-0 ${
+                      isFavorited
+                        ? 'border-rose-200 bg-rose-50 text-rose-600'
+                        : 'border-neutral-300 hover:border-neutral-400 text-neutral-700 bg-white'
+                    }`}
+                    aria-label={isFavorited ? 'Remove from wishlist' : 'Add to wishlist'}
+                  >
+                    <Heart className={`w-5 h-5 ${isFavorited ? 'fill-rose-600' : ''}`} />
                   </button>
                 </div>
 
-                {/* Add to Cart */}
+                {/* Buy Now Button */}
                 <button
                   type="button"
-                  onClick={handleAddToCart}
+                  onClick={handleBuyNow}
                   disabled={!canAddToCart}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Add to Cart</span>
-                </button>
-
-                {/* Wishlist Button */}
-                <button
-                  type="button"
-                  onClick={() => product && toggleWishlist(product.id)}
-                  className={`w-12 h-12 rounded-full border flex items-center justify-center btn-motion-depth transition-colors cursor-pointer shrink-0 ${
-                    isFavorited
-                      ? 'border-rose-200 bg-rose-50 text-rose-600'
-                      : 'border-neutral-300 hover:border-neutral-400 text-neutral-700 bg-white'
-                  }`}
-                  aria-label={isFavorited ? 'Remove from wishlist' : 'Add to wishlist'}
-                >
-                  <Heart className={`w-5 h-5 ${isFavorited ? 'fill-rose-600' : ''}`} />
+                  <Zap className="w-4 h-4 fill-neutral-950" />
+                  <span>Buy Now</span>
                 </button>
               </div>
-
-              {/* Buy Now Button */}
-              <button
-                type="button"
-                onClick={handleBuyNow}
-                disabled={!canAddToCart}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs sm:text-sm font-bold tracking-wider uppercase btn-motion-depth transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Zap className="w-4 h-4 fill-neutral-950" />
-                <span>Buy Now</span>
-              </button>
-            </div>
+            )}
 
             {/* Trust Assurances */}
             <div className="grid grid-cols-2 gap-3 pt-4 border-t border-neutral-100">

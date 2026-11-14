@@ -21,13 +21,17 @@ import {
   getServerNewArrivals,
   getServerHomepageProducts,
   getServerAllCategories,
+  getServerAllBrands,
 } from '@/lib/db/serverCatalog';
 import { getHomepageAnimationsSettings } from '@/lib/db/repositories/siteUiSettings';
+import { getActiveDealsFromDb } from '@/lib/db/repositories/deals';
+import { getDeals, isDealCurrentlyActive } from '@/lib/db/deals';
+import { readPersistentLocations } from '@/lib/db/locationStorage';
 
 export const revalidate = 60; // 60-second ISR safety net for admin updates
 
 export default async function HomePage() {
-  const [heroVideosRes, newArrivals, allCategories, animSettingsRes] = await Promise.all([
+  const [heroVideosRes, newArrivals, allCategories, allBrands, homepageDeals, animSettingsRes, activeLocation] = await Promise.all([
     (async () => {
       let list: HomepageVideo[] = [];
       if (isDbConfigured()) {
@@ -44,10 +48,30 @@ export default async function HomePage() {
     })(),
     getServerNewArrivals(8),
     getServerAllCategories(),
+    getServerAllBrands(true),
+    (async () => {
+      if (isDbConfigured()) {
+        try {
+          const dbDeals = await getActiveDealsFromDb();
+          return dbDeals.filter((d) => d && d.showOnHomepage);
+        } catch (err) {
+          console.warn('[HomePage] DB deals error:', err);
+        }
+      }
+      return getDeals().filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d));
+    })(),
     getHomepageAnimationsSettings().catch((err) => {
       console.error('[HomePage] getHomepageAnimationsSettings error:', err);
       return null;
     }),
+    (async () => {
+      try {
+        const locations = readPersistentLocations();
+        return locations.find((l) => l.isActive) || null;
+      } catch {
+        return null;
+      }
+    })(),
   ]);
 
   const newArrivalIds = newArrivals.map((p) => p.id);
@@ -100,16 +124,20 @@ export default async function HomePage() {
         return (
           <ShopByBrands
             key="brands"
+            initialBrands={allBrands}
             settings={animSettingsRes?.settings?.brands}
           />
         );
       case 'new-arrivals':
+        if (!newArrivals || newArrivals.length === 0) return null;
         return <NewArrivals key="new-arrivals" initialProducts={newArrivals} />;
       case 'best-sellers':
+        if (!bestSellers || bestSellers.length === 0) return null;
         return <BestSellers key="best-sellers" initialProducts={bestSellers} />;
       case 'deals':
       case 'promo-banners':
-        return <DealsSection key="deals" />;
+        if (homepageDeals.length === 0) return null;
+        return <DealsSection key="deals" initialDeals={homepageDeals} />;
       case 'all-products':
         return (
           <AllProductsSection
@@ -121,7 +149,7 @@ export default async function HomePage() {
           />
         );
       case 'final-trust':
-        return <FinalTrustBar key="final-trust" />;
+        return <FinalTrustBar key="final-trust" initialLocation={activeLocation} />;
       default:
         return null;
     }

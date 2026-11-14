@@ -85,6 +85,13 @@ export async function createPosSaleInDb(params: CreatePosSaleParams): Promise<Po
     }
 
 
+    if (unitPrice <= 0) {
+      return {
+        success: false,
+        error: `Item "${product.name}" has no valid price configured (Price on request) and cannot be sold.`,
+      };
+    }
+
     if (itemAvailableStock < cartItem.quantity) {
       return {
         success: false,

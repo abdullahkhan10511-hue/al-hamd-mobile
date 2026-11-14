@@ -43,6 +43,27 @@ export default function AdminProductsPage() {
   const categories = deduplicateCategoriesById(getCategories());
   const brands = getBrands();
 
+  // Read-only audit: products with unlinked category or brand
+  const unlinkedCategoryProducts = React.useMemo(() => {
+    const catSlugs = new Set(categories.map((c) => c.slug?.toLowerCase()).filter(Boolean));
+    const catNames = new Set(categories.map((c) => c.name?.toLowerCase()).filter(Boolean));
+    return products.filter((p) => {
+      const slugMatch = p.categorySlug && catSlugs.has(p.categorySlug.toLowerCase());
+      const nameMatch = p.category && catNames.has(p.category.toLowerCase());
+      return !slugMatch && !nameMatch;
+    });
+  }, [products, categories]);
+
+  const unlinkedBrandProducts = React.useMemo(() => {
+    const brandNames = new Set(brands.map((b) => b.name?.toLowerCase()).filter(Boolean));
+    const brandSlugs = new Set(brands.map((b) => b.slug?.toLowerCase()).filter(Boolean));
+    return products.filter((p) => {
+      const nameMatch = p.brand && brandNames.has(p.brand.toLowerCase());
+      const slugMatch = p.brandSlug && brandSlugs.has(p.brandSlug.toLowerCase());
+      return !nameMatch && !slugMatch;
+    });
+  }, [products, brands]);
+
   useEffect(() => {
     syncProductsFromApi(true).then((fresh) => {
       if (fresh && fresh.length > 0) {
@@ -135,6 +156,29 @@ export default function AdminProductsPage() {
           </Link>
         </div>
       </div>
+
+      {/* Audit Warnings for Unlinked Categories / Brands (Read-Only) */}
+      {(unlinkedCategoryProducts.length > 0 || unlinkedBrandProducts.length > 0) && (
+        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-xs space-y-1.5">
+          <div className="flex items-center gap-2 font-bold text-amber-900">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Catalogue Integrity Notice (Read-Only Audit)</span>
+          </div>
+          <p className="text-amber-800">
+            All products remain completely visible in <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">/shop</code> and search.
+            {unlinkedCategoryProducts.length > 0 && (
+              <span className="block mt-1">
+                • <strong>{unlinkedCategoryProducts.length} product(s)</strong> have a category slug/name not currently matched to a registered category row.
+              </span>
+            )}
+            {unlinkedBrandProducts.length > 0 && (
+              <span className="block mt-0.5">
+                • <strong>{unlinkedBrandProducts.length} product(s)</strong> have a brand not currently matched to a registered brand row.
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 text-xs">

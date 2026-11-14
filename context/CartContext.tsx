@@ -217,6 +217,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     // Prevent adding out-of-stock items to cart
     if (!product) return;
 
+    // Reject items with price <= 0 (Price on request)
+    const tier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
+    const effectiveUnitPrice = selectedPrice !== undefined ? selectedPrice : getProductEffectivePrice(product, tier);
+    if (!Number.isFinite(effectiveUnitPrice) || effectiveUnitPrice <= 0) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('alhamd:toast', {
+            detail: {
+              type: 'error',
+              message: `"${product.name}" is Price on request. Please contact us via WhatsApp to inquire about pricing.`,
+            },
+          })
+        );
+      }
+      return;
+    }
+
     const size = selectedSize || (product.variants?.sizes ? product.variants.sizes[0] : undefined);
     const color =
       selectedColor ||
@@ -306,6 +323,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     selectedImage?: string
   ) => {
     if (!product) return;
+
+    // Reject items with price <= 0 (Price on request)
+    const tier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
+    const effectiveUnitPrice = selectedPrice !== undefined ? selectedPrice : getProductEffectivePrice(product, tier);
+    if (!Number.isFinite(effectiveUnitPrice) || effectiveUnitPrice <= 0) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('alhamd:toast', {
+            detail: {
+              type: 'error',
+              message: `"${product.name}" is Price on request. Please contact us via WhatsApp to inquire about pricing.`,
+            },
+          })
+        );
+      }
+      return;
+    }
 
     const size = selectedSize || (product.variants?.sizes ? product.variants.sizes[0] : undefined);
     const color =

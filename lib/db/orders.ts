@@ -220,6 +220,13 @@ export async function createOrder(
       basePrice = product ? getProductEffectivePrice(product, resolvedTier) : item.price;
     }
 
+    // Reject items with price <= 0 (Price on request)
+    if (basePrice <= 0) {
+      throw new Error(
+        `Cannot place order: item "${item.productName || item.productId || 'Unknown'}" has unit price Rs. ${basePrice} (Price on request).`
+      );
+    }
+
     const lineTotal = basePrice * item.quantity;
     calculatedSubtotal += lineTotal;
 

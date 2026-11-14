@@ -35,10 +35,14 @@ export function Header({
   initialSettings,
   initialNavigation,
   initialAnnouncements,
+  initialPages,
+  initialLocation,
 }: {
   initialSettings?: StoreSettings;
   initialNavigation?: NavigationItem[];
   initialAnnouncements?: AnnouncementItem[];
+  initialPages?: CustomPage[];
+  initialLocation?: ShopLocation | null;
 }) {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -47,12 +51,17 @@ export function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [navItems, setNavItems] = useState<NavigationItem[]>(
-    initialNavigation && initialNavigation.length > 0 ? initialNavigation : []
+    Array.isArray(initialNavigation) ? initialNavigation : []
   );
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
-  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
-  const [mobilePages, setMobilePages] = useState<CustomPage[]>([]);
+  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(initialLocation || null);
+  const [mobilePages, setMobilePages] = useState<CustomPage[]>(() => {
+    if (Array.isArray(initialPages)) {
+      return initialPages.filter((p) => p.status === 'Published' && p.showInMobile);
+    }
+    return [];
+  });
 
   const currentSettings = settings || initialSettings || null;
 
@@ -150,7 +159,13 @@ export function Header({
   };
 
   useEffect(() => {
-    loadData();
+    if (!initialNavigation || initialNavigation.length === 0) {
+      loadData();
+    } else {
+      setCategories(deduplicateCategoriesById(getActiveCategories()));
+      if (!initialLocation) setActiveLocation(getActiveShopLocation());
+    }
+
     syncNavigationFromApi(true).then(() => {
       loadData();
     }).catch(() => {});

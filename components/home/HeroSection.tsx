@@ -427,7 +427,7 @@ export function HeroSection({ initialVideos, showText = false }: HeroSectionProp
     (currentMediaType === 'video' && videoFailed && !activeMediaUrl) ||
     (currentMediaType !== 'video' && posterFailed);
 
-  const shouldShowHeroText = isMediaUnavailable || showText;
+  const shouldShowHeroText = Boolean(showText);
 
   // Never show poster for video items; picture/GIF items show their own image
   const showPosterLayer = Boolean(

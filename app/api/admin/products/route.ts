@@ -107,6 +107,8 @@ export async function POST(request: NextRequest) {
     try {
       revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/new-arrivals');
+      revalidatePath('/best-sellers');
       revalidatePath('/shop');
       revalidatePath('/search');
       revalidatePath('/categories');

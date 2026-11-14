@@ -13,10 +13,17 @@ export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
+    const isBestSeller = request.nextUrl.searchParams.get('isBestSeller') === 'true';
+    const isNewArrival = request.nextUrl.searchParams.get('isNewArrival') === 'true';
+    const isSale = request.nextUrl.searchParams.get('isSale') === 'true';
+    const collectionFilter = (isBestSeller || isNewArrival || isSale)
+      ? { isBestSeller, isNewArrival, isSale }
+      : undefined;
+
     let list: any[] = [];
     if (isDbConfigured()) {
       try {
-        list = await getAllCategoriesFromDb();
+        list = await getAllCategoriesFromDb(collectionFilter);
       } catch (err: any) {
         console.error('MySQL error in /api/categories GET:', err);
         return NextResponse.json(
@@ -25,8 +32,28 @@ export async function GET(request: NextRequest) {
         );
       }
     } else if (process.env.NODE_ENV !== 'production' && allowDevMockFallback()) {
-      const { getDevCategories } = await import('@/lib/db/serverDevStorage');
-      list = getDevCategories();
+      const { getDevCategories, getDevProducts } = await import('@/lib/db/serverDevStorage');
+      const devCats = getDevCategories();
+      if (collectionFilter) {
+        const devProds = getDevProducts().filter((p) => {
+          if (isBestSeller && !p.isBestSeller) return false;
+          if (isNewArrival && !(p.isNewArrival || (p as any).is_new_arrival)) return false;
+          if (isSale && !(p as any).isSale) return false;
+          return true;
+        });
+        list = devCats
+          .map((c) => {
+            const count = devProds.filter(
+              (p) =>
+                p.categorySlug === c.slug ||
+                p.category?.toLowerCase() === c.name.toLowerCase()
+            ).length;
+            return { ...c, productCount: count };
+          })
+          .filter((c) => (c.productCount || 0) > 0);
+      } else {
+        list = devCats;
+      }
     } else {
       return NextResponse.json(
         { success: false, error: 'Database is not configured in production.' },

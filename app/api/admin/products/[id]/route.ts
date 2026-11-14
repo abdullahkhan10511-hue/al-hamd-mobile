@@ -107,6 +107,8 @@ export async function PUT(
     try {
       revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/new-arrivals');
+      revalidatePath('/best-sellers');
       revalidatePath('/shop');
       revalidatePath('/search');
       revalidatePath('/categories');
@@ -180,6 +182,8 @@ export async function DELETE(
     try {
       revalidatePath('/', 'layout');
       revalidatePath('/');
+      revalidatePath('/new-arrivals');
+      revalidatePath('/best-sellers');
       revalidatePath('/shop');
       revalidatePath('/search');
       revalidatePath('/categories');

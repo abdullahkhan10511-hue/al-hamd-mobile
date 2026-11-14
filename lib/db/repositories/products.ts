@@ -483,6 +483,9 @@ export interface StorefrontProductQueryParams {
   maxPrice?: number;
   isBestSeller?: boolean;
   isNewArrival?: boolean;
+  isSale?: boolean;
+  featured?: boolean;
+  trending?: boolean;
   minimal?: boolean;
 }
 
@@ -524,7 +527,6 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
 
   const conditions: string[] = [
     "(status = 'active' OR status IS NULL OR (LOWER(status) != 'inactive' AND LOWER(status) != 'archived' AND LOWER(status) != 'draft' AND LOWER(status) != 'hidden'))",
-    'price > 0',
   ];
   const queryParams: any[] = [];
 
@@ -562,11 +564,18 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
     queryParams.push(cat.toLowerCase(), cat);
   }
 
-  // Filter: brand (slug or name)
+  // Filter: brand (slug or name, single or comma-separated)
   if (params.brand && params.brand !== 'all') {
-    const brand = params.brand.trim();
-    conditions.push('(brand = ? OR brand_id = ? OR LOWER(brand) = ?)');
-    queryParams.push(brand, brand, brand.toLowerCase());
+    const brands = params.brand.split(',').map((b) => b.trim()).filter(Boolean);
+    if (brands.length === 1) {
+      const brand = brands[0];
+      conditions.push('(brand = ? OR brand_id = ? OR LOWER(brand) = ?)');
+      queryParams.push(brand, brand, brand.toLowerCase());
+    } else if (brands.length > 1) {
+      const placeholders = brands.map(() => '?').join(',');
+      conditions.push(`(brand IN (${placeholders}) OR brand_id IN (${placeholders}) OR LOWER(brand) IN (${placeholders}))`);
+      queryParams.push(...brands, ...brands, ...brands.map((b) => b.toLowerCase()));
+    }
   }
 
   // Filter: search keyword (minimum 2 chars)
@@ -598,12 +607,21 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
     }
   }
 
-  // Filter: badges
+  // Filter: badges / collections
   if (params.isBestSeller) {
     conditions.push('is_best_seller = 1');
   }
   if (params.isNewArrival) {
-    conditions.push('(is_new = 1 OR is_new_arrival = 1)');
+    conditions.push('is_new_arrival = 1');
+  }
+  if (params.isSale) {
+    conditions.push('is_sale = 1');
+  }
+  if (params.featured) {
+    conditions.push('featured = 1');
+  }
+  if (params.trending) {
+    conditions.push('trending = 1');
   }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
@@ -631,11 +649,13 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
         break;
       case 'price-asc':
       case 'price-low':
-        orderBy = 'price ASC';
+        // Put Price on request (price = 0) last
+        orderBy = '(CASE WHEN price > 0 THEN 0 ELSE 1 END) ASC, price ASC, created_at DESC';
         break;
       case 'price-desc':
       case 'price-high':
-        orderBy = 'price DESC';
+        // Put Price on request (price = 0) last
+        orderBy = '(CASE WHEN price > 0 THEN 0 ELSE 1 END) ASC, price DESC, created_at DESC';
         break;
       case 'rating':
         orderBy = 'rating DESC, review_count DESC';
@@ -861,14 +881,37 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
         eligible = eligible.filter((p) => Boolean(p.isBestSeller));
       }
       if (params.isNewArrival) {
-        eligible = eligible.filter((p) => Boolean((p as any).isNewArrival || p.isNew));
+        eligible = eligible.filter((p) => Boolean((p as any).isNewArrival));
+      }
+      if (params.isSale) {
+        eligible = eligible.filter((p) => Boolean((p as any).isSale));
+      }
+      if (params.featured) {
+        eligible = eligible.filter((p) => Boolean(p.featured));
+      }
+      if (params.trending) {
+        eligible = eligible.filter((p) => Boolean((p as any).trending));
       }
 
-      // Sort
+      // Sort (price = 0 sorted last for price sorts)
       if (params.sortBy === 'price-asc' || params.sortBy === 'price-low') {
-        eligible.sort((a, b) => Number(a.price) - Number(b.price));
+        eligible.sort((a, b) => {
+          const pa = Number(a.price) || 0;
+          const pb = Number(b.price) || 0;
+          if (pa > 0 && pb > 0) return pa - pb;
+          if (pa > 0 && pb <= 0) return -1;
+          if (pa <= 0 && pb > 0) return 1;
+          return 0;
+        });
       } else if (params.sortBy === 'price-desc' || params.sortBy === 'price-high') {
-        eligible.sort((a, b) => Number(b.price) - Number(a.price));
+        eligible.sort((a, b) => {
+          const pa = Number(a.price) || 0;
+          const pb = Number(b.price) || 0;
+          if (pa > 0 && pb > 0) return pb - pa;
+          if (pa > 0 && pb <= 0) return -1;
+          if (pa <= 0 && pb > 0) return 1;
+          return 0;
+        });
       } else if (params.sortBy === 'rating') {
         eligible.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       } else if (params.sortBy === 'featured') {

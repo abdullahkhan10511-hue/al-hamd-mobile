@@ -371,10 +371,10 @@ export function SearchModal() {
                               </h4>
 
                               <div className="flex items-center gap-2 mt-1">
-                                <span className="text-sm sm:text-base font-bold font-mono text-neutral-950">
-                                  {formatPrice(product.price)}
+                                <span className={`text-sm sm:text-base font-bold ${Number(product.price) > 0 ? 'font-mono text-neutral-950' : 'text-amber-900'}`}>
+                                  {Number(product.price) > 0 ? formatPrice(product.price) : 'Price on request'}
                                 </span>
-                                {product.compareAtPrice && product.compareAtPrice > product.price && (
+                                {Number(product.price) > 0 && product.compareAtPrice && product.compareAtPrice > product.price && (
                                   <>
                                     <span className="text-xs text-neutral-400 line-through font-mono">
                                       {formatPrice(product.compareAtPrice)}
@@ -535,8 +535,8 @@ export function SearchModal() {
                               <h5 className="text-xs sm:text-sm font-bold text-neutral-950 truncate group-hover:text-neutral-700">
                                 {product.name}
                               </h5>
-                              <p className="text-xs font-mono font-bold text-neutral-950 mt-0.5">
-                                {formatPrice(product.price)}
+                              <p className={`text-xs font-bold mt-0.5 ${Number(product.price) > 0 ? 'font-mono text-neutral-950' : 'text-amber-900'}`}>
+                                {Number(product.price) > 0 ? formatPrice(product.price) : 'Price on request'}
                               </p>
                             </div>
                           </div>

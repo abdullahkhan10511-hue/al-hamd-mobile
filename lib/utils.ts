@@ -129,8 +129,8 @@ export function getAdminGreeting(name?: string | null): string {
 
 /**
  * Shared storefront product visibility predicate:
- * Excludes products whose status is draft/inactive/hidden/archived, isActive is false,
- * or whose price is 0 or less.
+ * Excludes products whose status is draft/inactive/hidden/archived, or isActive is false.
+ * Note: Products with price = 0 are included as active catalogue products ("Price on request").
  */
 export function isStorefrontVisibleProduct(product: any): boolean {
   if (!product || typeof product !== 'object') return false;
@@ -139,8 +139,6 @@ export function isStorefrontVisibleProduct(product: any): boolean {
   if (status === 'draft' || status === 'inactive' || status === 'hidden' || status === 'archived') {
     return false;
   }
-  const price = Number(product.price);
-  if (!Number.isFinite(price) || price <= 0) return false;
   return true;
 }
 

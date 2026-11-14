@@ -5,6 +5,8 @@ import { Banknote, Truck, ShieldCheck, RotateCcw } from 'lucide-react';
 import { ScrollReveal } from '@/components/ui/ScrollReveal';
 import { ShopLocationCard } from '@/components/ui/ShopLocationCard';
 
+import { ShopLocation } from '@/types/admin';
+
 const trustItems = [
   {
     icon: Banknote,
@@ -28,7 +30,7 @@ const trustItems = [
   },
 ];
 
-export function FinalTrustBar() {
+export function FinalTrustBar({ initialLocation }: { initialLocation?: ShopLocation | null }) {
   return (
     <section className="py-12 sm:py-16 bg-white border-b border-neutral-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -60,7 +62,7 @@ export function FinalTrustBar() {
         </div>
 
         {/* Physical Shop Verification Card */}
-        <ShopLocationCard />
+        <ShopLocationCard initialLocation={initialLocation} />
       </div>
     </section>
   );

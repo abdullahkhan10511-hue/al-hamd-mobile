@@ -8,6 +8,7 @@ import { ProductCard } from '@/components/products/ProductCard';
 import { isStorefrontVisibleProduct } from '@/lib/utils';
 import { Brand } from '@/types/admin';
 import { Product, Category } from '@/types';
+import { useGridBatchLimit } from '@/lib/useGridBatchLimit';
 import {
   getSavedListingState,
   saveListingState,
@@ -61,6 +62,8 @@ function BrandPageContent({
   }, [currentUrl]);
 
   const selectedCategoryParam = searchParams.get('category') || '';
+  const batchLimit = useGridBatchLimit(4);
+  const inFlightAbortRef = useRef<AbortController | null>(null);
 
   const [brandProducts, setBrandProducts] = useState<Product[]>(initialProducts);
   const [maxPrice, setMaxPrice] = useState<number>(() => savedState?.maxPrice ?? 1000000);
@@ -72,16 +75,22 @@ function BrandPageContent({
   const [totalCount, setTotalCount] = useState<number>(() => brand.productCount || initialProducts.length);
   const [hasMore, setHasMore] = useState<boolean>(initialProducts.length >= 16);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchBrandProducts = async (pageToFetch: number, isAppending = false) => {
+    inFlightAbortRef.current?.abort();
+    const controller = new AbortController();
+    inFlightAbortRef.current = controller;
+
     if (isAppending) {
       setIsLoadingMore(true);
     }
+    setLoadError(null);
     try {
       const params = new URLSearchParams();
       params.set('brand', brand.slug);
       params.set('page', String(pageToFetch));
-      params.set('limit', '24');
+      params.set('limit', String(batchLimit));
       params.set('minimal', 'true');
       if (selectedCategoryParam && selectedCategoryParam !== 'all') params.set('category', selectedCategoryParam);
       if (maxPrice < 1000000) params.set('maxPrice', String(maxPrice));
@@ -89,7 +98,9 @@ function BrandPageContent({
       if (sortBy) params.set('sort', sortBy);
       if (searchQuery && searchQuery.trim().length >= 2) params.set('q', searchQuery.trim());
 
-      const res = await fetch(`/api/products?${params.toString()}`);
+      const res = await fetch(`/api/products?${params.toString()}`, {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.products)) {
@@ -108,9 +119,13 @@ function BrandPageContent({
           setHasMore(Boolean(data.hasMore));
           setCurrentPage(pageToFetch);
         }
+      } else {
+        throw new Error(`Server returned status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       console.error('[BrandPage] Error fetching brand products:', err);
+      setLoadError('Failed to load products. Please check your connection and retry.');
     } finally {
       setIsLoadingMore(false);
     }
@@ -213,7 +228,8 @@ function BrandPageContent({
   const filteredProducts = useMemo(() => {
     let list = brandProducts.filter(isStorefrontVisibleProduct);
 
-    list = list.filter((p) => p.price <= maxPrice);
+    // Do not filter out price = 0 ("Price on request") unless maxPrice is set and minPrice > 0
+    list = list.filter((p) => p.price <= maxPrice || Number(p.price) === 0);
 
     if (selectedCategoryParam) {
       const targetCat = selectedCategoryParam.trim().toLowerCase();
@@ -256,10 +272,24 @@ function BrandPageContent({
 
     switch (sortBy) {
       case 'price-low':
-        list.sort((a, b) => a.price - b.price);
+        list.sort((a, b) => {
+          const pa = Number(a.price) || 0;
+          const pb = Number(b.price) || 0;
+          if (pa > 0 && pb > 0) return pa - pb;
+          if (pa > 0 && pb <= 0) return -1;
+          if (pa <= 0 && pb > 0) return 1;
+          return 0;
+        });
         break;
       case 'price-high':
-        list.sort((a, b) => b.price - a.price);
+        list.sort((a, b) => {
+          const pa = Number(a.price) || 0;
+          const pb = Number(b.price) || 0;
+          if (pa > 0 && pb > 0) return pb - pa;
+          if (pa > 0 && pb <= 0) return -1;
+          if (pa <= 0 && pb > 0) return 1;
+          return 0;
+        });
         break;
       case 'rating':
         list.sort((a, b) => b.rating - a.rating);
@@ -521,11 +551,24 @@ function BrandPageContent({
                 <button
                   type="button"
                   disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
                   onClick={() => fetchBrandProducts(currentPage + 1, true)}
                   className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - filteredProducts.length)} remaining)`}
                 </button>
+                {loadError && (
+                  <div className="flex items-center gap-2 text-xs text-rose-600 mt-2">
+                    <span>{loadError}</span>
+                    <button
+                      type="button"
+                      onClick={() => fetchBrandProducts(currentPage + 1, true)}
+                      className="font-bold underline hover:text-rose-700 cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

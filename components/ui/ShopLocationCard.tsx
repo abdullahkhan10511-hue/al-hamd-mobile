@@ -8,14 +8,17 @@ import { ShopLocation } from '@/types/admin';
 interface ShopLocationCardProps {
   className?: string;
   variant?: 'card' | 'compact' | 'banner';
+  initialLocation?: ShopLocation | null;
 }
 
-export function ShopLocationCard({ className = '', variant = 'card' }: ShopLocationCardProps) {
-  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
+export function ShopLocationCard({ className = '', variant = 'card', initialLocation }: ShopLocationCardProps) {
+  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(initialLocation || null);
 
   const loadLocation = () => {
-    const loc = getActiveShopLocation();
-    setActiveLocation(loc);
+    if (initialLocation === undefined) {
+      const loc = getActiveShopLocation();
+      setActiveLocation(loc);
+    }
   };
 
   useEffect(() => {

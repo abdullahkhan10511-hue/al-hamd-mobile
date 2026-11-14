@@ -19,7 +19,7 @@ export function getPublicCacheHeaders(request?: Request): Record<string, string>
 
   if (!request) {
     return {
-      'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=60',
+      'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=30',
       'Vary': 'Accept-Encoding, Cookie, Authorization',
     };
   }
@@ -51,7 +51,7 @@ export function getPublicCacheHeaders(request?: Request): Record<string, string>
 
   // 4. Return public CDN/browser caching headers
   return {
-    'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=60',
+    'Cache-Control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=30',
     'Vary': 'Accept-Encoding, Cookie, Authorization',
   };
 }

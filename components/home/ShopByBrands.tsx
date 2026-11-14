@@ -114,11 +114,18 @@ const BrandCard = React.memo(function BrandCard({
 });
 
 export function ShopByBrands({
+  initialBrands,
   settings: propSettings,
 }: {
+  initialBrands?: Brand[];
   settings?: MarqueeSectionSettings;
 }) {
-  const [brands, setBrands] = useState<Brand[]>(() => getCanonicalBrands());
+  const [brands, setBrands] = useState<Brand[]>(() => {
+    if (Array.isArray(initialBrands)) {
+      return initialBrands.filter((b) => b.status === 'active');
+    }
+    return [];
+  });
   const [isLoaded, setIsLoaded] = useState(true);
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const [settings, setSettings] = useState<MarqueeSectionSettings>(
@@ -134,10 +141,7 @@ export function ShopByBrands({
   const loadBrands = useCallback(() => {
     try {
       let loaded = getActiveBrands();
-      if (!loaded || loaded.length === 0) {
-        loaded = getCanonicalBrands();
-      }
-      setBrands(loaded);
+      setBrands(loaded ? loaded.filter((b) => b.status === 'active') : []);
     } catch {
       setBrands(seedBrands.filter((b) => b.status === 'active'));
     } finally {
@@ -146,16 +150,18 @@ export function ShopByBrands({
   }, []);
 
   useEffect(() => {
-    loadBrands();
+    if (initialBrands === undefined) {
+      loadBrands();
+    }
     syncBrandsFromApi()
       .then((apiBrands) => {
-        if (Array.isArray(apiBrands) && apiBrands.length > 0) {
+        if (Array.isArray(apiBrands)) {
           const activeOnly = apiBrands.filter((b) => b.status === 'active');
-          setBrands(activeOnly.length > 0 ? activeOnly : apiBrands);
+          setBrands(activeOnly);
         }
       })
       .catch(() => {});
-  }, [loadBrands]);
+  }, [initialBrands, loadBrands]);
 
   useEffect(() => {
     const handleStorageChange = () => {

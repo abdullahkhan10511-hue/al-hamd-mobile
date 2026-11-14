@@ -15,9 +15,10 @@ interface FloatingWhatsAppProps {
 
 export function FloatingWhatsApp({ initialSettings }: FloatingWhatsAppProps) {
   const pathname = usePathname() || '/';
-  const [settings, setSettings] = useState<WhatsAppButtonSettings>(
-    initialSettings || DEFAULT_WHATSAPP_SETTINGS
-  );
+  const [settings, setSettings] = useState<WhatsAppButtonSettings>(() => {
+    if (initialSettings) return initialSettings;
+    return { ...DEFAULT_WHATSAPP_SETTINGS, enabled: false };
+  });
   const [showTooltip, setShowTooltip] = useState(true);
   const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);

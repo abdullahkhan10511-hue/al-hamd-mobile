@@ -6,7 +6,8 @@ export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
-    const items = readPersistentNavigation();
+    const rawItems = readPersistentNavigation();
+    const items = rawItems.filter((n) => n.visible !== false);
 
     return NextResponse.json(
       { success: true, items, count: items.length },

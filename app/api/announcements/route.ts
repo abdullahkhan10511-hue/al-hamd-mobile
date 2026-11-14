@@ -6,7 +6,8 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    const items = readPersistentAnnouncements();
+    const rawItems = readPersistentAnnouncements();
+    const items = rawItems.filter((a) => a.active !== false);
 
     return NextResponse.json(
       { success: true, items, count: items.length },

@@ -33,6 +33,11 @@ export async function GET(request: NextRequest) {
     const maxPriceParam = searchParams.get('maxPrice') || searchParams.get('max_price');
     const minPrice = minPriceParam ? parseFloat(minPriceParam) : undefined;
     const maxPrice = maxPriceParam ? parseFloat(maxPriceParam) : undefined;
+    const isBestSeller = searchParams.get('isBestSeller') === 'true' || searchParams.get('bestSeller') === 'true';
+    const isNewArrival = searchParams.get('isNewArrival') === 'true' || searchParams.get('newArrival') === 'true';
+    const isSale = searchParams.get('isSale') === 'true' || searchParams.get('sale') === 'true';
+    const featured = searchParams.get('featured') === 'true';
+    const trending = searchParams.get('trending') === 'true';
     const minimal = searchParams.get('minimal') === 'true';
 
     // Parse requested IDs (up to 50 items for cart and wishlist)
@@ -165,6 +170,11 @@ export async function GET(request: NextRequest) {
         inStockOnly,
         minPrice: minPrice && !isNaN(minPrice) ? minPrice : undefined,
         maxPrice: maxPrice && !isNaN(maxPrice) ? maxPrice : undefined,
+        isBestSeller: isBestSeller || undefined,
+        isNewArrival: isNewArrival || undefined,
+        isSale: isSale || undefined,
+        featured: featured || undefined,
+        trending: trending || undefined,
         minimal,
       });
 
@@ -216,12 +226,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (brand && brand !== 'all') {
-      const brandClean = brand.trim().toLowerCase();
+      const brandTokens = brand.split(',').map((b) => b.trim().toLowerCase()).filter(Boolean);
       devList = devList.filter(
         (p) =>
-          p.brandSlug?.toLowerCase() === brandClean ||
-          p.brand?.toLowerCase() === brandClean ||
-          (p.brandId && p.brandId.toLowerCase() === brandClean)
+          brandTokens.includes(p.brandSlug?.toLowerCase() || '') ||
+          brandTokens.includes(p.brand?.toLowerCase() || '') ||
+          brandTokens.includes(p.brandId?.toLowerCase() || '')
       );
     }
 
@@ -240,11 +250,41 @@ export async function GET(request: NextRequest) {
       devList = devList.filter((p) => (p.stock || 0) > 0 || ((p as any).shopStock || 0) > 0);
     }
 
-    // Sorting
+    if (isBestSeller) {
+      devList = devList.filter((p) => Boolean(p.isBestSeller));
+    }
+    if (isNewArrival) {
+      devList = devList.filter((p) => Boolean((p as any).isNewArrival || (p as any).is_new_arrival));
+    }
+    if (isSale) {
+      devList = devList.filter((p) => Boolean((p as any).isSale));
+    }
+    if (featured) {
+      devList = devList.filter((p) => Boolean(p.featured));
+    }
+    if (trending) {
+      devList = devList.filter((p) => Boolean((p as any).trending));
+    }
+
+    // Sorting (price = 0 sorted last for price sorts)
     if (sortBy === 'price-asc') {
-      devList.sort((a, b) => (a.price || 0) - (b.price || 0));
+      devList.sort((a, b) => {
+        const pa = Number(a.price) || 0;
+        const pb = Number(b.price) || 0;
+        if (pa > 0 && pb > 0) return pa - pb;
+        if (pa > 0 && pb <= 0) return -1;
+        if (pa <= 0 && pb > 0) return 1;
+        return 0;
+      });
     } else if (sortBy === 'price-desc') {
-      devList.sort((a, b) => (b.price || 0) - (a.price || 0));
+      devList.sort((a, b) => {
+        const pa = Number(a.price) || 0;
+        const pb = Number(b.price) || 0;
+        if (pa > 0 && pb > 0) return pb - pa;
+        if (pa > 0 && pb <= 0) return -1;
+        if (pa <= 0 && pb > 0) return 1;
+        return 0;
+      });
     } else if (sortBy === 'rating') {
       devList.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else {

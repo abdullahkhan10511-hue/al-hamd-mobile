@@ -235,18 +235,39 @@ export async function POST(request: NextRequest) {
           } catch {}
         }
 
+        if (authoritativeUnitPrice <= 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `"${item.productName || 'Item'}" has no valid price configured (Price on request) and cannot be ordered online. Please contact us on WhatsApp for pricing.`,
+            },
+            { status: 400 }
+          );
+        }
+
         item.price = authoritativeUnitPrice;
         item.total = authoritativeUnitPrice * qty;
         item.quantity = qty;
         computedSubtotal += item.total;
       }
     } else {
-      computedSubtotal = body.items.reduce((sum: number, it: any) => {
+      for (const it of body.items) {
         const p = Number(it.price) || 0;
         const q = Math.max(1, Math.floor(Number(it.quantity) || 1));
+        if (p <= 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `"${it.productName || 'Item'}" has no valid price configured (Price on request) and cannot be ordered online. Please contact us on WhatsApp for pricing.`,
+            },
+            { status: 400 }
+          );
+        }
+        it.price = p;
         it.total = p * q;
-        return sum + it.total;
-      }, 0);
+        it.quantity = q;
+        computedSubtotal += it.total;
+      }
     }
 
     body.subtotal = computedSubtotal;

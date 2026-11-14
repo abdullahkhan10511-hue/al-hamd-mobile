@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { getProducts } from '@/lib/db/products';
 import { Product } from '@/types';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Reveal3D } from '@/components/ui/motion/Reveal3D';
@@ -11,14 +10,12 @@ import { isStorefrontVisibleProduct } from '@/lib/utils';
 
 export function BestSellers({ initialProducts }: { initialProducts?: Product[] }) {
   const [products] = useState<Product[]>(() => {
-    if (initialProducts && initialProducts.length > 0) {
+    if (Array.isArray(initialProducts)) {
       return initialProducts
         .filter((p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller))
         .slice(0, 8);
     }
-    return getProducts()
-      .filter((p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller))
-      .slice(0, 8);
+    return [];
   });
 
   if (products.length === 0) return null;

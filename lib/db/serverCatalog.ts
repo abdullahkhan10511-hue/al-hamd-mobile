@@ -143,7 +143,8 @@ export async function getServerRelatedProducts(
 
 /**
  * Server-side best sellers fetcher for Homepage SSR.
- * Returns only admin-flagged best sellers, excluding any IDs in excludeIds.
+ * Returns strictly admin-flagged best sellers (isBestSeller = true), excluding any IDs in excludeIds.
+ * Never falls back to random/newest/top-rated items when none are flagged.
  */
 export async function getServerBestSellers(limit = 8, excludeIds: string[] = []): Promise<Product[]> {
   const excludeSet = new Set(excludeIds);
@@ -154,17 +155,7 @@ export async function getServerBestSellers(limit = 8, excludeIds: string[] = [])
       const filtered = res.products.filter(
         (p) => isStorefrontVisibleProduct(p) && Boolean(p.isBestSeller) && !excludeSet.has(p.id)
       );
-      if (filtered.length > 0) {
-        return filtered.slice(0, limit).map(projectMinimalCardProduct);
-      }
-      // If no product is explicitly flagged as isBestSeller in DB, fall back to top-rated or newest products
-      const fallbackRes = await getStorefrontProductsFromDb({ limit: fetchLimit, minimal: true });
-      const fallbackFiltered = fallbackRes.products.filter(
-        (p) => isStorefrontVisibleProduct(p) && !excludeSet.has(p.id)
-      );
-      if (fallbackFiltered.length > 0) {
-        return fallbackFiltered.slice(0, limit).map(projectMinimalCardProduct);
-      }
+      return filtered.slice(0, limit).map(projectMinimalCardProduct);
     } catch (err) {
       console.error('[serverCatalog] DB getServerBestSellers error:', err);
     }
@@ -183,22 +174,23 @@ export async function getServerBestSellers(limit = 8, excludeIds: string[] = [])
 
 /**
  * Server-side new arrivals fetcher for Homepage SSR.
- * Returns newest storefront-visible products sorted by createdAt descending.
+ * Returns strictly admin-flagged new arrivals (isNewArrival = true), sorted by newest first.
+ * Never falls back to unflagged products or seed lists.
  */
 export async function getServerNewArrivals(limit = 8): Promise<Product[]> {
   if (isDbConfigured()) {
     try {
-      const res = await getStorefrontProductsFromDb({ sortBy: 'newest', limit, minimal: true });
-      const filtered = res.products.filter(isStorefrontVisibleProduct);
-      if (filtered.length > 0) {
-        return filtered.slice(0, limit).map(projectMinimalCardProduct);
-      }
+      const res = await getStorefrontProductsFromDb({ isNewArrival: true, limit, minimal: true });
+      const filtered = res.products.filter(
+        (p) => isStorefrontVisibleProduct(p) && Boolean((p as any).isNewArrival)
+      );
+      return filtered.slice(0, limit).map(projectMinimalCardProduct);
     } catch (err) {
       console.error('[serverCatalog] DB getServerNewArrivals error:', err);
     }
   }
   const all = getProducts()
-    .filter(isStorefrontVisibleProduct)
+    .filter((p) => isStorefrontVisibleProduct(p) && Boolean((p as any).isNewArrival))
     .map((item, idx) => ({ item, idx }))
     .sort((a, b) => {
       const tA = (a.item as any).createdAt ? new Date((a.item as any).createdAt).getTime() : 0;
@@ -491,16 +483,19 @@ export async function getServerAllCategories(): Promise<Category[]> {
 }
 
 /**
- * Fetch all brands for filter options on the server.
+ * Fetch all brands for storefront display and filter options on the server.
  */
-export async function getServerAllBrands(): Promise<Brand[]> {
+export async function getServerAllBrands(activeOnly = true): Promise<Brand[]> {
   if (isDbConfigured()) {
     try {
-      const brands = await getAllBrandsFromDb(false);
-      if (brands.length > 0) return brands;
+      const brands = await getAllBrandsFromDb(activeOnly);
+      if (brands.length > 0) {
+        return activeOnly ? brands.filter((b) => b.status === 'active') : brands;
+      }
     } catch (err) {
       console.error('[serverCatalog] DB getAllBrands error:', err);
     }
   }
-  return getActiveBrands();
+  const fallback = getActiveBrands();
+  return activeOnly ? fallback.filter((b) => b.status === 'active') : fallback;
 }

@@ -7,6 +7,7 @@ import {
   Heart,
   ShoppingBag,
   Check,
+  MessageCircle,
 } from 'lucide-react';
 import { Product } from '@/types';
 import { useCart } from '@/context/CartContext';
@@ -23,6 +24,7 @@ import {
 import { getCategoryPlaceholder } from '@/lib/placeholders';
 import { useCustomerAuth } from '@/context/CustomerAuthContext';
 import { getProductEffectivePrice } from '@/lib/wholesale';
+import { buildProductInquiryWhatsAppUrl } from '@/lib/whatsapp';
 import { Tilt3D } from '@/components/ui/motion/Tilt3D';
 
 interface ProductCardProps {
@@ -106,10 +108,18 @@ export const ProductCard = React.memo(function ProductCard({
     [product.categorySlug, product.category, product.name]
   );
 
+  const customerTier = isSuperWholesale ? 'SUPER_WHOLESALE' : isWholesale ? 'WHOLESALE' : 'RETAIL';
+  const effectivePrice = getProductEffectivePrice(product, customerTier);
+  const isPriceOnRequest = effectivePrice <= 0;
+  const inquiryWhatsAppUrl = useMemo(() => {
+    return isPriceOnRequest ? buildProductInquiryWhatsAppUrl(product) : '';
+  }, [isPriceOnRequest, product]);
+
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
+    if (isPriceOnRequest) return;
     if (justAdded) return;
 
     addToCart(product, 1);
@@ -274,34 +284,46 @@ export const ProductCard = React.memo(function ProductCard({
           )}
         </div>
 
-        {/* Price Block + Full-Width Bottom Add Button */}
+        {/* Price Block + Full-Width Bottom Add / Inquire Button */}
         <div className="mt-3 pt-2.5 border-t border-neutral-100 flex flex-col gap-2.5 min-w-0">
-          {isSuperWholesale ? (
+          {isPriceOnRequest ? (
+            <div className="flex flex-col min-w-0">
+              <span
+                data-product-price="true"
+                className="text-base sm:text-[17px] font-bold text-amber-900 whitespace-nowrap leading-snug"
+              >
+                Price on request
+              </span>
+              <span className="text-[11px] text-neutral-500 mt-0.5">
+                Contact us for best price
+              </span>
+            </div>
+          ) : isSuperWholesale ? (
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-base font-bold text-purple-950 whitespace-nowrap tabular-nums leading-snug">
-                  {formatPrice(getProductEffectivePrice(product, 'SUPER_WHOLESALE'))}
+                  {formatPrice(effectivePrice)}
                 </span>
                 <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-700 text-white tracking-wider shrink-0">
                   Super Wholesale
                 </span>
               </div>
               <span className="text-[11px] text-neutral-400 line-through whitespace-nowrap tabular-nums mt-0.5">
-                Retail: {formatPrice(product.price)}
+                Retail: {Number(product.price) > 0 ? formatPrice(product.price) : 'Price on request'}
               </span>
             </div>
           ) : isWholesale && product.wholesalePrice && Number(product.wholesalePrice) > 0 ? (
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-base font-bold text-neutral-950 whitespace-nowrap tabular-nums leading-snug">
-                  {formatPrice(Number(product.wholesalePrice))}
+                  {formatPrice(effectivePrice)}
                 </span>
                 <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-white tracking-wider shrink-0">
                   Wholesale
                 </span>
               </div>
               <span className="text-[11px] text-neutral-400 line-through whitespace-nowrap tabular-nums mt-0.5">
-                Retail: {formatPrice(product.price)}
+                Retail: {Number(product.price) > 0 ? formatPrice(product.price) : 'Price on request'}
               </span>
             </div>
           ) : (
@@ -320,29 +342,44 @@ export const ProductCard = React.memo(function ProductCard({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleQuickAdd}
-            data-product-add="true"
-            className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-150 active:scale-[0.98] cursor-pointer ${
-              justAdded
-                ? 'bg-emerald-600 text-white'
-                : 'bg-neutral-950 text-white hover:bg-neutral-800'
-            }`}
-            aria-label={`Quick add ${product.name} to cart`}
-          >
-            {justAdded ? (
-              <>
-                <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                <span>Added</span>
-              </>
-            ) : (
-              <>
-                <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
-                <span>Add to Cart</span>
-              </>
-            )}
-          </button>
+          {isPriceOnRequest ? (
+            <a
+              href={inquiryWhatsAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              data-product-inquire="true"
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20ba59] text-white transition-all duration-150 active:scale-[0.98] cursor-pointer shadow-xs"
+              aria-label={`Contact us for price of ${product.name} on WhatsApp`}
+            >
+              <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Contact us for price</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={handleQuickAdd}
+              data-product-add="true"
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-150 active:scale-[0.98] cursor-pointer ${
+                justAdded
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-neutral-950 text-white hover:bg-neutral-800'
+              }`}
+              aria-label={`Quick add ${product.name} to cart`}
+            >
+              {justAdded ? (
+                <>
+                  <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                  <span>Added</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
+                  <span>Add to Cart</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

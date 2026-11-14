@@ -17,24 +17,33 @@ export function AnnouncementBar({
   initialAnnouncements?: AnnouncementItem[];
 }) {
   const pathname = usePathname();
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(
-    initialAnnouncements && initialAnnouncements.length > 0
-      ? initialAnnouncements.filter((a) => a.active)
-      : []
-  );
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(() => {
+    if (Array.isArray(initialAnnouncements)) {
+      return initialAnnouncements.filter((a) => a.active !== false);
+    }
+    return [];
+  });
   const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const loadData = () => {
-    const list = getAnnouncements().filter((a) => a.active);
-    setAnnouncements(list);
+    if (Array.isArray(initialAnnouncements)) {
+      setAnnouncements(initialAnnouncements.filter((a) => a.active !== false));
+    } else {
+      const list = getAnnouncements().filter((a) => a.active !== false);
+      setAnnouncements(list);
+    }
     setSettings(getStoreSettings());
   };
 
   useEffect(() => {
-    loadData();
-    syncAnnouncementsFromApi().then(() => {
+    if (!initialAnnouncements) {
       loadData();
+    }
+    syncAnnouncementsFromApi().then((fresh) => {
+      if (Array.isArray(fresh)) {
+        setAnnouncements(fresh.filter((a) => a.active !== false));
+      }
     }).catch(() => {});
 
     const handleUpdate = (e: Event) => {

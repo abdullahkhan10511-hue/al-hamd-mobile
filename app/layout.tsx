@@ -10,9 +10,11 @@ import { getWhatsAppButtonSettings } from '@/lib/db/repositories/siteUiSettings'
 import { getServerStoreSettings as getStoreSettings, normalizeCanonicalUrl, resolveFaviconUrl } from '@/lib/db/settingsServer';
 import { getStoreSettingsFromDb } from '@/lib/db/repositories/settings';
 import { isDbConfigured } from '@/lib/db/mysql';
-import { StoreSettings } from '@/types/admin';
+import { StoreSettings, NavigationItem } from '@/types/admin';
 import { readPersistentNavigation } from '@/lib/db/navigationStorage';
 import { readPersistentAnnouncements } from '@/lib/db/announcementsStorage';
+import { getServerPages } from '@/lib/db/pagesServer';
+import { readPersistentLocations } from '@/lib/db/locationStorage';
 
 export const revalidate = 60;
 
@@ -207,10 +209,58 @@ export default async function RootLayout({
     ? (rawLogo.startsWith('http') ? rawLogo : `${baseUrl}${rawLogo.startsWith('/') ? '' : '/'}${rawLogo}`)
     : `${baseUrl}/icon.png`;
 
-  // WebSite and Organization / OnlineStore JSON-LD Structured Data
+  // Authoritative server-side settings and navigation
   const whatsappRes = await getWhatsAppButtonSettings().catch(() => null);
-  const initialNav = readPersistentNavigation();
-  const initialAnnounce = readPersistentAnnouncements();
+  const rawNav = readPersistentNavigation();
+  const allPages = await getServerPages();
+
+  const aboutPage = allPages.find((p) => p.id === 'about' || p.slug === 'about');
+  const aboutNavItem = rawNav.find((n) => n.href === '/about' || n.label.toLowerCase() === 'about');
+
+  const isAboutNavVisible = aboutNavItem ? Boolean(aboutNavItem.visible) : true;
+  const isAboutPageVisible = aboutPage
+    ? aboutPage.status === 'Published' && aboutPage.showInHeader !== false
+    : true;
+  const isAboutEnabled = isAboutNavVisible && isAboutPageVisible;
+
+  // Filter out any hidden navigation item BEFORE render so HTML excludes them
+  const baseNav = rawNav.filter((n) => {
+    if (n.visible === false) return false;
+    const isAbout = n.href === '/about' || n.label.toLowerCase() === 'about';
+    if (isAbout) {
+      return isAboutEnabled;
+    }
+    return true;
+  });
+
+  const headerPages = allPages.filter((p) => p.status === 'Published' && p.showInHeader);
+  const pageNavItems: NavigationItem[] = headerPages
+    .filter((p) => {
+      if (rawNav.some((b) => b.href === `/${p.slug}` || b.href === p.slug)) {
+        return false;
+      }
+      if (p.slug === 'about' || p.id === 'about') {
+        return false;
+      }
+      return true;
+    })
+    .map((p) => ({
+      id: `page-nav-${p.id}`,
+      label:
+        p.title
+          .replace(/AL[·\-\s]HAMD/gi, '')
+          .replace(/Mobile Accessories/gi, '')
+          .replace(/\bSHOP\b/gi, '')
+          .trim() || p.title,
+      href: `/${p.slug}`,
+      displayOrder: 50 + p.order,
+      visible: true,
+    }));
+
+  const initialNav = [...baseNav, ...pageNavItems].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  const initialAnnounce = readPersistentAnnouncements().filter((a) => a.active !== false);
+  const initialLocation = readPersistentLocations().find((l) => l.isActive) || null;
+  const publishedPages = allPages.filter((p) => p.status === 'Published');
 
   const structuredData = [
     {
@@ -247,9 +297,11 @@ export default async function RootLayout({
             initialSettings={settings}
             initialNavigation={initialNav}
             initialAnnouncements={initialAnnounce}
+            initialPages={publishedPages}
+            initialLocation={initialLocation}
           />
           <main className="flex-1">{children}</main>
-          <Footer initialSettings={settings} />
+          <Footer initialSettings={settings} initialLocation={initialLocation} />
           <FloatingWhatsApp initialSettings={whatsappRes?.settings} />
         </Providers>
       </body>

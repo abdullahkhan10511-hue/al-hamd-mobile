@@ -106,9 +106,11 @@ const CategoryCard = React.memo(function CategoryCard({
 export function ShopByCategories({
   initialCategories,
   settings: propSettings,
+  subtitle,
 }: {
   initialCategories?: Category[];
   settings?: MarqueeSectionSettings;
+  subtitle?: string;
 }) {
   const [categories, setCategories] = useState<Category[]>(() => {
     if (Array.isArray(initialCategories)) {
@@ -193,9 +195,11 @@ export function ShopByCategories({
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-neutral-900">
             Shop by Category
           </h2>
-          <p className="text-xs sm:text-sm text-neutral-500 mt-1 max-w-xl">
-            Explore premium equipment, genuine spare parts, and tools tailored for every project.
-          </p>
+          {subtitle && subtitle.trim() ? (
+            <p className="text-xs sm:text-sm text-neutral-500 mt-1 max-w-xl">
+              {subtitle.trim()}
+            </p>
+          ) : null}
         </div>
         <Link
           href="/categories"

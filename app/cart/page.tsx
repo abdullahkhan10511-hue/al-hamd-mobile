@@ -176,12 +176,12 @@ export default function CartPage() {
                               Wholesale Price
                             </span>
                             <span className="text-xs text-neutral-400 line-through font-mono">
-                              Retail: {formatPrice(item.product.price)}
+                              Retail: {Number(item.product.price) > 0 ? formatPrice(item.product.price) : 'Price on request'}
                             </span>
                           </div>
                         )}
-                        <p className="text-xs font-mono text-neutral-600 mt-1 sm:hidden">
-                          {formatPrice(unitPrice)} each
+                        <p className={`text-xs mt-1 sm:hidden ${unitPrice > 0 ? 'font-mono text-neutral-600' : 'text-amber-900 font-bold'}`}>
+                          {unitPrice > 0 ? `${formatPrice(unitPrice)} each` : 'Price on request'}
                         </p>
                       </div>
                     </div>
@@ -207,11 +207,11 @@ export default function CartPage() {
                       </div>
 
                       <div className="text-right min-w-[100px]">
-                        <span className="text-base font-extrabold font-mono text-neutral-950">
-                          {formatPrice(lineTotal)}
+                        <span className={`text-base font-extrabold ${unitPrice > 0 ? 'font-mono text-neutral-950' : 'text-amber-900'}`}>
+                          {unitPrice > 0 ? formatPrice(lineTotal) : 'Price on request'}
                         </span>
                         <p className="text-[11px] text-neutral-500 font-mono hidden sm:block">
-                          {formatPrice(unitPrice)} ea
+                          {unitPrice > 0 ? `${formatPrice(unitPrice)} ea` : 'Price on request'}
                         </p>
                       </div>
 

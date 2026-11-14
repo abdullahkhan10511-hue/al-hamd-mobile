@@ -113,7 +113,7 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
                 Wholesale Price
               </span>
               <span className="text-[11px] text-neutral-400 line-through font-mono">
-                Retail: {formatPrice(product.price)}
+                Retail: {Number(product.price) > 0 ? formatPrice(product.price) : 'Price on request'}
               </span>
             </div>
           )}
@@ -143,11 +143,11 @@ export function CartItemRow({ item, onItemClick }: CartItemRowProps) {
           </div>
 
           <div className="text-right">
-            <span className="text-sm font-semibold text-neutral-900 font-mono">
-              {formatPrice(lineTotal)}
+            <span className={`text-sm font-semibold font-mono ${unitPrice > 0 ? 'text-neutral-900' : 'text-amber-900'}`}>
+              {unitPrice > 0 ? formatPrice(lineTotal) : 'Price on request'}
             </span>
             <p className="text-[11px] text-neutral-500 font-mono">
-              {formatPrice(unitPrice)} ea
+              {unitPrice > 0 ? `${formatPrice(unitPrice)} ea` : 'Price on request'}
             </p>
           </div>
         </div>

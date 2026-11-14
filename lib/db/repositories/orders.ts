@@ -351,6 +351,16 @@ export async function createOrderInDb(
     const orderId = orderData.id || (await generateNextOrderIdInDb());
     const invoiceNumber = orderData.invoiceNumber || (await generateNextInvoiceNumberInDb());
 
+    // 1.5. Validate all item prices: unit prices must be strictly greater than 0
+    for (const item of orderData.items) {
+      const unitP = Number(item.price);
+      if (!Number.isFinite(unitP) || unitP <= 0) {
+        throw new Error(
+          `Cannot place order: item "${item.productName || item.productId || 'Unknown item'}" has unit price Rs. ${unitP || 0} (Price on request).`
+        );
+      }
+    }
+
     // 2. Validate and adjust stock for each item in the order according to authoritative rules:
     // - DEAL BUNDLE ITEMS deduct from SHOP STOCK ONLY (products.shop_stock / product_models.shop_stock) for all bundled products.
     // - ONLINE WEBSITE ORDERS deduct from WAREHOUSE STOCK (products.stock / product_models.stock) ONLY. Shop stock is UNCHANGED.

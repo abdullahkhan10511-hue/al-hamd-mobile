@@ -77,16 +77,22 @@ function SocialIcon({ platform }: { platform: string }) {
   }
 }
 
-export function Footer({ initialSettings }: { initialSettings?: StoreSettings }) {
+export function Footer({
+  initialSettings,
+  initialLocation,
+}: {
+  initialSettings?: StoreSettings;
+  initialLocation?: ShopLocation | null;
+}) {
   const pathname = usePathname();
   const [settings, setSettings] = useState<StoreSettings | null>(initialSettings || null);
-  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(null);
+  const [activeLocation, setActiveLocation] = useState<ShopLocation | null>(initialLocation || null);
 
   const currentSettings = settings || initialSettings || null;
 
   const loadData = () => {
-    setSettings(getStoreSettings());
-    setActiveLocation(getActiveShopLocation());
+    if (!initialSettings) setSettings(getStoreSettings());
+    if (initialLocation === undefined) setActiveLocation(getActiveShopLocation());
   };
 
   useEffect(() => {

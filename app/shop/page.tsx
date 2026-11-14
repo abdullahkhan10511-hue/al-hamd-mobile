@@ -16,6 +16,7 @@ import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { ScrollReveal } from '@/components/ui/ScrollReveal';
 import { formatPrice, isStorefrontVisibleProduct } from '@/lib/utils';
+import { useGridBatchLimit } from '@/lib/useGridBatchLimit';
 import { Product, Category } from '@/types';
 import { Brand } from '@/types/admin';
 import {
@@ -114,21 +115,31 @@ function ShopContent() {
     }
   }, [savedState]);
 
-  const initialPage = parseInt(searchParams.get('page') || '1', 10);
-  const [currentPage, setCurrentPage] = useState<number>(() => (isNaN(initialPage) || initialPage < 1 ? 1 : initialPage));
+  const { batchLimit } = useGridBatchLimit(4);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const inFlightAbortRef = useRef<AbortController | null>(null);
 
   const fetchProductsPage = async (pageToFetch: number, isAppending = false) => {
+    // Cancel in-flight requests when switching pages/filters
+    if (!isAppending && inFlightAbortRef.current) {
+      inFlightAbortRef.current.abort();
+    }
+    const abortCtrl = new AbortController();
+    inFlightAbortRef.current = abortCtrl;
+
     if (isAppending) {
       setIsLoadingMore(true);
     }
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageToFetch));
-      params.set('limit', '24');
+      params.set('limit', String(batchLimit));
       params.set('minimal', 'true');
 
       if (selectedCategory && selectedCategory !== 'all') {
@@ -147,7 +158,7 @@ function ShopContent() {
         params.set('sort', sortBy);
       }
 
-      const res = await fetch(`/api/products?${params.toString()}`);
+      const res = await fetch(`/api/products?${params.toString()}`, { signal: abortCtrl.signal });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.products)) {
@@ -162,13 +173,17 @@ function ShopContent() {
           }
           const total = typeof data.total === 'number' ? data.total : data.products.length;
           setTotalCount(total);
-          setTotalPages(typeof data.totalPages === 'number' ? data.totalPages : Math.ceil(total / 24));
+          setTotalPages(typeof data.totalPages === 'number' ? data.totalPages : Math.ceil(total / batchLimit));
           setHasMore(Boolean(data.hasMore));
           setCurrentPage(pageToFetch);
         }
+      } else {
+        setFetchError('Failed to load products. Please tap to retry.');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('[ShopPage] Failed to fetch products from SQL:', err);
+      setFetchError('Connection error while loading products. Tap to retry.');
     } finally {
       setHasLoaded(true);
       setIsLoadingMore(false);
@@ -273,7 +288,7 @@ function ShopContent() {
     setSelectedBrands(brandParam ? [brandParam] : []);
   }, [searchParams]);
 
-  const updateUrlFilters = (nextCategory?: string, nextBrands?: string[], nextPage?: number) => {
+  const updateUrlFilters = (nextCategory?: string, nextBrands?: string[]) => {
     const params = new URLSearchParams(searchParams.toString());
     const cat = nextCategory !== undefined ? nextCategory : selectedCategory;
     const brands = nextBrands !== undefined ? nextBrands : selectedBrands;
@@ -290,11 +305,7 @@ function ShopContent() {
       params.delete('brand');
     }
 
-    if (nextPage && nextPage > 1) {
-      params.set('page', String(nextPage));
-    } else {
-      params.delete('page');
-    }
+    params.delete('page');
 
     const qs = params.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
@@ -591,7 +602,7 @@ function ShopContent() {
                     return;
                   }
                   setSelectedCategory('all');
-                  updateUrlFilters('all', selectedBrands, 1);
+                  updateUrlFilters('all', selectedBrands);
                 }}
                 className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
                   selectedCategory === 'all'
@@ -611,7 +622,7 @@ function ShopContent() {
                       return;
                     }
                     setSelectedCategory(cat.slug);
-                    updateUrlFilters(cat.slug, selectedBrands, 1);
+                    updateUrlFilters(cat.slug, selectedBrands);
                   }}
                   className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
                     selectedCategory.toLowerCase() === cat.slug?.toLowerCase() ||
@@ -805,54 +816,32 @@ function ShopContent() {
               </div>
             )}
 
-            {/* Load More & Pagination Area */}
+            {/* Load More Area (No Numbered Pagination) */}
             {hasMore && (
               <div className="text-center mt-12 flex flex-col items-center gap-2">
                 <button
                   type="button"
                   disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
                   onClick={() => {
                     const nextPage = currentPage + 1;
                     fetchProductsPage(nextPage, true);
-                    updateUrlFilters(selectedCategory, selectedBrands, nextPage);
                   }}
                   className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - displayProducts.length)} remaining)`}
                 </button>
-              </div>
-            )}
-
-            {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-3 text-xs font-semibold text-neutral-700">
-                {currentPage > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const prevPage = currentPage - 1;
-                      fetchProductsPage(prevPage, false);
-                      updateUrlFilters(selectedCategory, selectedBrands, prevPage);
-                    }}
-                    className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer"
-                  >
-                    ← Previous Page
-                  </button>
-                )}
-                <span className="px-3 py-1 bg-neutral-100 rounded-full text-neutral-600">
-                  Page {currentPage} of {totalPages}
-                </span>
-                {hasMore && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextPage = currentPage + 1;
-                      fetchProductsPage(nextPage, false);
-                      updateUrlFilters(selectedCategory, selectedBrands, nextPage);
-                    }}
-                    className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-100 transition-colors cursor-pointer"
-                  >
-                    Next Page →
-                  </button>
+                {fetchError && (
+                  <p className="text-xs text-rose-600 mt-2 font-medium">
+                    {fetchError}{' '}
+                    <button
+                      type="button"
+                      onClick={() => fetchProductsPage(currentPage + 1, true)}
+                      className="underline font-bold ml-1 cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </p>
                 )}
               </div>
             )}

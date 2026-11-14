@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Layers, Loader2 } from 'lucide-react';
-import { getCanonicalProducts } from '@/lib/db/products';
 import { getCanonicalCategories, deduplicateCategoriesById } from '@/lib/db/categories';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Reveal3D } from '@/components/ui/motion/Reveal3D';
@@ -37,21 +36,18 @@ export function AllProductsSection({
   }, []);
 
   const [products, setProducts] = useState<Product[]>(() => {
-    if (initialProducts && initialProducts.length > 0) {
+    if (Array.isArray(initialProducts)) {
       return initialProducts
         .filter((p) => isStorefrontVisibleProduct(p) && !excludedSet.has(p.id))
         .slice(0, PAGE_SIZE);
     }
-    return getCanonicalProducts()
-      .filter((p) => isStorefrontVisibleProduct(p) && !excludedSet.has(p.id))
-      .slice(0, PAGE_SIZE);
+    return [];
   });
 
   const [totalCount, setTotalCount] = useState<number>(() => {
     if (initialTotal !== undefined) return initialTotal;
-    return getCanonicalProducts().filter(
-      (p) => isStorefrontVisibleProduct(p) && !excludedSet.has(p.id)
-    ).length;
+    if (Array.isArray(initialProducts)) return initialProducts.length;
+    return 0;
   });
 
   const [categories] = useState<Category[]>(() => {

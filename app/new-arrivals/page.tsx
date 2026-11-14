@@ -12,11 +12,10 @@ import {
   RotateCcw,
   PackageX,
 } from 'lucide-react';
-import { getProducts, syncProductsFromApi } from '@/lib/db/products';
-import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById } from '@/lib/db/categories';
 import { ProductCard } from '@/components/products/ProductCard';
-import { formatPrice, isStorefrontVisibleProduct } from '@/lib/utils';
+import { formatPrice } from '@/lib/utils';
 import { Product, Category } from '@/types';
+import { useGridBatchLimit } from '@/lib/useGridBatchLimit';
 import {
   getSavedListingState,
   saveListingState,
@@ -38,8 +37,12 @@ function NewArrivalsContent() {
     return getSavedListingState('/new-arrivals');
   }, []);
 
+  const batchLimit = useGridBatchLimit(4);
+  const inFlightAbortRef = useRef<AbortController | null>(null);
+
   const [productsList, setProductsList] = useState<Product[]>([]);
   const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
 
   // Filter States
   const [selectedCategory, setSelectedCategory] = useState<string>(() => savedState?.selectedCategory || 'all');
@@ -50,7 +53,14 @@ function NewArrivalsContent() {
   const [sortBy, setSortBy] = useState<string>(() => savedState?.sortBy || 'newest');
   const [searchQuery, setSearchQuery] = useState<string>(() => savedState?.searchQuery || '');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState<number>(() => savedState?.visibleCount || 12);
+
+  // Pagination & Loading States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Category Horizontal Scrolling & Drag State
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -59,10 +69,10 @@ function NewArrivalsContent() {
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [hasDragged, setHasDragged] = useState(false);
 
-  // Save listing state when filters or visibleCount change
+  // Save listing state
   useEffect(() => {
     saveListingState('/new-arrivals', {
-      visibleCount,
+      visibleCount: productsList.length || 16,
       selectedCategory,
       selectedBrands,
       maxPrice,
@@ -71,9 +81,9 @@ function NewArrivalsContent() {
       sortBy,
       searchQuery,
     });
-  }, [visibleCount, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, sortBy, searchQuery]);
+  }, [productsList.length, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, sortBy, searchQuery]);
 
-  // Restore scroll position when returning from a product detail page
+  // Restore scroll position when returning from product detail page
   const hasRestoredScroll = useRef(false);
   useEffect(() => {
     if (!hasRestoredScroll.current && savedState && savedState.scrollY > 0) {
@@ -84,54 +94,139 @@ function NewArrivalsContent() {
     }
   }, [savedState]);
 
-  const loadData = async () => {
-    // Only fetch non-archived products that are marked as newArrival or isNew
-    let all = getProducts();
-    if (all.length === 0) {
-      all = await syncProductsFromApi().catch(() => []);
-    }
-    const newItems = all.filter(
-      (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
-    );
-    setProductsList(newItems);
-
-    syncProductsFromApi().then((fresh) => {
-      if (fresh && fresh.length > 0) {
-        const freshNewItems = fresh.filter(
-          (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
-        );
-        setProductsList(freshNewItems);
+  // Fetch New Arrivals collection categories
+  const fetchCollectionCategories = async () => {
+    try {
+      const res = await fetch('/api/categories?isNewArrival=true');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.categories)) {
+          setCategoriesList(data.categories);
+        }
       }
-    }).catch(() => {});
-
-    const cats = deduplicateCategoriesById(getActiveCategories());
-    setCategoriesList(cats);
-    syncCategoriesFromApi().then(() => {
-      setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
-    }).catch(() => {});
+    } catch (err) {
+      console.error('[NewArrivals] Error fetching categories:', err);
+    }
   };
 
-  const refreshFromCache = () => {
-    const prods = getProducts();
-    const newItems = prods.filter(
-      (p) => isStorefrontVisibleProduct(p) && Boolean(p.isNewArrival || p.isNew)
-    );
-    setProductsList(newItems);
-    setCategoriesList(deduplicateCategoriesById(getActiveCategories()));
+  // Fetch available brands
+  const fetchAvailableBrands = async () => {
+    try {
+      const res = await fetch('/api/brands');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.brands)) {
+          const names = data.brands.map((b: any) => b.name).filter(Boolean);
+          setAvailableBrands(names);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Fetch paginated products from API with SQL filtering
+  const fetchNewArrivals = async (pageToFetch: number, isAppending = false) => {
+    inFlightAbortRef.current?.abort();
+    const controller = new AbortController();
+    inFlightAbortRef.current = controller;
+
+    if (isAppending) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
+    setLoadError(null);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('isNewArrival', 'true');
+      params.set('page', String(pageToFetch));
+      params.set('limit', String(batchLimit));
+      params.set('minimal', 'true');
+
+      if (selectedCategory && selectedCategory !== 'all') {
+        params.set('category', selectedCategory);
+      }
+      if (selectedBrands.length > 0) {
+        params.set('brand', selectedBrands.join(','));
+      }
+      if (maxPrice < 1000000) {
+        params.set('maxPrice', String(maxPrice));
+      }
+      if (inStockOnly) {
+        params.set('inStock', 'true');
+      }
+      if (sortBy) {
+        params.set('sort', sortBy);
+      }
+      if (searchQuery.trim().length >= 2) {
+        params.set('q', searchQuery.trim());
+      }
+
+      const res = await fetch(`/api/products?${params.toString()}`, {
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.products)) {
+        let items: Product[] = data.products;
+        if (minRating !== null) {
+          items = items.filter((p) => (p.rating || 0) >= minRating);
+        }
+
+        if (isAppending) {
+          setProductsList((prev) => {
+            const seen = new Set(prev.map((p) => p.id));
+            const fresh = items.filter((p) => !seen.has(p.id));
+            return [...prev, ...fresh];
+          });
+        } else {
+          setProductsList(items);
+        }
+
+        if (typeof data.total === 'number') {
+          setTotalCount(data.total);
+        }
+        setHasMore(Boolean(data.hasMore));
+        setCurrentPage(pageToFetch);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.error('[NewArrivals] Fetch error:', err);
+      setLoadError('Failed to load new arrivals. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
   };
 
   useEffect(() => {
-    loadData();
+    fetchCollectionCategories();
+    fetchAvailableBrands();
+  }, []);
 
+  // Fetch when filters or batchLimit change
+  useEffect(() => {
+    fetchNewArrivals(1, false);
+  }, [batchLimit, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, sortBy, searchQuery]);
+
+  // Keep live sync with background updates
+  useEffect(() => {
     const handleUpdate = (e: Event) => {
       const key = (e as CustomEvent)?.detail?.key;
       const SHOP_KEYS = ['products', 'categories', 'brands'];
       if (key && !SHOP_KEYS.includes(key)) return;
-      refreshFromCache();
+      fetchCollectionCategories();
+      fetchNewArrivals(1, false);
     };
     window.addEventListener('alhamd:data-updated', handleUpdate);
     return () => window.removeEventListener('alhamd:data-updated', handleUpdate);
-  }, []);
+  }, [batchLimit, selectedCategory, selectedBrands, maxPrice, minRating, inStockOnly, sortBy, searchQuery]);
 
   // Desktop mouse wheel horizontal scroll translation
   useEffect(() => {
@@ -182,10 +277,6 @@ function NewArrivalsContent() {
     setTimeout(() => setHasDragged(false), 50);
   };
 
-  const availableBrands = useMemo(() => {
-    return Array.from(new Set(productsList.map((p) => p.brand).filter(Boolean)));
-  }, [productsList]);
-
   const toggleBrand = (brandName: string) => {
     setSelectedBrands((prev) =>
       prev.includes(brandName) ? prev.filter((b) => b !== brandName) : [...prev, brandName]
@@ -201,83 +292,6 @@ function NewArrivalsContent() {
     setSortBy('newest');
     setSearchQuery('');
   };
-
-  const filteredProducts = useMemo(() => {
-    let result = [...productsList];
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      result = result.filter(
-        (p) =>
-          p.categorySlug === selectedCategory ||
-          p.category.toLowerCase() === selectedCategory.toLowerCase()
-      );
-    }
-
-    // Brand filter
-    if (selectedBrands.length > 0) {
-      result = result.filter((p) => selectedBrands.includes(p.brand));
-    }
-
-    // Price ceiling filter
-    result = result.filter((p) => p.price <= maxPrice);
-
-    // Rating filter
-    if (minRating !== null) {
-      result = result.filter((p) => p.rating >= minRating);
-    }
-
-    // In-Stock only filter (All catalogue products are available for customer purchasing)
-    if (inStockOnly) {
-      result = result.filter((p) => p.status !== 'archived' && p.status !== 'inactive');
-    }
-
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.brand.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          (p.sku && p.sku.toLowerCase().includes(q))
-      );
-    }
-
-    // Sorting
-    switch (sortBy) {
-      case 'newest':
-        result.sort((a, b) => ((b as any).createdAt || 0) - ((a as any).createdAt || 0));
-        break;
-      case 'price-low':
-        result.sort((a, b) => a.price - b.price);
-        break;
-      case 'price-high':
-        result.sort((a, b) => b.price - a.price);
-        break;
-      case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'best-selling':
-        result.sort((a, b) => (b.isBestSeller ? 1 : 0) - (a.isBestSeller ? 1 : 0));
-        break;
-      case 'featured':
-      default:
-        result.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
-        break;
-    }
-
-    return result;
-  }, [
-    productsList,
-    selectedCategory,
-    selectedBrands,
-    maxPrice,
-    minRating,
-    inStockOnly,
-    sortBy,
-    searchQuery,
-  ]);
 
   const activeFilterCount =
     (selectedCategory !== 'all' ? 1 : 0) +
@@ -297,6 +311,9 @@ function NewArrivalsContent() {
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
               New Arrivals
             </h1>
+            <p className="mt-3 text-sm sm:text-base text-neutral-400">
+              Fresh additions to our mobile accessories catalogue. Engineered with cutting-edge tech and ready to ship.
+            </p>
           </div>
         </div>
       </div>
@@ -306,7 +323,8 @@ function NewArrivalsContent() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-6 border-b border-neutral-100">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-neutral-900">
-              Showing <span className="font-mono">{filteredProducts.length}</span> New Arrivals
+              Showing <span className="font-mono">{productsList.length}</span> of{' '}
+              <span className="font-mono">{totalCount}</span> New Arrivals
             </span>
             {activeFilterCount > 0 && (
               <button
@@ -338,10 +356,9 @@ function NewArrivalsContent() {
               >
                 <option value="newest">Newest First</option>
                 <option value="featured">Featured</option>
-                <option value="best-selling">Best Selling</option>
+                <option value="rating">Highest Rated</option>
                 <option value="price-low">Price: Low to High</option>
                 <option value="price-high">Price: High to Low</option>
-                <option value="rating">Highest Rated</option>
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-neutral-500 absolute right-3 pointer-events-none" />
             </div>
@@ -378,7 +395,7 @@ function NewArrivalsContent() {
                 : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
             }`}
           >
-            All New Arrivals
+            All New Arrivals ({totalCount})
           </button>
           {categoriesList.map((cat) => (
             <button
@@ -391,13 +408,24 @@ function NewArrivalsContent() {
                 }
                 setSelectedCategory(cat.slug);
               }}
-              className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer ${
+              className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-200 active:scale-95 cursor-pointer flex items-center gap-1.5 ${
                 selectedCategory === cat.slug
                   ? 'bg-neutral-950 text-white shadow-xs'
                   : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950'
               }`}
             >
-              {cat.name}
+              <span>{cat.name}</span>
+              {typeof cat.productCount === 'number' && cat.productCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    selectedCategory === cat.slug
+                      ? 'bg-neutral-800 text-neutral-300'
+                      : 'bg-neutral-200 text-neutral-600'
+                  }`}
+                >
+                  {cat.productCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -409,31 +437,39 @@ function NewArrivalsContent() {
             {/* Search within catalog */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 mb-2.5">
-                Search New Drop
+                Search New Arrivals
               </h3>
               <div className="relative">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Title, brand, SKU..."
+                  placeholder="Keywords, brand..."
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-950"
                 />
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-xs"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             </div>
 
             {/* In-Stock Filter */}
             <div className="pt-4 border-t border-neutral-100">
-              <label className="flex items-center justify-between cursor-pointer group">
-                <span className="text-xs font-semibold text-neutral-800 group-hover:text-neutral-950">
+              <label className="flex items-center justify-between cursor-pointer py-1">
+                <span className="text-xs font-semibold text-neutral-800">
                   In-Stock Only
                 </span>
                 <input
                   type="checkbox"
                   checked={inStockOnly}
                   onChange={(e) => setInStockOnly(e.target.checked)}
-                  className="w-4 h-4 rounded text-neutral-950 focus:ring-neutral-950"
+                  className="w-4 h-4 rounded text-neutral-950 focus:ring-neutral-950 cursor-pointer"
                 />
               </label>
             </div>
@@ -480,7 +516,7 @@ function NewArrivalsContent() {
                         type="checkbox"
                         checked={selectedBrands.includes(brand)}
                         onChange={() => toggleBrand(brand)}
-                        className="w-3.5 h-3.5 rounded text-neutral-950 focus:ring-neutral-950"
+                        className="w-3.5 h-3.5 rounded text-neutral-950 focus:ring-neutral-950 cursor-pointer"
                       />
                     </label>
                   ))}
@@ -488,49 +524,60 @@ function NewArrivalsContent() {
               </div>
             )}
 
-            {/* Rating Filter */}
+            {/* Customer Rating Filter */}
             <div className="pt-4 border-t border-neutral-100">
               <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 mb-2.5">
-                Minimum Rating
+                Rating
               </h3>
               <div className="space-y-1">
-                {[4.5, 4.0, 3.5].map((stars) => (
+                {[4, 3, 2].map((rating) => (
                   <button
-                    key={stars}
-                    type="button"
-                    onClick={() => setMinRating(minRating === stars ? null : stars)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                      minRating === stars
+                    key={rating}
+                    onClick={() => setMinRating(minRating === rating ? null : rating)}
+                    className={`flex items-center justify-between w-full text-xs py-1.5 px-2 rounded-lg transition-colors cursor-pointer ${
+                      minRating === rating
                         ? 'bg-neutral-100 font-bold text-neutral-950'
                         : 'text-neutral-600 hover:bg-neutral-50'
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{stars} Stars & Above</span>
+                      <div className="flex text-amber-400">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-3.5 h-3.5 ${
+                              i < rating ? 'fill-amber-400 text-amber-400' : 'text-neutral-200'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span>& Up</span>
                     </div>
-                    {minRating === stars && <Check className="w-3.5 h-3.5 text-neutral-950" />}
+                    {minRating === rating && <Check className="w-3.5 h-3.5 text-neutral-950" />}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Products Grid Area */}
+          {/* Products Listing Area */}
           <div className="lg:col-span-3">
-            {filteredProducts.length === 0 ? (
-              <div className="py-20 text-center rounded-3xl border border-dashed border-neutral-200 bg-neutral-50 p-8">
-                <PackageX className="w-12 h-12 text-neutral-400 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-neutral-900">
-                  No New Arrivals Match Your Filters
-                </h3>
+            {isLoading ? (
+              <div className="py-24 text-center">
+                <div className="inline-block w-8 h-8 border-2 border-neutral-300 border-t-neutral-950 rounded-full animate-spin mb-4" />
+                <p className="text-xs font-semibold text-neutral-500">Loading new arrivals...</p>
+              </div>
+            ) : productsList.length === 0 ? (
+              <div className="py-16 text-center border border-dashed border-neutral-200 rounded-2xl p-8 bg-neutral-50">
+                <PackageX className="w-10 h-10 text-neutral-400 mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-neutral-900">No matching new arrivals</h3>
                 <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
-                  Try clearing some filters or searching for another keyword to view newly added products.
+                  We couldn&apos;t find any new arrivals matching your selected filters. Try broadening your criteria.
                 </p>
                 <div className="mt-6">
                   <button
                     onClick={resetFilters}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-neutral-950 text-white font-semibold text-xs hover:bg-neutral-800 transition-colors"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-neutral-950 text-white font-semibold text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Reset All Filters</span>
@@ -540,19 +587,34 @@ function NewArrivalsContent() {
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-5">
-                  {filteredProducts.slice(0, visibleCount).map((prod) => (
+                  {productsList.map((prod) => (
                     <ProductCard key={prod.id} product={prod} />
                   ))}
                 </div>
 
-                {visibleCount < filteredProducts.length && (
-                  <div className="mt-12 text-center">
+                {hasMore && (
+                  <div className="mt-12 text-center flex flex-col items-center gap-2">
                     <button
-                      onClick={() => setVisibleCount((prev) => prev + 12)}
-                      className="px-8 py-3 rounded-full border border-neutral-900 text-neutral-900 font-semibold text-xs tracking-wider uppercase hover:bg-neutral-900 hover:text-white transition-all cursor-pointer"
+                      type="button"
+                      disabled={isLoadingMore}
+                      aria-busy={isLoadingMore}
+                      onClick={() => fetchNewArrivals(currentPage + 1, true)}
+                      className="px-8 py-3.5 rounded-full border border-neutral-900 text-neutral-900 font-semibold text-xs tracking-wider uppercase hover:bg-neutral-900 hover:text-white transition-all cursor-pointer disabled:opacity-50"
                     >
-                      Load More ({filteredProducts.length - visibleCount} Remaining)
+                      {isLoadingMore ? 'Loading More Products...' : `Load More Products (${Math.max(0, totalCount - productsList.length)} remaining)`}
                     </button>
+                    {loadError && (
+                      <div className="flex items-center gap-2 text-xs text-rose-600 mt-2">
+                        <span>{loadError}</span>
+                        <button
+                          type="button"
+                          onClick={() => fetchNewArrivals(currentPage + 1, true)}
+                          className="font-bold underline hover:text-rose-700 cursor-pointer"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -601,18 +663,18 @@ function NewArrivalsContent() {
                       step="5000"
                       value={maxPrice}
                       onChange={(e) => setMaxPrice(Number(e.target.value))}
-                      className="w-full accent-neutral-950 mt-2"
+                      className="w-full accent-neutral-950 mt-2 cursor-pointer"
                     />
                   </div>
 
                   <div className="pt-4 border-t border-neutral-100">
-                    <label className="flex items-center justify-between text-xs font-semibold text-neutral-800">
+                    <label className="flex items-center justify-between text-xs font-semibold text-neutral-800 cursor-pointer">
                       <span>In-Stock Only</span>
                       <input
                         type="checkbox"
                         checked={inStockOnly}
                         onChange={(e) => setInStockOnly(e.target.checked)}
-                        className="w-4 h-4 rounded text-neutral-950"
+                        className="w-4 h-4 rounded text-neutral-950 cursor-pointer"
                       />
                     </label>
                   </div>
@@ -621,13 +683,13 @@ function NewArrivalsContent() {
                 <div className="pt-6 border-t border-neutral-100 space-y-2">
                   <button
                     onClick={() => setMobileFiltersOpen(false)}
-                    className="w-full py-3 rounded-full bg-neutral-950 text-white font-bold text-xs uppercase"
+                    className="w-full py-3 rounded-full bg-neutral-950 text-white font-bold text-xs uppercase cursor-pointer"
                   >
                     Apply Filters
                   </button>
                   <button
                     onClick={resetFilters}
-                    className="w-full py-2.5 rounded-full border border-neutral-200 text-xs font-semibold text-neutral-700"
+                    className="w-full py-2.5 rounded-full border border-neutral-200 text-xs font-semibold text-neutral-700 cursor-pointer"
                   >
                     Reset
                   </button>

@@ -43,12 +43,33 @@ function mapRowToCategory(row: CategoryRow & { live_product_count?: number }): C
   };
 }
 
-export async function getAllCategoriesFromDb(): Promise<Category[]> {
+export async function getAllCategoriesFromDb(collectionFilter?: {
+  isBestSeller?: boolean;
+  isNewArrival?: boolean;
+  isSale?: boolean;
+}): Promise<Category[]> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
   }
 
-  return serverCache.getOrSet('categories:all', async () => {
+  const cacheKey = collectionFilter?.isBestSeller
+    ? 'categories:best-seller'
+    : collectionFilter?.isNewArrival
+    ? 'categories:new-arrival'
+    : collectionFilter?.isSale
+    ? 'categories:sale'
+    : 'categories:all';
+
+  return serverCache.getOrSet(cacheKey, async () => {
+    let flagClause = '';
+    if (collectionFilter?.isBestSeller) {
+      flagClause = ' AND p.is_best_seller = 1';
+    } else if (collectionFilter?.isNewArrival) {
+      flagClause = ' AND p.is_new_arrival = 1';
+    } else if (collectionFilter?.isSale) {
+      flagClause = ' AND p.is_sale = 1';
+    }
+
     try {
       const rows = await query<CategoryRow[]>(
         `SELECT c.*,
@@ -56,12 +77,16 @@ export async function getAllCategoriesFromDb(): Promise<Category[]> {
            WHERE (p.category_slug = c.slug OR p.category = c.name OR p.category = c.id)
            AND (p.status = 'active' OR p.status IS NULL OR (LOWER(p.status) != 'inactive' AND LOWER(p.status) != 'archived' AND LOWER(p.status) != 'draft' AND LOWER(p.status) != 'hidden'))
            AND (p.is_active = 1 OR p.is_active IS NULL)
-           AND p.price > 0
+           ${flagClause}
           ) AS live_product_count
          FROM categories c
          ORDER BY c.sort_order ASC, c.name ASC`
       );
-      return deduplicateCategoriesById(rows.map(mapRowToCategory));
+      let list = rows.map(mapRowToCategory);
+      if (collectionFilter?.isBestSeller || collectionFilter?.isNewArrival || collectionFilter?.isSale) {
+        list = list.filter((c) => (c.productCount || 0) > 0);
+      }
+      return deduplicateCategoriesById(list);
     } catch {
       const rows = await query<CategoryRow[]>(
         'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'

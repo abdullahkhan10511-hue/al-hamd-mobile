@@ -17,6 +17,7 @@ import { getActiveCategories, syncCategoriesFromApi, deduplicateCategoriesById }
 import { getBrands, syncBrandsFromApi } from '@/lib/db/brands';
 import { ProductCard } from '@/components/products/ProductCard';
 import { formatPrice, getProductImage, DEFAULT_PRODUCT_IMAGE, normalizeSearchText, isStorefrontVisibleProduct } from '@/lib/utils';
+import { useGridBatchLimit } from '@/lib/useGridBatchLimit';
 import { Product, Category } from '@/types';
 import {
   getSavedListingState,
@@ -114,19 +115,29 @@ function SearchContent() {
     }
   }, [savedState]);
 
+  const { batchLimit } = useGridBatchLimit(4);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const inFlightAbortRef = useRef<AbortController | null>(null);
 
   const fetchSearchResults = async (pageToFetch: number, isAppending = false) => {
+    if (!isAppending && inFlightAbortRef.current) {
+      inFlightAbortRef.current.abort();
+    }
+    const abortCtrl = new AbortController();
+    inFlightAbortRef.current = abortCtrl;
+
     if (isAppending) {
       setIsLoadingMore(true);
     }
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageToFetch));
-      params.set('limit', '24');
+      params.set('limit', String(batchLimit));
       params.set('minimal', 'true');
       if (rawQuery && rawQuery.trim().length >= 2) params.set('q', rawQuery.trim());
       if (selectedCategory && selectedCategory !== 'all') params.set('category', selectedCategory);
@@ -135,7 +146,7 @@ function SearchContent() {
       if (inStockOnly) params.set('inStock', 'true');
       if (sortBy) params.set('sort', sortBy);
 
-      const res = await fetch(`/api/products?${params.toString()}`);
+      const res = await fetch(`/api/products?${params.toString()}`, { signal: abortCtrl.signal });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.products)) {
@@ -154,9 +165,13 @@ function SearchContent() {
           setHasMore(Boolean(data.hasMore));
           setCurrentPage(pageToFetch);
         }
+      } else {
+        setFetchError('Failed to load search results. Please tap to retry.');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('[SearchPage] Error fetching search results:', err);
+      setFetchError('Connection error while loading results. Tap to retry.');
     } finally {
       setIsLoadingMore(false);
     }
@@ -520,6 +535,7 @@ function SearchContent() {
                 <button
                   type="button"
                   disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
                   onClick={() => fetchSearchResults(currentPage + 1, true)}
                   className="px-8 py-3.5 rounded-full border border-neutral-950 text-xs sm:text-sm font-semibold text-neutral-950 hover:bg-neutral-950 hover:text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
                 >
