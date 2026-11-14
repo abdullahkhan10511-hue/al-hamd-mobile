@@ -38,6 +38,11 @@ import {
   seedPaymentMethods,
   syncPaymentMethodsFromApi,
 } from '@/lib/db/paymentMethods';
+import {
+  OrderSuccessPageSettings,
+  DEFAULT_ORDER_SUCCESS_SETTINGS,
+  replaceOrderSuccessPlaceholders,
+} from '@/lib/db/siteUiSettings';
 import { subscribeToKey } from '@/lib/db/storage';
 
 const PAKISTAN_PROVINCES = [
@@ -176,13 +181,15 @@ function CheckoutContent() {
   const [phone, setPhone] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [whatsAppNumber, setWhatsAppNumber] = useState('923432200995');
+  const [orderSuccessSettings, setOrderSuccessSettings] = useState<OrderSuccessPageSettings>(
+    DEFAULT_ORDER_SUCCESS_SETTINGS
+  );
 
   useEffect(() => {
     fetch('/api/ui-settings')
       .then((r) => r.json())
       .then((d) => {
-        if (d.whatsapp?.phoneNumber) setWhatsAppNumber(d.whatsapp.phoneNumber);
+        if (d.orderSuccess) setOrderSuccessSettings(d.orderSuccess);
       })
       .catch(() => {});
   }, []);
@@ -580,6 +587,74 @@ function CheckoutContent() {
   };
 
   if (createdOrder) {
+    const customerPhone = createdOrder.customer?.phone || phone || '';
+    const customerFullName =
+      (createdOrder.customer as any)?.name ||
+      [createdOrder.customer?.firstName, createdOrder.customer?.lastName].filter(Boolean).join(' ') ||
+      [firstName, lastName].filter(Boolean).join(' ') ||
+      'Valued Customer';
+    const orderTotalFormatted = formatPrice(createdOrder.total);
+
+    const placeholderData = {
+      customerName: customerFullName,
+      orderNumber: String(createdOrder.id),
+      invoiceNumber: createdOrder.invoiceNumber || '',
+      total: orderTotalFormatted,
+      phone: customerPhone,
+      paymentMethod: createdOrder.paymentMethod || '',
+    };
+
+    const renderedBadge = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.badgeText,
+      placeholderData
+    );
+    const renderedHeading = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.heading,
+      placeholderData
+    );
+    const renderedMessage = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.message,
+      placeholderData
+    );
+    const renderedFootnote = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.footnoteText,
+      placeholderData
+    );
+
+    const labelOrderNumber = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelOrderNumber,
+      placeholderData
+    );
+    const labelInvoiceNumber = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelInvoiceNumber,
+      placeholderData
+    );
+    const labelOrderStatus = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelOrderStatus,
+      placeholderData
+    );
+    const labelPaymentMethod = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelPaymentMethod,
+      placeholderData
+    );
+    const labelPaymentReference = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelPaymentReference,
+      placeholderData
+    );
+    const labelTotalAmount = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.labelTotalAmount,
+      placeholderData
+    );
+
+    const primaryButtonLabel = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.primaryButtonLabel,
+      placeholderData
+    );
+    const secondaryButtonLabel = replaceOrderSuccessPlaceholders(
+      orderSuccessSettings.secondaryButtonLabel,
+      placeholderData
+    );
+
     return (
       <div className="min-h-screen bg-neutral-50 py-12 sm:py-20 flex items-center justify-center">
         <div className="max-w-xl w-full mx-auto px-4 sm:px-6">
@@ -598,23 +673,29 @@ function CheckoutContent() {
             </div>
 
             {/* Impressive Thank You Message & Status */}
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold tracking-wider uppercase mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Order Placed Successfully
-            </div>
+            {renderedBadge ? (
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold tracking-wider uppercase mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {renderedBadge}
+              </div>
+            ) : null}
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight leading-snug">
-              Thank You for Your Order!
-            </h1>
+            {renderedHeading ? (
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-950 tracking-tight leading-snug">
+                {renderedHeading}
+              </h1>
+            ) : null}
 
-            <p className="text-sm sm:text-base text-neutral-600 mt-4 leading-relaxed font-normal px-1 sm:px-3">
-              &ldquo;Thank you for choosing AL-HAMD SHOP. We truly appreciate your trust and support. Your order has been received successfully, and we&apos;re grateful for the opportunity to serve you. We look forward to making your shopping experience wonderful!&rdquo;
-            </p>
+            {renderedMessage ? (
+              <p className="text-sm sm:text-base text-neutral-600 mt-4 leading-relaxed font-normal px-1 sm:px-3 whitespace-pre-line">
+                {renderedMessage}
+              </p>
+            ) : null}
 
             {/* Clear Order Reference Card */}
             <div className="mt-8 mb-8 p-5 sm:p-6 rounded-2xl bg-neutral-50/90 border border-neutral-200/80 text-left space-y-3">
               <div className="flex justify-between items-center pb-3 border-b border-neutral-200/70">
-                <span className="text-neutral-500 text-xs font-medium">Order Number:</span>
+                <span className="text-neutral-500 text-xs font-medium">{labelOrderNumber || 'Order Number'}:</span>
                 <span className="font-mono font-extrabold text-base sm:text-lg text-neutral-950 tracking-tight">
                   #{createdOrder.id}
                 </span>
@@ -622,65 +703,63 @@ function CheckoutContent() {
 
               {createdOrder.invoiceNumber && (
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-neutral-500">Invoice Number:</span>
+                  <span className="text-neutral-500">{labelInvoiceNumber || 'Invoice Number'}:</span>
                   <span className="font-mono font-semibold text-neutral-800">{createdOrder.invoiceNumber}</span>
                 </div>
               )}
 
               <div className="flex justify-between items-center text-xs">
-                <span className="text-neutral-500">Order Status:</span>
+                <span className="text-neutral-500">{labelOrderStatus || 'Order Status'}:</span>
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   Confirmed
                 </span>
               </div>
 
               <div className="flex justify-between items-center text-xs">
-                <span className="text-neutral-500">Payment Method:</span>
+                <span className="text-neutral-500">{labelPaymentMethod || 'Payment Method'}:</span>
                 <span className="font-semibold text-neutral-900">{createdOrder.paymentMethod}</span>
               </div>
 
               {createdOrder.paymentReference && (
                 <div className="flex justify-between items-center text-xs pt-1 border-t border-neutral-200/60">
-                  <span className="text-neutral-500">Payment Reference (TID):</span>
+                  <span className="text-neutral-500">{labelPaymentReference || 'Payment Reference (TID)'}:</span>
                   <span className="font-mono font-bold text-neutral-950">{createdOrder.paymentReference}</span>
                 </div>
               )}
 
               <div className="flex justify-between items-center pt-3 border-t border-neutral-200/70">
-                <span className="text-neutral-600 text-xs font-semibold">Total Amount:</span>
+                <span className="text-neutral-600 text-xs font-semibold">{labelTotalAmount || 'Total Amount'}:</span>
                 <span className="font-mono font-extrabold text-lg text-emerald-600">
-                  {formatPrice(createdOrder.total)}
+                  {orderTotalFormatted}
                 </span>
               </div>
             </div>
 
             {/* Customer notification notice */}
-            {createdOrder.customer?.phone && (
+            {orderSuccessSettings.showFootnote && customerPhone && renderedFootnote ? (
               <p className="text-xs text-neutral-500 mb-6">
-                A confirmation has also been dispatched to{' '}
-                <strong className="text-neutral-800 font-semibold">{createdOrder.customer.phone}</strong>.
+                {renderedFootnote}
               </p>
-            )}
+            ) : null}
 
-            {/* Order Actions: WhatsApp Confirmation + Continue Shopping */}
+            {/* Order Actions: Continue Shopping + Optional Secondary Button */}
             <div className="max-w-sm mx-auto space-y-3">
-              <a
-                href={`https://wa.me/${whatsAppNumber}?text=${encodeURIComponent(
-                  `Salam, I have placed Order #${createdOrder.id} on AL-HAMD SHOP for Rs. ${createdOrder.total}. Please confirm my order.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3.5 px-6 rounded-full bg-[#25D366] hover:bg-[#20ba59] active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Confirm on WhatsApp</span>
-              </a>
               <Link
-                href="/shop"
+                href={orderSuccessSettings.primaryButtonLink || '/shop'}
                 className="w-full py-3.5 px-6 rounded-full bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Continue Shopping</span>
+                <span>{primaryButtonLabel || 'CONTINUE SHOPPING'}</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
+
+              {orderSuccessSettings.secondaryButtonEnabled && orderSuccessSettings.secondaryButtonLink ? (
+                <Link
+                  href={orderSuccessSettings.secondaryButtonLink}
+                  className="w-full py-3 px-6 rounded-full bg-neutral-100 hover:bg-neutral-200 active:scale-[0.99] text-neutral-900 font-bold text-xs sm:text-sm tracking-wider uppercase transition-all border border-neutral-200 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>{secondaryButtonLabel || 'VIEW DETAILS'}</span>
+                </Link>
+              ) : null}
             </div>
           </motion.div>
         </div>

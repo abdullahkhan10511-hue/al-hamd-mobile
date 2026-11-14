@@ -42,6 +42,7 @@ import {
   Video,
   MessageSquare,
   Zap,
+  CheckCircle2,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import { getNotifications, markNotificationAsRead } from '@/lib/db/notifications';
@@ -87,6 +88,7 @@ const allAdminNavItems: NavItemConfig[] = [
   { label: 'Shop Location', href: '/admin/shop-location', icon: MapPin, permission: 'settings.view' },
   { label: 'WhatsApp Button', href: '/admin/whatsapp', icon: MessageSquare, permissions: ['settings.appearance', 'settings.view'] },
   { label: 'Store Settings', href: '/admin/settings', icon: Settings, permissions: ['settings.view', 'settings.edit'] },
+  { label: 'Order Success Page', href: '/admin/settings/order-success', icon: CheckCircle2, permissions: ['settings.appearance', 'settings.view', 'settings.edit'] },
   { label: 'SEO & Website Settings', href: '/admin/settings/seo', icon: Globe, permissions: ['settings.view', 'settings.edit'] },
   { label: 'Login Appearance', href: '/admin/settings/login-appearance', icon: Palette, permissions: ['settings.view', 'settings.edit'] },
   { label: 'Staff Management', href: '/admin/staff', icon: Users, permissions: ['staff.view', 'staff.manage', 'staff.add', 'staff.create', 'staff.edit'] },

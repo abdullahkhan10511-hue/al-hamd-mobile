@@ -29,7 +29,8 @@
     "verify:step18": "node scripts/verify-step18.mjs",
     "verify:step19": "node scripts/verify-step19.mjs",
     "verify:step20": "node scripts/verify-step20.mjs",
-    "verify:step21": "node scripts/verify-step21.mjs"
+    "verify:step21": "node scripts/verify-step21.mjs",
+    "verify:step22": "node scripts/verify-step22.mjs"
   },
   "dependencies": {
     "framer-motion": "^13.5.1",

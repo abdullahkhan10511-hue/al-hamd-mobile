@@ -81,7 +81,7 @@ export default function CategoriesPage() {
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-neutral-300 text-xs font-semibold backdrop-blur-xs"
           >
             <Layers className="w-3.5 h-3.5 text-neutral-200" />
-            <span>Curated Mobile Catalog</span>
+            <span>Mobile Catalog</span>
           </motion.div>
 
           <motion.h1

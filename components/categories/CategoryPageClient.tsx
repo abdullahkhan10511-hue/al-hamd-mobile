@@ -347,7 +347,7 @@ function CategoryPageContent({
           </h1>
           <p className="mt-3 text-sm sm:text-base text-neutral-300 max-w-2xl leading-relaxed">
             {category.description ||
-              `Discover our curated ${category.name} collection. Engineered with premium materials and dispatched nationwide across Pakistan.`}
+              `Discover our ${category.name} collection. Engineered with premium materials and dispatched nationwide across Pakistan.`}
           </p>
         </div>
       </div>

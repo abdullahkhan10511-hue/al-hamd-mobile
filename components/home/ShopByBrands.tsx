@@ -116,9 +116,11 @@ const BrandCard = React.memo(function BrandCard({
 export function ShopByBrands({
   initialBrands,
   settings: propSettings,
+  subtitle,
 }: {
   initialBrands?: Brand[];
   settings?: MarqueeSectionSettings;
+  subtitle?: string;
 }) {
   const [brands, setBrands] = useState<Brand[]>(() => {
     if (Array.isArray(initialBrands)) {
@@ -204,9 +206,11 @@ export function ShopByBrands({
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-neutral-900">
             Shop by Brand
           </h2>
-          <p className="text-xs sm:text-sm text-neutral-500 mt-1 max-w-xl">
-            Trusted global manufacturers backed by authentic warranty and full customer support.
-          </p>
+          {subtitle && subtitle.trim() ? (
+            <p className="text-xs sm:text-sm text-neutral-500 mt-1 max-w-xl">
+              {subtitle.trim()}
+            </p>
+          ) : null}
         </div>
         <Link
           href="/brands"

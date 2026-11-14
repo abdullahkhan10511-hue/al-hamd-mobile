@@ -101,7 +101,7 @@ export const seedPages: CustomPage[] = [
         order: 5,
         paragraphAlign: 'left',
         paragraphText:
-          "Founded on precision engineering and uncompromising durability, AL·HAMD is Pakistan's premier destination for high-performance mobile accessories and device protection.\n\nWe curate and engineer everyday essentials—from GaN fast chargers, Kevlar-reinforced braided cables, and military-grade drop cases to studio-fidelity acoustic earbuds—tested to endure the rigorous demands of modern mobile life.",
+          "Founded on precision engineering and uncompromising durability, AL·HAMD is Pakistan's premier destination for high-performance mobile accessories and device protection.\n\nWe engineer and provide everyday essentials—from GaN fast chargers, Kevlar-reinforced braided cables, and military-grade drop cases to studio-fidelity acoustic earbuds—tested to endure the rigorous demands of modern mobile life.",
       },
       {
         id: 'ab-6',

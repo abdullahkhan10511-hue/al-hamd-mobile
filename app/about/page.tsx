@@ -48,7 +48,7 @@ export default function AboutPage() {
             transition={{ delay: 0.2 }}
             className="text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed pt-2"
           >
-            We curate and engineer high-performance mobile essentials—from GaN fast chargers and Kevlar-reinforced cables to military-grade drop cases and studio-grade wireless audio—built for enduring durability.
+            We engineer and provide high-performance mobile essentials—from GaN fast chargers and Kevlar-reinforced cables to military-grade drop cases and studio-grade wireless audio—built for enduring durability.
           </motion.p>
         </div>
       </section>

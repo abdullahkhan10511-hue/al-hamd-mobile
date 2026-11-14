@@ -76,6 +76,124 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppButtonSettings = {
 };
 
 // =============================================================================
+// ORDER SUCCESS PAGE SETTINGS
+// =============================================================================
+
+function isValidSafeLink(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  // Relative internal link starting with /
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return true;
+  }
+  // Absolute HTTPS link
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export const OrderSuccessPageSettingsSchema = z.object({
+  badgeText: z.string().trim().max(60).default('ORDER PLACED SUCCESSFULLY'),
+  heading: z.string().trim().max(120).default('Thank You for Your Order!'),
+  message: z.string().trim().max(600).default(
+    "Thank you for choosing AL-HAMD SHOP. We truly appreciate your trust and support. Your order has been received successfully, and we're grateful for the opportunity to serve you. We look forward to making your shopping experience wonderful!"
+  ),
+  labelOrderNumber: z.string().trim().max(60).default('Order Number'),
+  labelInvoiceNumber: z.string().trim().max(60).default('Invoice Number'),
+  labelOrderStatus: z.string().trim().max(60).default('Order Status'),
+  labelPaymentMethod: z.string().trim().max(60).default('Payment Method'),
+  labelPaymentReference: z.string().trim().max(60).default('Payment Reference (TID)'),
+  labelTotalAmount: z.string().trim().max(60).default('Total Amount'),
+
+  showFootnote: z.boolean().default(false),
+  footnoteText: z.string().trim().max(200).default('A confirmation has also been dispatched to {phone}.'),
+
+  primaryButtonLabel: z.string().trim().max(40).default('CONTINUE SHOPPING'),
+  primaryButtonLink: z.string().trim().max(300).refine(isValidSafeLink, {
+    message: 'Must be a relative link starting with "/" or an absolute https:// URL.',
+  }).default('/shop'),
+
+  secondaryButtonEnabled: z.boolean().default(false),
+  secondaryButtonLabel: z.string().trim().max(40).default('VIEW ACCOUNT'),
+  secondaryButtonLink: z.string().trim().max(300).refine((val) => !val || isValidSafeLink(val), {
+    message: 'Must be a relative link starting with "/" or an absolute https:// URL.',
+  }).default('/account'),
+});
+
+export type OrderSuccessPageSettings = z.infer<typeof OrderSuccessPageSettingsSchema>;
+
+export const DEFAULT_ORDER_SUCCESS_SETTINGS: OrderSuccessPageSettings = {
+  badgeText: 'ORDER PLACED SUCCESSFULLY',
+  heading: 'Thank You for Your Order!',
+  message:
+    "Thank you for choosing AL-HAMD SHOP. We truly appreciate your trust and support. Your order has been received successfully, and we're grateful for the opportunity to serve you. We look forward to making your shopping experience wonderful!",
+  labelOrderNumber: 'Order Number',
+  labelInvoiceNumber: 'Invoice Number',
+  labelOrderStatus: 'Order Status',
+  labelPaymentMethod: 'Payment Method',
+  labelPaymentReference: 'Payment Reference (TID)',
+  labelTotalAmount: 'Total Amount',
+
+  showFootnote: false,
+  footnoteText: 'A confirmation has also been dispatched to {phone}.',
+
+  primaryButtonLabel: 'CONTINUE SHOPPING',
+  primaryButtonLink: '/shop',
+
+  secondaryButtonEnabled: false,
+  secondaryButtonLabel: 'VIEW ACCOUNT',
+  secondaryButtonLink: '/account',
+};
+
+/**
+ * Escapes plain text for safe rendering and prevents HTML/script injection.
+ */
+export function sanitizePlainText(str?: string | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Safely replaces dynamic placeholders {customerName}, {orderNumber}, {invoiceNumber}, {total}, {phone}, {paymentMethod}.
+ * All replacements are strictly plain-text sanitized before insertion.
+ */
+export function replaceOrderSuccessPlaceholders(
+  template: string,
+  data: {
+    customerName?: string;
+    orderNumber?: string;
+    invoiceNumber?: string;
+    total?: string;
+    phone?: string;
+    paymentMethod?: string;
+  }
+): string {
+  if (!template) return '';
+  const customerName = data.customerName ? String(data.customerName) : '';
+  const orderNumber = data.orderNumber ? String(data.orderNumber) : '';
+  const invoiceNumber = data.invoiceNumber ? String(data.invoiceNumber) : '';
+  const total = data.total ? String(data.total) : '';
+  const phone = data.phone ? String(data.phone) : '';
+  const paymentMethod = data.paymentMethod ? String(data.paymentMethod) : '';
+
+  return template
+    .replace(/\{customerName\}/gi, customerName)
+    .replace(/\{orderNumber\}/gi, orderNumber)
+    .replace(/\{invoiceNumber\}/gi, invoiceNumber)
+    .replace(/\{total\}/gi, total)
+    .replace(/\{phone\}/gi, phone)
+    .replace(/\{paymentMethod\}/gi, paymentMethod);
+}
+
+// =============================================================================
 // PAKISTANI MOBILE NUMBER VALIDATOR & NORMALIZER
 // Accepts: 03XXXXXXXXX, +92 3XX XXXXXXX, 923XXXXXXXXX
 // Normalizes and stores as: 923XXXXXXXXX (12 digits starting with 923)

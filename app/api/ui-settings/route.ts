@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getHomepageAnimationsSettings,
   getWhatsAppButtonSettings,
+  getOrderSuccessSettings,
 } from '@/lib/db/repositories/siteUiSettings';
 import { getPublicCacheHeaders } from '@/lib/cacheControl';
 
@@ -10,9 +11,10 @@ export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
-    const [animationsRes, whatsappRes] = await Promise.all([
+    const [animationsRes, whatsappRes, orderSuccessRes] = await Promise.all([
       getHomepageAnimationsSettings(),
       getWhatsAppButtonSettings(),
+      getOrderSuccessSettings(),
     ]);
 
     return NextResponse.json(
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
         success: true,
         animations: animationsRes.settings,
         whatsapp: whatsappRes.settings,
+        orderSuccess: orderSuccessRes.settings,
       },
       {
         headers: getPublicCacheHeaders(request),

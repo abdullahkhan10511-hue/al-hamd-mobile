@@ -544,7 +544,7 @@ function ShopContent() {
                 {pageHeading}
               </h1>
               <p className="text-sm text-neutral-500 mt-1">
-                Showing {displayProducts.length} of {totalCount} curated products
+                Showing {displayProducts.length} of {totalCount} products
               </p>
             </div>
 

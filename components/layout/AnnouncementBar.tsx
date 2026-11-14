@@ -73,7 +73,7 @@ export function AnnouncementBar({
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="hidden sm:flex items-center gap-1.5 text-neutral-400 font-medium">
           <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-          <span>{activeSettings?.storeTagline || 'Curated Modern Essentials'}</span>
+          <span>{activeSettings?.storeTagline || 'Modern Mobile Essentials'}</span>
         </div>
 
         <div className="flex-1 flex justify-center items-center overflow-hidden h-5">
