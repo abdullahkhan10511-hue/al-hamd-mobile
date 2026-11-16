@@ -8,10 +8,23 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getAdminSessionAsync(request);
     if (!session) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, authenticated: false, error: 'Unauthorized: No active admin session.' },
         { status: 401 }
       );
+      const isSecure = process.env.NODE_ENV === 'production';
+      const clearOptions = {
+        path: '/',
+        maxAge: 0,
+        expires: new Date(0),
+        sameSite: 'lax' as const,
+        httpOnly: true,
+        secure: isSecure,
+      };
+      response.cookies.set('alhamd_admin_session', '', clearOptions);
+      response.cookies.set('admin_session', '', clearOptions);
+      response.cookies.set('alhamd_admin_2fa_pending', '', clearOptions);
+      return response;
     }
 
     return NextResponse.json(

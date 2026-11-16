@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getStaffByEmail, INITIAL_STAFF_USERS } from '@/lib/db/staff';
-import { getServerStaffByEmail, isStaff2faColumnAvailable } from '@/lib/db/staff-server';
+import { getServerStaffByEmail, isStaff2faColumnAvailable, updateStaffLastLogin } from '@/lib/db/staff-server';
 import { hashPassword, generateSalt } from '@/lib/crypto';
 import { StaffUser } from '@/types/admin';
 import { ROLE_DEFAULT_PERMISSIONS } from '@/lib/constants/permissions';
@@ -290,6 +290,11 @@ export async function POST(request: NextRequest) {
       expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12 hours absolute maximum
     });
 
+    // Update last_login timestamp in staff_users table
+    if (staffUser.id && staffUser.id !== 'admin-env-1') {
+      await updateStaffLastLogin(staffUser.id);
+    }
+
     const response = NextResponse.json({
       success: true,
       user: safeUser,
@@ -298,17 +303,28 @@ export async function POST(request: NextRequest) {
       message: 'Admin authentication successful.',
     });
 
-    // Admin cookie SameSite=Strict and httpOnly
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Admin cookie SameSite=Lax and httpOnly
     response.cookies.set(COOKIE_NAME, sessionToken, {
       path: '/',
       maxAge: 12 * 60 * 60,
-      sameSite: 'strict',
+      sameSite: 'lax',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProduction,
     });
 
-    // Clear any leftover pending 2fa cookie
-    response.cookies.set(PENDING_2FA_COOKIE_NAME, '', { path: '/', maxAge: 0 });
+    // Explicitly clear legacy cookie name and leftover pending 2fa cookie
+    const clearOptions = {
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+      sameSite: 'lax' as const,
+      httpOnly: true,
+      secure: isProduction,
+    };
+    response.cookies.set('admin_session', '', clearOptions);
+    response.cookies.set(PENDING_2FA_COOKIE_NAME, '', clearOptions);
 
     return response;
   } catch (err: any) {
@@ -323,7 +339,20 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getAdminSessionAsync(request);
     if (!session) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      const response = NextResponse.json({ authenticated: false }, { status: 401 });
+      const isSecure = process.env.NODE_ENV === 'production';
+      const commonOptions = {
+        path: '/',
+        maxAge: 0,
+        expires: new Date(0),
+        sameSite: 'lax' as const,
+        httpOnly: true,
+        secure: isSecure,
+      };
+      response.cookies.set(COOKIE_NAME, '', commonOptions);
+      response.cookies.set('admin_session', '', commonOptions);
+      response.cookies.set(PENDING_2FA_COOKIE_NAME, '', commonOptions);
+      return response;
     }
 
     return NextResponse.json({
@@ -339,6 +368,19 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch {
-    return NextResponse.json({ authenticated: false }, { status: 401 });
+    const response = NextResponse.json({ authenticated: false }, { status: 401 });
+    const isSecure = process.env.NODE_ENV === 'production';
+    const commonOptions = {
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+      sameSite: 'lax' as const,
+      httpOnly: true,
+      secure: isSecure,
+    };
+    response.cookies.set(COOKIE_NAME, '', commonOptions);
+    response.cookies.set('admin_session', '', commonOptions);
+    response.cookies.set(PENDING_2FA_COOKIE_NAME, '', commonOptions);
+    return response;
   }
 }

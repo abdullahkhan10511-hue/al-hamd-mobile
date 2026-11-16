@@ -54,8 +54,10 @@ export default async function HomePage() {
         try {
           const dbDeals = await getActiveDealsFromDb();
           return dbDeals.filter((d) => d && d.showOnHomepage);
-        } catch (err) {
-          console.warn('[HomePage] DB deals error:', err);
+        } catch (err: any) {
+          if (!err?.message?.includes("doesn't exist") && err?.code !== 'ER_NO_SUCH_TABLE') {
+            console.warn('[HomePage] DB deals error:', err);
+          }
         }
       }
       return getDeals().filter((d) => d && d.status === 'active' && d.showOnHomepage && isDealCurrentlyActive(d));

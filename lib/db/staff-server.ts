@@ -14,6 +14,7 @@ import {
   createStaffInDb,
   updateStaffInDb,
   deleteStaffInDb,
+  updateStaffLastLogin,
 } from './repositories/staff';
 import { getDataDir } from '@/lib/storage/dataDir';
 
@@ -252,4 +253,4 @@ export function verifyServerPassword(password: string, salt: string, expectedHas
   return verifyStaffPassword(password, salt, expectedHash);
 }
 
-export { createStaffInDb, updateStaffInDb, deleteStaffInDb };
+export { createStaffInDb, updateStaffInDb, deleteStaffInDb, updateStaffLastLogin };

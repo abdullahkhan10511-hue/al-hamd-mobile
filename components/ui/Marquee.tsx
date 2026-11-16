@@ -7,7 +7,7 @@ export interface MarqueeProps {
   items: React.ReactNode[];
   style?: 'continuous' | 'step' | 'static';
   direction?: 'ltr' | 'rtl';
-  speed?: number; // seconds for one full loop
+  speed?: number; // Visual speed in pixels per second (px/s, e.g. 10 - 150 px/s, default ~35)
   stepSeconds?: number; // interval between steps in 'step' mode
   pauseOnHover?: boolean;
   pauseOnFocus?: boolean;
@@ -59,7 +59,9 @@ export function Marquee({
   gapClassName = 'gap-4 sm:gap-6 pr-4 sm:pr-6',
 }: MarqueeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const primaryGroupRef = useRef<HTMLDivElement>(null);
   const staticScrollRef = useRef<HTMLDivElement>(null);
+  const [measuredTrackWidth, setMeasuredTrackWidth] = useState<number>(0);
   const [isPointerDown, setIsPointerDown] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
@@ -81,11 +83,52 @@ export function Marquee({
   // If there are fewer than 8 items, repeat the group inside each half
   const repeatFactor = items.length > 0 && items.length < 8 ? Math.ceil(8 / items.length) : 1;
 
-  // Derive duration: ~5s per unique item, minimum 25s
+  // Speed in pixels per second (px/s). Default is comfortable slow speed (35 px/s). Limits: 10 - 150 px/s.
+  const pxPerSecond = useMemo(() => {
+    const val = typeof speed === 'number' && speed > 0 ? speed : 35;
+    return Math.min(150, Math.max(10, val));
+  }, [speed]);
+
+  // Estimated width for initial paint / SSR before ResizeObserver measures
+  const estimatedWidth = useMemo(() => {
+    return Math.max(1200, items.length * repeatFactor * 240);
+  }, [items.length, repeatFactor]);
+
+  // Compute CSS animation duration from real track width (duration = trackWidth / pxPerSecond)
+  // using ResizeObserver so visual speed is identical regardless of item count or screen size.
+  useEffect(() => {
+    const el = primaryGroupRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      const w = rect.width || el.scrollWidth || 0;
+      if (w > 0) {
+        setMeasuredTrackWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+      }
+    };
+
+    measure();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const w = entry.contentRect.width || el.scrollWidth || 0;
+          if (w > 0) {
+            setMeasuredTrackWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+          }
+        }
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [items, repeatFactor]);
+
   const durationSeconds = useMemo(() => {
-    if (typeof speed === 'number' && speed > 0) return speed;
-    return Math.max(25, items.length * 5);
-  }, [speed, items.length]);
+    const width = measuredTrackWidth > 0 ? measuredTrackWidth : estimatedWidth;
+    const dur = width / pxPerSecond;
+    return Math.max(1, Math.round(dur * 10) / 10);
+  }, [measuredTrackWidth, estimatedWidth, pxPerSecond]);
 
   // Pause animation when off-screen using IntersectionObserver
   useEffect(() => {
@@ -293,7 +336,7 @@ export function Marquee({
         }
       >
         {/* Primary Half */}
-        <div className={`marquee-group flex shrink-0 items-center ${gapClassName}`}>
+        <div ref={primaryGroupRef} className={`marquee-group flex shrink-0 items-center ${gapClassName}`}>
           {originalHalf}
         </div>
 

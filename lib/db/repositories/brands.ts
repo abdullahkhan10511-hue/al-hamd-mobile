@@ -91,7 +91,7 @@ export async function getAllBrandsFromDb(activeOnly = false): Promise<Brand[]> {
 
     const whereClause = activeOnly ? "WHERE b.status = 'active'" : '';
     const productCountSubquery = `(SELECT COUNT(*) FROM products p 
-      WHERE (p.brand = b.name OR p.brand = b.id OR p.brand_id = b.id OR LOWER(p.brand) = LOWER(b.slug) OR LOWER(p.brand) = LOWER(b.name))
+      WHERE (TRIM(LOWER(p.brand)) = TRIM(LOWER(b.name)) OR TRIM(LOWER(p.brand)) = TRIM(LOWER(b.slug)))
       AND (p.status = 'active' OR p.status IS NULL OR (LOWER(p.status) != 'inactive' AND LOWER(p.status) != 'archived' AND LOWER(p.status) != 'draft' AND LOWER(p.status) != 'hidden'))
       AND (p.is_active = 1 OR p.is_active IS NULL)) AS product_count`;
     try {
@@ -139,7 +139,7 @@ export async function getBrandByIdFromDb(id: string): Promise<Brand | null> {
   return serverCache.getOrSet(`brands:id:${id}`, async () => {
     const rows = await query<BrandRow[]>(
       `SELECT b.*,
-        (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+        (SELECT COUNT(*) FROM products p WHERE (TRIM(LOWER(p.brand)) = TRIM(LOWER(b.name)) OR TRIM(LOWER(p.brand)) = TRIM(LOWER(b.slug))) AND p.status != 'archived' AND p.is_active = 1) AS product_count
        FROM brands b WHERE b.id = ? LIMIT 1`,
       [id]
     );
@@ -162,7 +162,7 @@ export async function getBrandBySlugFromDb(slug: string): Promise<Brand | null> 
 
   const rows = await query<BrandRow[]>(
     `SELECT b.*,
-      (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+      (SELECT COUNT(*) FROM products p WHERE (TRIM(LOWER(p.brand)) = TRIM(LOWER(b.name)) OR TRIM(LOWER(p.brand)) = TRIM(LOWER(b.slug))) AND p.status != 'archived' AND p.is_active = 1) AS product_count
      FROM brands b WHERE b.slug = ? OR b.id = ? OR LOWER(b.name) = ? LIMIT 1`,
     [cleanSlug, cleanSlug, cleanSlug]
   );
@@ -184,7 +184,7 @@ export async function getBrandByIdOrSlugFromDb(identifier: string): Promise<Bran
 
   const rows = await query<BrandRow[]>(
     `SELECT b.*,
-      (SELECT COUNT(*) FROM products p WHERE (p.brand = b.name OR p.brand = b.id) AND p.status != 'archived' AND p.is_active = 1) AS product_count
+      (SELECT COUNT(*) FROM products p WHERE (TRIM(LOWER(p.brand)) = TRIM(LOWER(b.name)) OR TRIM(LOWER(p.brand)) = TRIM(LOWER(b.slug))) AND p.status != 'archived' AND p.is_active = 1) AS product_count
      FROM brands b WHERE b.id = ? OR b.slug = ? OR LOWER(b.name) = ? LIMIT 1`,
     [identifier.trim(), clean, clean]
   );

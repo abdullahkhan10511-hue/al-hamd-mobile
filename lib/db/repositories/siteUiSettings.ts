@@ -135,15 +135,6 @@ export async function saveHomepageAnimationsSettings(
   const tableExists = await isSiteUiSettingsTableAvailable();
   const current = await getHomepageAnimationsSettings();
 
-  if (isDbConfigured() && !tableExists) {
-    return {
-      success: false,
-      tableExists: false,
-      isDbBacked: false,
-      error: 'Run add_site_ui_settings.sql to save these settings',
-    };
-  }
-
   if (tableExists) {
     await execute(
       `INSERT INTO site_ui_settings (setting_key, setting_value, updated_by, updated_at)
@@ -151,6 +142,11 @@ export async function saveHomepageAnimationsSettings(
        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by), updated_at = NOW()`,
       [JSON.stringify(validated.data), adminEmail || 'admin']
     );
+    try {
+      const local = readLocalSiteUiSettings();
+      local.homepage_animations = validated.data;
+      writeLocalSiteUiSettings(local);
+    } catch {}
   } else {
     const local = readLocalSiteUiSettings();
     local.homepage_animations = validated.data;
@@ -166,6 +162,7 @@ export async function saveHomepageAnimationsSettings(
 
   try {
     revalidatePath('/');
+    revalidatePath('/', 'page');
     revalidatePath('/[slug]', 'page');
   } catch {}
 

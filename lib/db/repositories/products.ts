@@ -286,7 +286,7 @@ export function mapRowToProduct(
     category: row.category,
     categorySlug: row.category_slug,
     brand: row.brand,
-    brandId: (row as any).brand_id || undefined,
+    brandId: undefined,
     brandSlug:
       (row as any).brand_slug ||
       (row.brand ? row.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ''),
@@ -569,12 +569,12 @@ export async function getStorefrontProductsFromDb(params: StorefrontProductQuery
     const brands = params.brand.split(',').map((b) => b.trim()).filter(Boolean);
     if (brands.length === 1) {
       const brand = brands[0];
-      conditions.push('(brand = ? OR brand_id = ? OR LOWER(brand) = ?)');
-      queryParams.push(brand, brand, brand.toLowerCase());
+      conditions.push('(TRIM(LOWER(brand)) = ? OR LOWER(brand) = ? OR brand = ?)');
+      queryParams.push(brand.toLowerCase().trim(), brand.toLowerCase(), brand);
     } else if (brands.length > 1) {
       const placeholders = brands.map(() => '?').join(',');
-      conditions.push(`(brand IN (${placeholders}) OR brand_id IN (${placeholders}) OR LOWER(brand) IN (${placeholders}))`);
-      queryParams.push(...brands, ...brands, ...brands.map((b) => b.toLowerCase()));
+      conditions.push(`(brand IN (${placeholders}) OR LOWER(brand) IN (${placeholders}))`);
+      queryParams.push(...brands, ...brands.map((b) => b.toLowerCase()));
     }
   }
 

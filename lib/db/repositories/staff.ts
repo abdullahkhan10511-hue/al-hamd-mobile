@@ -306,3 +306,12 @@ export async function deleteStaffInDb(id: string): Promise<boolean> {
   await execute('DELETE FROM staff_users WHERE id = ?', [id]);
   return true;
 }
+
+export async function updateStaffLastLogin(id: string): Promise<void> {
+  if (!id || !isDbConfigured()) return;
+  try {
+    await execute('UPDATE staff_users SET last_login = NOW() WHERE id = ?', [id]);
+  } catch (err) {
+    console.warn('Failed to update staff last_login in DB:', err);
+  }
+}

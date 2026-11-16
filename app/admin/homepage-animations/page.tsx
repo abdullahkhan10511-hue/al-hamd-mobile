@@ -51,6 +51,7 @@ export default function HomepageAnimationsAdminPage() {
   const [saving, setSaving] = useState(false);
   const [tableExists, setTableExists] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('Saved and live');
   const [errorMsg, setErrorMsg] = useState('');
   const [activePreviewTab, setActivePreviewTab] = useState<'categories' | 'brands'>('categories');
 
@@ -99,11 +100,12 @@ export default function HomepageAnimationsAdminPage() {
         throw new Error(data.error || 'Failed to save settings');
       }
 
+      setSuccessMsg(data.message || 'Saved and live');
       setSaveSuccess(true);
       if (typeof data.tableExists === 'boolean') {
         setTableExists(data.tableExists);
       }
-      setTimeout(() => setSaveSuccess(false), 4000);
+      setTimeout(() => setSaveSuccess(false), 5000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error saving settings');
     } finally {
@@ -204,7 +206,7 @@ export default function HomepageAnimationsAdminPage() {
       {saveSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-3 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <p className="text-sm font-medium">Homepage animation settings successfully saved and applied to storefront!</p>
+          <p className="text-sm font-medium">{successMsg}</p>
         </div>
       )}
       {errorMsg && (
@@ -381,41 +383,87 @@ function SectionSettingsCard({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-neutral-700 uppercase tracking-wider">
-                Full Loop Duration ({settings.speedSeconds}s)
+                Scrolling Speed ({typeof settings.speed === 'number' ? settings.speed : settings.speedPxPerSecond || 35} px/s)
               </label>
               <div className="flex gap-1.5 text-[11px]">
                 <button
                   type="button"
-                  onClick={() => onChange('speedSeconds', 60)}
-                  className={`px-2 py-0.5 rounded ${settings.speedSeconds === 60 ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'}`}
+                  onClick={() => {
+                    onChange('speed', 25);
+                    onChange('speedPxPerSecond', 25);
+                  }}
+                  className={`px-2 py-0.5 rounded font-medium ${
+                    (typeof settings.speed === 'number' ? settings.speed : 35) <= 25
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
                 >
-                  Slow (60s)
+                  Slow (25 px/s)
                 </button>
                 <button
                   type="button"
-                  onClick={() => onChange('speedSeconds', 40)}
-                  className={`px-2 py-0.5 rounded ${settings.speedSeconds === 40 ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'}`}
+                  onClick={() => {
+                    onChange('speed', 35);
+                    onChange('speedPxPerSecond', 35);
+                  }}
+                  className={`px-2 py-0.5 rounded font-medium ${
+                    (typeof settings.speed === 'number' ? settings.speed : 35) > 25 &&
+                    (typeof settings.speed === 'number' ? settings.speed : 35) <= 40
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
                 >
-                  Normal (40s)
+                  Normal (35 px/s)
                 </button>
                 <button
                   type="button"
-                  onClick={() => onChange('speedSeconds', 20)}
-                  className={`px-2 py-0.5 rounded ${settings.speedSeconds === 20 ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'}`}
+                  onClick={() => {
+                    onChange('speed', 50);
+                    onChange('speedPxPerSecond', 50);
+                  }}
+                  className={`px-2 py-0.5 rounded font-medium ${
+                    (typeof settings.speed === 'number' ? settings.speed : 35) > 40 &&
+                    (typeof settings.speed === 'number' ? settings.speed : 35) <= 65
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
                 >
-                  Fast (20s)
+                  Moderate (50 px/s)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange('speed', 80);
+                    onChange('speedPxPerSecond', 80);
+                  }}
+                  className={`px-2 py-0.5 rounded font-medium ${
+                    (typeof settings.speed === 'number' ? settings.speed : 35) > 65
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
+                >
+                  Fast (80 px/s)
                 </button>
               </div>
             </div>
             <input
               type="range"
               min={10}
-              max={90}
+              max={150}
               step={5}
-              value={settings.speedSeconds}
-              onChange={(e) => onChange('speedSeconds', Number(e.target.value))}
+              value={typeof settings.speed === 'number' ? settings.speed : settings.speedPxPerSecond || 35}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                onChange('speed', val);
+                onChange('speedPxPerSecond', val);
+              }}
               className="w-full accent-neutral-900 cursor-pointer"
             />
+            <div className="flex justify-between text-[10px] text-neutral-400 mt-1">
+              <span>10 px/s (Slowest)</span>
+              <span>Default: 30-40 px/s</span>
+              <span>150 px/s (Maximum)</span>
+            </div>
           </div>
         )}
 
@@ -589,7 +637,10 @@ function LiveSectionPreview({
           <div
             className={`flex gap-4 w-max ${settings.pauseOnHover ? 'hover:[animation-play-state:paused]' : ''}`}
             style={{
-              animation: `marquee-preview ${settings.speedSeconds}s linear infinite`,
+              animation: `marquee-preview ${Math.max(
+                2,
+                Math.round(1152 / (typeof settings.speed === 'number' ? settings.speed : settings.speedPxPerSecond || 35))
+              )}s linear infinite`,
               animationDirection: settings.direction === 'rtl' ? 'reverse' : 'normal',
             }}
           >

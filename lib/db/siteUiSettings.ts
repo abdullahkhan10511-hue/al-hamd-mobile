@@ -7,9 +7,24 @@ import { z } from 'zod';
 export const MarqueeSectionSettingsSchema = z.object({
   style: z.enum(['continuous', 'step', 'static']).default('continuous'),
   direction: z.enum(['ltr', 'rtl']).default('rtl'),
-  speed: z.enum(['slow', 'normal', 'fast']).default('normal'),
-  speedSeconds: z.coerce.number().min(15).max(120).default(35),
-  stepSeconds: z.coerce.number().min(1.5).max(6).default(2.5),
+  // Speed model: pixels per second (px/s). Default is slow and comfortable (30-40 px/s).
+  // Preprocesses strings ('slow' -> 25, 'normal' -> 35, 'fast' -> 60) and legacy inputs safely.
+  speed: z.preprocess((val) => {
+    if (val === 'slow') return 25;
+    if (val === 'normal') return 35;
+    if (val === 'fast') return 60;
+    const num = Number(val);
+    return isNaN(num) ? 35 : num;
+  }, z.coerce.number().min(10).max(150)).default(35),
+  speedPxPerSecond: z.preprocess((val) => {
+    if (val === 'slow') return 25;
+    if (val === 'normal') return 35;
+    if (val === 'fast') return 60;
+    const num = Number(val);
+    return isNaN(num) ? 35 : num;
+  }, z.coerce.number().min(10).max(150)).default(35),
+  speedSeconds: z.coerce.number().optional(),
+  stepSeconds: z.coerce.number().min(1).max(6).default(2.5),
   pauseOnHover: z.boolean().default(true),
   edgeFade: z.boolean().default(true),
   cardHover: z.enum(['tilt', 'lift', 'none']).default('tilt'),
@@ -20,7 +35,8 @@ export type MarqueeSectionSettings = z.infer<typeof MarqueeSectionSettingsSchema
 export const DEFAULT_CATEGORIES_ANIMATION: MarqueeSectionSettings = {
   style: 'continuous',
   direction: 'rtl',
-  speed: 'normal',
+  speed: 35,
+  speedPxPerSecond: 35,
   speedSeconds: 35,
   stepSeconds: 2.5,
   pauseOnHover: true,
@@ -31,8 +47,9 @@ export const DEFAULT_CATEGORIES_ANIMATION: MarqueeSectionSettings = {
 export const DEFAULT_BRANDS_ANIMATION: MarqueeSectionSettings = {
   style: 'continuous',
   direction: 'ltr',
-  speed: 'normal',
-  speedSeconds: 25,
+  speed: 30,
+  speedPxPerSecond: 30,
+  speedSeconds: 30,
   stepSeconds: 2.5,
   pauseOnHover: true,
   edgeFade: true,

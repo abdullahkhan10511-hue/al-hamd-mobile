@@ -39,7 +39,10 @@ const CategoryCard = React.memo(function CategoryCard({
   const rawImage =
     !isFailed && category.image && typeof category.image === 'string' && category.image.trim()
       ? category.image.trim()
-      : getCategoryPlaceholder(category.slug || category.name, category.name);
+      : !isFailed
+      ? getCategoryPlaceholder(category.slug || category.name, category.name)
+      : null;
+  const hasValidImage = Boolean(rawImage && !isFailed);
 
   const cardLink = (
     <Link
@@ -56,20 +59,28 @@ const CategoryCard = React.memo(function CategoryCard({
     >
       {/* Category Image */}
       <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-100">
-        <Image
-          src={rawImage}
-          alt={category.name}
-          fill
-          unoptimized={
-            rawImage.startsWith('http://') ||
-            rawImage.startsWith('https://') ||
-            rawImage.toLowerCase().endsWith('.svg') ||
-            rawImage.startsWith('data:')
-          }
-          sizes="(max-width: 640px) 176px, (max-width: 768px) 224px, 240px"
-          className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-          onError={() => onError(category.id)}
-        />
+        {hasValidImage ? (
+          <Image
+            src={rawImage!}
+            alt={category.name}
+            fill
+            loading="eager"
+            decoding="async"
+            unoptimized={
+              rawImage!.startsWith('http://') ||
+              rawImage!.startsWith('https://') ||
+              rawImage!.toLowerCase().endsWith('.svg') ||
+              rawImage!.startsWith('data:')
+            }
+            sizes="(max-width: 640px) 176px, (max-width: 768px) 224px, 240px"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+            onError={() => onError(category.id)}
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900 text-white font-black text-3xl sm:text-4xl tracking-wider select-none">
+            {category.name.trim().slice(0, 1).toUpperCase() || 'C'}
+          </div>
+        )}
         {/* Gradient Shading */}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/30 to-transparent transition-opacity group-hover:opacity-95" />
 
@@ -215,7 +226,7 @@ export function ShopByCategories({
           items={categoryCards}
           style={settings.style}
           direction={settings.direction}
-          speed={settings.speedSeconds}
+          speed={typeof settings.speed === 'number' ? settings.speed : settings.speedPxPerSecond ?? 35}
           stepSeconds={settings.stepSeconds}
           pauseOnHover={settings.pauseOnHover}
           edgeFade={settings.edgeFade}

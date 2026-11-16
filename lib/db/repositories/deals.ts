@@ -5,8 +5,31 @@ import { RowDataPacket } from 'mysql2/promise';
 import { serverCache } from '@/lib/cache/memoryCache';
 
 export function invalidateDealCache(): void {
+  dealsTableChecked = false;
+  dealsTableExistsCached = false;
   serverCache.invalidate('deals');
 }
+let dealsTableChecked = false;
+let dealsTableExistsCached = false;
+
+export async function isDealsTableAvailable(): Promise<boolean> {
+  if (!isDbConfigured()) return false;
+  if (dealsTableChecked) return dealsTableExistsCached;
+
+  try {
+    const rows = await query<RowDataPacket[]>(
+      "SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'deals' LIMIT 1"
+    );
+    dealsTableExistsCached = Boolean(rows && rows.length > 0);
+    dealsTableChecked = true;
+    return dealsTableExistsCached;
+  } catch {
+    dealsTableChecked = true;
+    dealsTableExistsCached = false;
+    return false;
+  }
+}
+
 
 interface DealRow extends RowDataPacket {
   id: string;
@@ -102,6 +125,9 @@ export async function getAllDealsFromDb(): Promise<Deal[]> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
   }
+  if (!(await isDealsTableAvailable())) {
+    return [];
+  }
 
   return serverCache.getOrSet('deals:all', async () => {
     const dealRows = await query<DealRow[]>(
@@ -131,6 +157,9 @@ export async function getDealByIdFromDb(id: string): Promise<Deal | null> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
   }
+  if (!(await isDealsTableAvailable())) {
+    return null;
+  }
 
   return serverCache.getOrSet(`deals:id:${id}`, async () => {
     const dealRows = await query<DealRow[]>(
@@ -154,6 +183,9 @@ export async function getDealByIdFromDb(id: string): Promise<Deal | null> {
 export async function getDealBySlugFromDb(slug: string): Promise<Deal | null> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
+  }
+  if (!(await isDealsTableAvailable())) {
+    return null;
   }
 
   return serverCache.getOrSet(`deals:slug:${slug}`, async () => {
@@ -404,6 +436,9 @@ export async function deleteDealFromDb(id: string): Promise<boolean> {
 export async function getActiveDealsFromDb(): Promise<Deal[]> {
   if (!isDbConfigured()) {
     throw new Error('Database is not configured.');
+  }
+  if (!(await isDealsTableAvailable())) {
+    return [];
   }
 
   return serverCache.getOrSet('deals:active', async () => {

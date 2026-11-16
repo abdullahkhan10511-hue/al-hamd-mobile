@@ -46,7 +46,7 @@ function getSafeAdminRedirect(target: string | null | undefined): string {
 function AdminLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectParam = searchParams?.get('redirect');
+  const redirectParam = searchParams?.get('next') || searchParams?.get('redirect');
   const safeDestination = getSafeAdminRedirect(redirectParam);
   const errorParam = searchParams?.get('error');
 

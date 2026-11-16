@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
       let revalidated = true;
       try {
         revalidatePath('/', 'layout');
+        revalidatePath('/', 'page');
         revalidatePath('/');
         revalidatePath('/shop');
         revalidatePath('/api/ui-settings');
@@ -131,8 +132,9 @@ export async function POST(request: NextRequest) {
         success: true,
         settings: targetData,
         tableExists: result.tableExists,
+        isDbBacked: result.isDbBacked,
         revalidated,
-        message: revalidated ? 'Saved and live' : 'Saved to server, but storefront revalidation is pending.',
+        message: result.isDbBacked ? 'Saved and live' : 'Saved to local fallback. Run add_site_ui_settings.sql to persist in DB.',
       });
     }
 

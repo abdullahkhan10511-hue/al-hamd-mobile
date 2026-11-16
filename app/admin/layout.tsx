@@ -43,6 +43,7 @@ import {
   MessageSquare,
   Zap,
   CheckCircle2,
+  LogIn,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import { getNotifications, markNotificationAsRead } from '@/lib/db/notifications';
@@ -214,7 +215,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     if (!isLoading && !authLoading && (!isAuthenticated || !admin) && pathname !== '/admin/login') {
       const redirectUrl =
         pathname !== '/admin' && pathname !== '/admin/dashboard'
-          ? `/admin/login?redirect=${encodeURIComponent(pathname)}`
+          ? `/admin/login?next=${encodeURIComponent(pathname)}&redirect=${encodeURIComponent(pathname)}`
           : '/admin/login';
       router.replace(redirectUrl);
     }
@@ -247,9 +248,42 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Not authenticated
+  // Not authenticated / session expired (never render a blank page)
   if (!isAuthenticated || !admin) {
-    return null;
+    const nextDestination =
+      pathname && pathname !== '/admin' && pathname !== '/admin/dashboard'
+        ? `/admin/login?next=${encodeURIComponent(pathname)}&redirect=${encodeURIComponent(pathname)}`
+        : '/admin/login';
+
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="max-w-md w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-8 sm:p-10 text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20 shadow-inner">
+            <Lock className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+              Session Expired
+            </h2>
+            <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
+              Session expired, please log in again.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Link
+              href={nextDestination}
+              className="w-full py-3 px-4 rounded-xl bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs tracking-wider uppercase transition-colors flex items-center justify-center gap-2 shadow-md"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Log in again</span>
+            </Link>
+          </div>
+          <span className="text-[11px] text-neutral-500 block">
+            Redirecting to login...
+          </span>
+        </div>
+      </div>
+    );
   }
 
   const notifications = getNotifications();

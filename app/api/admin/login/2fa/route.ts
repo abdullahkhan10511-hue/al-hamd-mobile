@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerStaffById } from '@/lib/db/staff-server';
+import { getServerStaffById, updateStaffLastLogin } from '@/lib/db/staff-server';
 import { updateStaffInDb } from '@/lib/db/repositories/staff';
 import { checkRateLimit, getClientIp, createRateLimitResponse } from '@/lib/rateLimit';
 import {
@@ -137,17 +137,32 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Set full admin session cookie (SameSite=Strict)
+    if (staffUser.id && staffUser.id !== 'admin-env-1') {
+      await updateStaffLastLogin(staffUser.id);
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Set full admin session cookie (SameSite=Lax)
     response.cookies.set(COOKIE_NAME, sessionToken, {
       path: '/',
       maxAge: 12 * 60 * 60,
-      sameSite: 'strict',
+      sameSite: 'lax',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProduction,
     });
 
-    // Clear pending 2FA cookie
-    response.cookies.set(PENDING_2FA_COOKIE_NAME, '', { path: '/', maxAge: 0 });
+    // Clear legacy cookie name and pending 2FA cookie
+    const clearOptions = {
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+      sameSite: 'lax' as const,
+      httpOnly: true,
+      secure: isProduction,
+    };
+    response.cookies.set('admin_session', '', clearOptions);
+    response.cookies.set(PENDING_2FA_COOKIE_NAME, '', clearOptions);
 
     await logActivity({
       adminEmail: maskEmail(staffUser.email),

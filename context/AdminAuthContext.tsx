@@ -50,6 +50,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           if (data.user.status === 'inactive') {
             try {
               localStorage.removeItem(ADMIN_STORAGE_KEY);
+              localStorage.removeItem('alhamd_active_admin');
+              localStorage.removeItem('alhamd_admin_token');
+              sessionStorage.removeItem('alhamd_admin_token');
+              sessionStorage.removeItem('alhamd_admin_session');
             } catch {}
             setAdmin(null);
             return;
@@ -63,6 +67,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       } else if (res.status === 401 || res.status === 403) {
         try {
           localStorage.removeItem(ADMIN_STORAGE_KEY);
+          localStorage.removeItem('alhamd_active_admin');
+          localStorage.removeItem('alhamd_admin_token');
+          sessionStorage.removeItem('alhamd_admin_token');
+          sessionStorage.removeItem('alhamd_admin_session');
         } catch {}
         setAdmin(null);
       }
@@ -77,7 +85,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkServerSession() {
       try {
-        const res = await fetch('/api/admin/login', {
+        const res = await fetch('/api/admin/session', {
           credentials: 'include',
           headers: { 'Cache-Control': 'no-cache' },
           cache: 'no-store',
@@ -96,6 +104,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         } else if (res.status === 401 || res.status === 403) {
           try {
             localStorage.removeItem(ADMIN_STORAGE_KEY);
+            localStorage.removeItem('alhamd_active_admin');
+            localStorage.removeItem('alhamd_admin_token');
+            sessionStorage.removeItem('alhamd_admin_token');
+            sessionStorage.removeItem('alhamd_admin_session');
           } catch {}
           if (isMounted) {
             setAdmin(null);
@@ -112,6 +124,10 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       // Fail closed: never restore unauthenticated admin sessions from localStorage
       try {
         localStorage.removeItem(ADMIN_STORAGE_KEY);
+        localStorage.removeItem('alhamd_active_admin');
+        localStorage.removeItem('alhamd_admin_token');
+        sessionStorage.removeItem('alhamd_admin_token');
+        sessionStorage.removeItem('alhamd_admin_session');
       } catch {}
       setAdmin(null);
       setIsLoading(false);

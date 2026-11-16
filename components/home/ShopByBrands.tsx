@@ -57,7 +57,8 @@ const BrandCard = React.memo(function BrandCard({
             <Image
               src={brand.logo!}
               alt={brand.name}
-              loading="lazy"
+              loading="eager"
+              decoding="async"
               unoptimized={
                 brand.logo!.startsWith('http://') ||
                 brand.logo!.startsWith('https://') ||
@@ -71,8 +72,8 @@ const BrandCard = React.memo(function BrandCard({
             />
           </div>
         ) : (
-          <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-neutral-900 text-white font-extrabold text-lg sm:text-xl tracking-tight shadow-sm group-hover:scale-105 transition-transform duration-300">
-            {brand.name.slice(0, 2).toUpperCase()}
+          <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-neutral-100 text-neutral-800 font-extrabold text-lg sm:text-xl tracking-tight border border-neutral-200 select-none shadow-xs group-hover:scale-105 transition-transform duration-300">
+            {brand.name.trim().slice(0, 2).toUpperCase() || 'B'}
           </div>
         )}
 
@@ -123,10 +124,11 @@ export function ShopByBrands({
   subtitle?: string;
 }) {
   const [brands, setBrands] = useState<Brand[]>(() => {
-    if (Array.isArray(initialBrands)) {
+    if (Array.isArray(initialBrands) && initialBrands.length > 0) {
       return initialBrands.filter((b) => b.status === 'active');
     }
-    return [];
+    const local = getActiveBrands();
+    return local && local.length > 0 ? local.filter((b) => b.status === 'active') : [];
   });
   const [isLoaded, setIsLoaded] = useState(true);
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
@@ -226,7 +228,7 @@ export function ShopByBrands({
           items={brandCards}
           style={settings.style}
           direction={settings.direction}
-          speed={settings.speedSeconds}
+          speed={typeof settings.speed === 'number' ? settings.speed : settings.speedPxPerSecond ?? 30}
           stepSeconds={settings.stepSeconds}
           pauseOnHover={settings.pauseOnHover}
           edgeFade={settings.edgeFade}

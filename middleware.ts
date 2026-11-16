@@ -5,7 +5,23 @@ import { verifySignedSessionToken, verifySignedCustomerToken } from '@/lib/db/se
 import { assertSameOrigin } from '@/lib/security/csrf';
 
 const ADMIN_COOKIE_NAME = 'alhamd_admin_session';
+const LEGACY_ADMIN_COOKIE = 'admin_session';
 const CUSTOMER_COOKIE_NAME = 'alhamd_customer_session';
+
+function clearAdminCookies(res: NextResponse) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const clearOptions = {
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax' as const,
+  };
+  res.cookies.set(ADMIN_COOKIE_NAME, '', clearOptions);
+  res.cookies.set(LEGACY_ADMIN_COOKIE, '', clearOptions);
+  res.cookies.set('alhamd_admin_2fa_pending', '', clearOptions);
+}
 
 function parseValidAdminSession(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -25,7 +41,17 @@ function parseValidAdminSession(raw: string | undefined): boolean {
   const role = (payload.role || '').toUpperCase();
   if (role === 'CUSTOMER') return false;
 
-  return Boolean(payload.email && payload.exp > Date.now());
+  // Must have email and not be expired
+  if (!payload.email || typeof payload.exp !== 'number' || payload.exp <= Date.now()) {
+    return false;
+  }
+
+  // Must have sessionVersion >= 1 (tokens without sessionVersion are pre-Step 14 legacy tokens)
+  if (typeof payload.sessionVersion !== 'number' || payload.sessionVersion < 1) {
+    return false;
+  }
+
+  return true;
 }
 
 function parseValidCustomerSession(raw: string | undefined): boolean {
@@ -107,12 +133,16 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/admin')) {
     // Exempt public admin routes like /api/admin/login and /api/admin/login/2fa
     if (!pathname.startsWith('/api/admin/login')) {
-      const adminCookieVal = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
+      const adminCookieVal =
+        request.cookies.get(ADMIN_COOKIE_NAME)?.value ||
+        request.cookies.get(LEGACY_ADMIN_COOKIE)?.value;
       if (!parseValidAdminSession(adminCookieVal)) {
-        return NextResponse.json(
+        const res = NextResponse.json(
           { success: false, error: 'Unauthorized: Admin session required' },
           { status: 401 }
         );
+        clearAdminCookies(res);
+        return res;
       }
     }
     return NextResponse.next();
@@ -128,7 +158,13 @@ export function middleware(request: NextRequest) {
   }
 
   // --- Validate Admin Session from Authoritative Cookie (Task S9) ---
-  const adminCookieValue = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
+  const adminCookieValue =
+    request.cookies.get(ADMIN_COOKIE_NAME)?.value ||
+    request.cookies.get(LEGACY_ADMIN_COOKIE)?.value;
+  const hasAnyAdminCookie = Boolean(
+    request.cookies.get(ADMIN_COOKIE_NAME)?.value ||
+    request.cookies.get(LEGACY_ADMIN_COOKIE)?.value
+  );
   const isAdminAuthenticated = parseValidAdminSession(adminCookieValue);
 
   // --- Validate Customer Session Cookie from Signed Token (Task S5) ---
@@ -145,6 +181,9 @@ export function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/admin/dashboard', request.url));
       }
       const res = NextResponse.next();
+      if (hasAnyAdminCookie && !isAdminAuthenticated) {
+        clearAdminCookies(res);
+      }
       res.headers.set('X-Robots-Tag', 'noindex, nofollow');
       return res;
     }
@@ -153,16 +192,25 @@ export function middleware(request: NextRequest) {
     if (!isAdminAuthenticated && isCustomerAuthenticated) {
       const loginUrl = new URL('/admin/login', request.url);
       loginUrl.searchParams.set('error', 'customer_unauthorized');
-      return NextResponse.redirect(loginUrl);
+      const res = NextResponse.redirect(loginUrl);
+      if (hasAnyAdminCookie) {
+        clearAdminCookies(res);
+      }
+      return res;
     }
 
     // 2C: Unauthenticated user accessing protected Admin routes
     if (!isAdminAuthenticated) {
       const loginUrl = new URL('/admin/login', request.url);
       if (pathname !== '/admin' && pathname !== '/admin/dashboard') {
+        loginUrl.searchParams.set('next', pathname);
         loginUrl.searchParams.set('redirect', pathname);
       }
-      return NextResponse.redirect(loginUrl);
+      const res = NextResponse.redirect(loginUrl);
+      if (hasAnyAdminCookie) {
+        clearAdminCookies(res);
+      }
+      return res;
     }
 
     const response = NextResponse.next();
